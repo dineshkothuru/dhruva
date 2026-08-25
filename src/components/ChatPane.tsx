@@ -232,6 +232,7 @@ export default function ChatPane({
     const inputsMap: Record<string, Record<string, string | boolean>> = {
       "bug-fix": { description: msg.proposal.taskText, runTests: false, deploy: false },
       "feature-dev": { requirement: msg.proposal.taskText, runTests: true, deploy: false },
+      "solution-design": { requirement: msg.proposal.taskText, docName: "solution-design" },
     };
     try {
       const res = await fetch("/api/workflow", {
@@ -392,17 +393,21 @@ export default function ChatPane({
                     >
                       Run {m.proposal.title} workflow
                     </button>
-                    <button
-                      onClick={() =>
-                        startWorkflowFromProposal(
-                          i,
-                          m.proposal!.workflow === "bug-fix" ? "feature-dev" : "bug-fix",
-                        )
-                      }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
-                    >
-                      {m.proposal.workflow === "bug-fix" ? "Feature development instead" : "Bug fix instead"}
-                    </button>
+                    {(["bug-fix", "feature-dev", "solution-design"] as const)
+                      .filter((w) => w !== m.proposal!.workflow)
+                      .map((w) => (
+                        <button
+                          key={w}
+                          onClick={() => startWorkflowFromProposal(i, w)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
+                        >
+                          {w === "bug-fix"
+                            ? "Bug fix instead"
+                            : w === "feature-dev"
+                              ? "Feature development instead"
+                              : "Solution design instead"}
+                        </button>
+                      ))}
                     <button
                       onClick={() => {
                         markProposal(i, "answered in chat");

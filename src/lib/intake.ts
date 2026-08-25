@@ -7,7 +7,7 @@
  * question — that goes straight to agent chat. */
 
 export interface IntakeProposal {
-  workflow: "bug-fix" | "feature-dev";
+  workflow: "bug-fix" | "feature-dev" | "solution-design";
   title: string;
   reason: string;
 }
@@ -17,6 +17,9 @@ const BUG_SIGNALS =
 
 const FEATURE_SIGNALS =
   /\b(feature|requirement|user\s+story|story|implement|build|create|add|new\s+(field|object|flow|screen|page|component|button|report|validation|automation)|enhance(ment)?|develop|we\s+(need|want)|as\s+an?\s+\w+\s+i\s+want)\b/i;
+
+const DESIGN_SIGNALS =
+  /\b(design|architecture|architect|solution\s+design|erd|data\s+model|hld|lld|technical\s+design|estimate\s+(the|this)|design\s+document|blueprint)\b/i;
 
 const QUESTION_SIGNALS = /^(what|how|why|where|which|who|can you explain|explain|show me|tell me|describe)\b/i;
 
@@ -29,6 +32,14 @@ export function classifyIntake(text: string): IntakeProposal | null {
   const bug = BUG_SIGNALS.test(t);
   const feature = FEATURE_SIGNALS.test(t);
 
+  // design intent outranks feature wording ("design the solution for a new…")
+  if (DESIGN_SIGNALS.test(t) && !bug) {
+    return {
+      workflow: "solution-design",
+      title: "Solution design",
+      reason: "the description asks for a design/architecture rather than direct implementation",
+    };
+  }
   if (bug) {
     return {
       workflow: "bug-fix",

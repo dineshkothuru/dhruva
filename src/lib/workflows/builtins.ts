@@ -253,6 +253,74 @@ export const FEATURE_DEV: WorkflowDef = {
   ],
 };
 
+export const SOLUTION_DESIGN: WorkflowDef = {
+  id: "solution-design",
+  title: "Solution design",
+  description:
+    "Architect path: analyse a requirement against the existing codebase, gate on the proposed design, then produce a full design document (with an ERD) in the project.",
+  inputs: [
+    {
+      key: "requirement",
+      label: "Requirement (paste the text; attach documents via chat intake)",
+      kind: "text",
+    },
+    { key: "docName", label: "Design document name (file-safe)", kind: "text", default: "solution-design" },
+  ],
+  steps: [
+    { id: "snapshot", title: "Snapshot baseline", type: "snapshot" },
+    {
+      id: "analyse",
+      title: "Analyse requirement against the codebase (architect, read-only)",
+      type: "agent",
+      readOnly: true,
+      persona: "salesforce-architect",
+      prompt:
+        "A requirement needs a solution design for THIS org's codebase. DO NOT modify any files in this step.\n" +
+        "Requirement:\n{inputs.requirement}\n\n" +
+        "Study the existing codebase first: objects, automation, apex services, LWCs that this " +
+        "requirement touches. Then propose the design as a structured summary:\n" +
+        "1. Solution overview and approach (declarative vs code, and why)\n" +
+        "2. Data model: new/changed objects and fields, relationships\n" +
+        "3. Components: apex classes, triggers, LWCs, flows to create or modify (name existing ones to reuse)\n" +
+        "4. Security: sharing, profiles/permission sets, FLS\n" +
+        "5. Impact analysis: existing behavior at risk\n" +
+        "6. Risks, assumptions, and open questions\n" +
+        "7. Rough effort estimate per component\n" +
+        "Keep it reviewable — this summary is what the architect approves before the document is written.",
+    },
+    {
+      id: "approve-design",
+      title: "Approve the proposed design",
+      type: "gate",
+      message:
+        "Review the proposed solution design above. On approval the full design document (including the ERD) is written into docs/designs/ in the project.",
+    },
+    {
+      id: "write-doc",
+      title: "Write the design document (with ERD)",
+      type: "agent",
+      prompt:
+        "Write the APPROVED solution design into a Markdown file at docs/designs/{inputs.docName}.md " +
+        "(create the folders if needed). This is the only file you may create or modify in this step.\n\n" +
+        "Approved design from the analysis step:\n{steps.analyse.output}\n\n" +
+        "Document structure: title, requirement summary, solution overview, data model section " +
+        "INCLUDING a Mermaid er-diagram code block (```mermaid / erDiagram) showing the new and " +
+        "impacted objects with their relationships and key fields, component design (per component: " +
+        "purpose, reuse-vs-new, key logic), security model, impact analysis, test strategy, risks and " +
+        "assumptions, effort estimate table. Incorporate every detail from the approved design; " +
+        "expand where the document needs precision, but do not contradict what was approved.",
+    },
+    { id: "changes", title: "Collect created documents", type: "changes" },
+    {
+      id: "approve-doc",
+      title: "Accept the design document",
+      type: "gate",
+      message:
+        "The design document is written (open it from the changed-files list or the file tree under docs/designs/). Accept to complete the run.",
+    },
+  ],
+};
+
 export const RETRIEVE_SYNC: WorkflowDef = {
   id: "retrieve-sync",
   title: "Retrieve / org sync",
@@ -415,6 +483,7 @@ export const SCRATCH_ORG: WorkflowDef = {
 export const WORKFLOWS: Record<string, WorkflowDef> = {
   [BUG_FIX.id]: BUG_FIX,
   [FEATURE_DEV.id]: FEATURE_DEV,
+  [SOLUTION_DESIGN.id]: SOLUTION_DESIGN,
   [RETRIEVE_SYNC.id]: RETRIEVE_SYNC,
   [DEPLOY_PREVIEW.id]: DEPLOY_PREVIEW,
   [VALIDATE_DEPLOY.id]: VALIDATE_DEPLOY,
