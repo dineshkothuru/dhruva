@@ -400,12 +400,16 @@ export default function Home() {
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Default org</dt>
                   <dd className="mt-1 text-xs">
                     {result.org?.connected ? (
-                      <span className="flex flex-col gap-0.5">
-                        <span className="inline-flex items-center gap-2">
-                          <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                          <span className="font-medium">{result.org.username}</span>
+                      <span className="flex min-w-0 flex-col gap-0.5">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                          <span className="truncate font-medium" title={result.org.username}>
+                            {result.org.username}
+                          </span>
                         </span>
-                        <span className="pl-4 text-slate-400">{result.org.instanceUrl}</span>
+                        <span className="truncate pl-4 text-slate-400" title={result.org.instanceUrl}>
+                          {result.org.instanceUrl}
+                        </span>
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-2 text-slate-500">
