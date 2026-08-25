@@ -164,7 +164,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         (role ? `${role}\n\n` : "") +
         `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
         template(def.prompt ?? "", run);
-      const { args, viaStdin } = agentDef.build(prompt, run.model);
+      const { args, viaStdin } = agentDef.build(prompt, run.model, def.readOnly === true);
       const ok = await spawnToStep(run, step, agentDef.bin, args, viaStdin ? prompt : undefined);
       harvestAffectedFiles(run, step.output);
       step.usage = estimateUsage(run.agent, run.model, prompt, step.output);

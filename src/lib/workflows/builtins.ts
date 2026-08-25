@@ -20,6 +20,7 @@ export const BUG_FIX: WorkflowDef = {
       id: "locate",
       title: "Locate root cause (agent, read-only)",
       type: "agent",
+      readOnly: true,
       prompt:
         "You are investigating a bug. DO NOT modify any files in this step.\n" +
         "Bug report: {inputs.description}\n" +
@@ -81,6 +82,7 @@ export const BUG_FIX: WorkflowDef = {
       id: "review",
       title: "Code review of the changes (agent, read-only)",
       type: "agent",
+      readOnly: true,
       persona: "salesforce-review",
       prompt:
         "Review ONLY the changes listed below (made in this run) against the team standards. " +
@@ -149,6 +151,7 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "spec",
       title: "Draft technical spec (agent, read-only)",
       type: "agent",
+      readOnly: true,
       prompt:
         "You are designing a Salesforce implementation for a requirement. DO NOT modify any files in this step.\n" +
         "Requirement: {inputs.requirement}\n" +
@@ -198,6 +201,7 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "review",
       title: "Code review of the changes (agent, read-only)",
       type: "agent",
+      readOnly: true,
       persona: "salesforce-review",
       prompt:
         "Review ONLY the changes listed below (made in this run) against the team standards. " +

@@ -23,6 +23,9 @@ export interface StepDef {
   /** agent: persona module from standards/personas (e.g. "salesforce-review")
    * whose body is prepended to the prompt as the step's role. */
   persona?: string;
+  /** agent: enforce read-only at the CLI level (claude plan mode, codex
+   * read-only sandbox, copilot tool denies) for investigate/review steps. */
+  readOnly?: boolean;
   /** gate: message template shown to the approver. */
   message?: string;
   /** Skip this step unless the named run input is truthy. */

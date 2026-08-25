@@ -14,8 +14,15 @@ export interface AgentDef {
    * an allowed one matters (e.g. Copilot policy: only Sonnet 5 / Opus 5). */
   models: { id: string; label: string }[];
   /** Build the CLI invocation. `viaStdin` prompts are written to the child's
-   * stdin (no shell-quoting risk); otherwise the sanitized prompt is inlined. */
-  build: (prompt: string, model?: string) => { args: string[]; viaStdin: boolean };
+   * stdin (no shell-quoting risk); otherwise the sanitized prompt is inlined.
+   * readOnly enforces investigation/review steps at the CLI level where the
+   * vendor supports it (claude: plan mode; codex: read-only sandbox;
+   * copilot: deny-flags best-effort + prompt instruction). */
+  build: (
+    prompt: string,
+    model?: string,
+    readOnly?: boolean,
+  ) => { args: string[]; viaStdin: boolean };
   installHint: string;
 }
 
@@ -52,11 +59,14 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     // attached project; the harness user asked it to do the task.
     // --model matters because org policy can disable the CLI's default model
     // (startup then fails with "access denied by policy").
-    build: (prompt, model) => ({
+    build: (prompt, model, readOnly) => ({
       args: [
         "-p",
         `"${sanitizeInline(prompt)}"`,
         "--allow-all-tools",
+        // best-effort read-only: deny the mutating tools (body instruction
+        // in the persona is the portable guarantee for copilot)
+        ...(readOnly ? ["--deny-tool", "write", "--deny-tool", "shell"] : []),
         ...(model ? ["--model", model] : []),
       ],
       viaStdin: false,
@@ -79,8 +89,14 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     ],
     // -p reads the prompt from stdin; acceptEdits lets it write files without
     // interactive approval while still refusing arbitrary commands.
-    build: (_prompt, model) => ({
-      args: ["-p", "--permission-mode", "acceptEdits", ...(model ? ["--model", model] : [])],
+    // readOnly → plan mode: reads allowed, edits/commands structurally denied.
+    build: (_prompt, model, readOnly) => ({
+      args: [
+        "-p",
+        "--permission-mode",
+        readOnly ? "plan" : "acceptEdits",
+        ...(model ? ["--model", model] : []),
+      ],
       viaStdin: true,
     }),
     installHint: "npm i -g @anthropic-ai/claude-code, then run `claude` once to log in",
@@ -94,8 +110,14 @@ export const AGENTS: Record<AgentId, AgentDef> = {
       { id: "gpt-5.4-codex", label: "GPT-5.4 Codex" },
     ],
     // `codex exec -` reads the task from stdin; sandboxed auto mode.
-    build: (_prompt, model) => ({
-      args: ["exec", "--full-auto", ...(model ? ["-m", model] : []), "-"],
+    // readOnly → read-only sandbox: the OS-level sandbox blocks writes.
+    build: (_prompt, model, readOnly) => ({
+      args: [
+        "exec",
+        ...(readOnly ? ["--sandbox", "read-only"] : ["--full-auto"]),
+        ...(model ? ["-m", model] : []),
+        "-",
+      ],
       viaStdin: true,
     }),
     installHint: "npm i -g @openai/codex, then run `codex` once to log in",
