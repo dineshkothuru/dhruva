@@ -37,6 +37,44 @@ export default function EditorPane({ root, file }: { root: string; file: string 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [retrieving, setRetrieving] = useState(false);
+
+  async function reloadFromDisk() {
+    const res = await fetch("/api/file", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ root, file, action: "read" }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setContent(String(data.content));
+      setOriginal(String(data.content));
+    }
+  }
+
+  /** VS Code parity: pull this one file fresh from the connected org. */
+  async function retrieveFromOrg() {
+    if (retrieving) return;
+    setRetrieving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/retrieve-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root, file }),
+      });
+      const data = await res.json();
+      if (!res.ok) setError(String(data.error ?? "retrieve failed"));
+      else {
+        await reloadFromDisk();
+        setSavedAt(Date.now());
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRetrieving(false);
+    }
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
 
@@ -107,6 +145,20 @@ export default function EditorPane({ root, file }: { root: string; file: string 
         {dirty && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="unsaved changes" />}
         <div className="ml-auto flex items-center gap-2">
           {savedAt && !dirty && <span className="text-[11px] text-emerald-600">saved</span>}
+          {file.startsWith("force-app") && (
+            <button
+              onClick={retrieveFromOrg}
+              disabled={retrieving || dirty || content === null}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
+              title={
+                dirty
+                  ? "Save or discard your edits first — retrieving would overwrite them"
+                  : "Pull this file fresh from the connected org (overwrites the local copy)"
+              }
+            >
+              {retrieving ? "Retrieving…" : "↓ Retrieve from org"}
+            </button>
+          )}
           {error && <span className="max-w-xs truncate text-[11px] text-red-600">{error}</span>}
           {canFormat && (
             <button
