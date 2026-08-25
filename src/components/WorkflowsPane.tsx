@@ -373,6 +373,7 @@ export default function WorkflowsPane({
               )}
               {s.usage && (
                 <p className="border-t border-slate-100 px-4 py-1.5 text-[10px] text-slate-400">
+                  {s.model && <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5">{s.model}</span>}
                   {s.usage.estimated ? "~" : ""}
                   {s.usage.inTokens.toLocaleString()} in / {s.usage.outTokens.toLocaleString()} out
                   tokens · $

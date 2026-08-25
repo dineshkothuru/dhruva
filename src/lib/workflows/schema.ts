@@ -26,6 +26,11 @@ export interface StepDef {
   /** agent: enforce read-only at the CLI level (claude plan mode, codex
    * read-only sandbox, copilot tool denies) for investigate/review steps. */
   readOnly?: boolean;
+  /** agent: model tier for this step ("best" = architecture/review judgment,
+   * "light" = cheap mechanical work). Unset = the run's selected model.
+   * Resolved from the agent's tiers map — also gives cross-model review
+   * within one vendor (best reviews what default wrote). */
+  modelTier?: "best" | "default" | "light";
   /** gate: message template shown to the approver. */
   message?: string;
   /** gate: step id a "revise" decision replays from (default: the nearest
@@ -67,6 +72,8 @@ export interface StepState {
   endedAt?: number;
   /** Agent steps: token usage + API-rate cost (exact when the vendor reports it). */
   usage?: { inTokens: number; outTokens: number; costUsd: number; estimated: boolean };
+  /** Agent steps: the model this step actually ran with (tier-resolved). */
+  model?: string;
 }
 
 export interface RunState {

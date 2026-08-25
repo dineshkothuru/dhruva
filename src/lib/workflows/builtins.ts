@@ -20,6 +20,7 @@ export const BUG_FIX: WorkflowDef = {
       id: "locate",
       title: "Locate root cause (agent, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       prompt:
         "You are investigating a bug. DO NOT modify any files in this step.\n" +
@@ -82,6 +83,7 @@ export const BUG_FIX: WorkflowDef = {
       id: "review",
       title: "Code review of the changes (agent, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       persona: "salesforce-review",
       prompt:
@@ -152,6 +154,7 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "spec",
       title: "Draft technical spec (agent, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       prompt:
         "You are designing a Salesforce implementation for a requirement. DO NOT modify any files in this step.\n" +
@@ -202,6 +205,7 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "review",
       title: "Code review of the changes (agent, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       persona: "salesforce-review",
       prompt:
@@ -216,6 +220,7 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "traceability",
       title: "Requirement coverage check (agent, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       prompt:
         "Coverage check. Re-read the full requirement (and any attached documents it references):\n" +
@@ -289,6 +294,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       id: "analyse",
       title: "Analyse requirement against the codebase (architect, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       persona: "salesforce-architect",
       prompt:
@@ -372,6 +378,7 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       id: "plan",
       title: "Read the TDD and plan the build (agent, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       prompt:
         "Read the approved Technical Design Document at {inputs.tddPath} in this project. " +
@@ -423,6 +430,7 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       id: "review",
       title: "Code review against the TDD (agent, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       persona: "salesforce-review",
       prompt:
@@ -437,6 +445,7 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       id: "traceability",
       title: "Requirements traceability matrix (agent, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       prompt:
         "Build a requirements traceability matrix. Re-read the ENTIRE TDD at {inputs.tddPath} " +
@@ -511,6 +520,7 @@ export const TEST_GEN: WorkflowDef = {
       id: "assess",
       title: "Assess coverage gaps (agent, read-only)",
       type: "agent",
+      modelTier: "best",
       readOnly: true,
       persona: "salesforce-test",
       prompt:

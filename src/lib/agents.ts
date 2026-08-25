@@ -9,6 +9,11 @@ export interface AgentDef {
   label: string;
   /** Command probed with --version to detect installation. */
   bin: string;
+  /** Model tiers — the system setting mapping roles to models per agent.
+   * Workflow steps declare a tier ("best" for architecture/review judgment,
+   * "default" for implementation volume, "light" for cheap mechanical work);
+   * the engine resolves it here. "" = the CLI's own default model. */
+  tiers: { best: string; default: string; light: string };
   /** Selectable model ids for the dropdown; "" means the CLI's default.
    * Org policies can disable a CLI's default model, so letting the user pick
    * an allowed one matters (e.g. Copilot policy: only Sonnet 5 / Opus 5). */
@@ -50,6 +55,7 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     id: "copilot",
     label: "GitHub Copilot",
     bin: "copilot",
+    tiers: { best: "claude-opus-5", default: "claude-sonnet-5", light: "gpt-5.4-mini" },
     models: [
       { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
       { id: "claude-opus-5", label: "Claude Opus 5" },
@@ -80,6 +86,7 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     id: "claude",
     label: "Claude Code",
     bin: "claude",
+    tiers: { best: "claude-opus-5", default: "", light: "haiku" },
     models: [
       { id: "", label: "Default" },
       { id: "claude-fable-5", label: "Fable 5" },
@@ -109,6 +116,7 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     id: "codex",
     label: "OpenAI Codex",
     bin: "codex",
+    tiers: { best: "gpt-5.4-codex", default: "", light: "" },
     models: [
       { id: "", label: "Default" },
       { id: "gpt-5.4-codex", label: "GPT-5.4 Codex" },

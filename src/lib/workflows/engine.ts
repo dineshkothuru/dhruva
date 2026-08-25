@@ -272,12 +272,17 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
         template(def.prompt ?? "", run) +
         feedbackBlock;
+      // Model tier: "best" for judgment steps, "light" for mechanical ones,
+      // otherwise the run's selected model. Empty tier value = CLI default.
+      const tierModel = def.modelTier ? agentDef.tiers[def.modelTier] : undefined;
+      const stepModel = def.modelTier ? tierModel || run.model : run.model;
+      step.model = stepModel || "default";
       // claude: stream-json gives a LIVE trace (tool uses + text as produced)
       // and exact token usage in the final event; others stream plain text.
       const streamJson = run.agent === "claude";
       const { args, viaStdin } = agentDef.build(
         prompt,
-        run.model,
+        stepModel,
         def.readOnly === true,
         streamJson,
       );
@@ -290,7 +295,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         streamJson ? makeClaudeTraceTransform(step) : undefined,
       );
       harvestAffectedFiles(run, step.output);
-      if (!step.usage) step.usage = estimateUsage(run.agent, run.model, prompt, step.output);
+      if (!step.usage) step.usage = estimateUsage(run.agent, stepModel, prompt, step.output);
       return ok;
     }
     case "verify": {
