@@ -137,9 +137,12 @@ async function execute(run: RunState, def: WorkflowDef) {
           await persist(run);
           return;
         }
-        // revise: replay from the nearest preceding agent step with feedback
-        const from = nearestAgentIndex(def, i);
-        if (from < 0 || ++revisions > MAX_REVISIONS_PER_GATE) {
+        // revise: replay from the gate's declared target (or the nearest
+        // preceding agent step) with the feedback injected
+        const from = stepDef.reviseTarget
+          ? def.steps.findIndex((s) => s.id === stepDef.reviseTarget)
+          : nearestAgentIndex(def, i);
+        if (from < 0 || from >= i || ++revisions > MAX_REVISIONS_PER_GATE) {
           step.output += "\n→ revision not possible here — approve or abort";
           continue;
         }

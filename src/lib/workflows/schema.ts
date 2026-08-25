@@ -28,6 +28,10 @@ export interface StepDef {
   readOnly?: boolean;
   /** gate: message template shown to the approver. */
   message?: string;
+  /** gate: step id a "revise" decision replays from (default: the nearest
+   * preceding agent step). Set to the implement step on code-review gates so
+   * feedback reworks the code, not the read-only reviewer. */
+  reviseTarget?: string;
   /** Skip this step unless the named run input is truthy. */
   onlyIf?: string;
   /** cli: when an argv expansion has nothing to expand ({affectedSourceDirs}

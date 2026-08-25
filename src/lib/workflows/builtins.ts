@@ -96,8 +96,9 @@ export const BUG_FIX: WorkflowDef = {
       id: "approve-changes",
       title: "Approve code changes",
       type: "gate",
+      reviseTarget: "implement",
       message:
-        "The files listed above were changed. Open the diffs from the run view, then approve to validate against the org.",
+        "The files listed above were changed. Open the diffs from the run view; type instructions and Revise to have the fix reworked. Approve to validate against the org.",
     },
     {
       id: "validate",
@@ -212,10 +213,26 @@ export const FEATURE_DEV: WorkflowDef = {
         "ready, or blocked with the specific blocking items.",
     },
     {
+      id: "traceability",
+      title: "Requirement coverage check (agent, read-only)",
+      type: "agent",
+      readOnly: true,
+      prompt:
+        "Coverage check. Re-read the full requirement (and any attached documents it references):\n" +
+        "{inputs.requirement}\n" +
+        "Extract every distinct requirement item, and for EACH one inspect the changed files below:\n" +
+        "  <n>. <item> — IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\n" +
+        "Changed files in this run:\n{steps.changes.output}\n" +
+        "Do not modify any files. Be strict: no evidence in the diff = MISSING. End with the " +
+        "verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE — items <numbers>.",
+    },
+    {
       id: "approve-changes",
       title: "Approve code changes",
       type: "gate",
-      message: "Review the changed files (open diffs from this run view). Validate against the org?",
+      reviseTarget: "implement",
+      message:
+        "Review the diffs, the reviewer's verdict, and the coverage check above. If items are PARTIAL/MISSING, type e.g. 'implement items 2 and 5' and Revise. Approve to validate against the org.",
     },
     {
       id: "validate",
@@ -417,11 +434,27 @@ export const IMPLEMENT_TDD: WorkflowDef = {
         "End with the explicit verdict: ready, or blocked with the specific blocking items.",
     },
     {
+      id: "traceability",
+      title: "Requirements traceability matrix (agent, read-only)",
+      type: "agent",
+      readOnly: true,
+      prompt:
+        "Build a requirements traceability matrix. Re-read the ENTIRE TDD at {inputs.tddPath} " +
+        "(chunked reads to the end). Extract every requirement/component/behavior it specifies " +
+        "(respect the scope note: {inputs.scope}). For EACH item, inspect the changed files below " +
+        "and report one line:\n" +
+        "  <n>. <requirement item> — IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\n" +
+        "Changed files in this run:\n{steps.changes.output}\n" +
+        "Do not modify any files. Be strict: no evidence in the diff = MISSING, even if it seems " +
+        "implied. End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE — items <numbers>.",
+    },
+    {
       id: "approve-changes",
       title: "Approve code changes",
       type: "gate",
+      reviseTarget: "implement",
       message:
-        "Review the diff (links above) and the reviewer's verdict. Approve to validate against the org.",
+        "Review the diff, the reviewer's verdict, and the traceability matrix above. If items are PARTIAL/MISSING, type e.g. 'implement items 4 and 7' and Revise — the build re-runs and the matrix regenerates. Approve to validate against the org.",
     },
     {
       id: "validate",
@@ -521,7 +554,9 @@ export const TEST_GEN: WorkflowDef = {
       id: "approve-changes",
       title: "Approve the new tests",
       type: "gate",
-      message: "Review the test diffs (links above). Validate them against the org?",
+      reviseTarget: "implement",
+      message:
+        "Review the test diffs (links above); type instructions and Revise to rework them. Validate them against the org?",
     },
     {
       id: "validate",
