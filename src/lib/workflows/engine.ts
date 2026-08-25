@@ -259,7 +259,12 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
           : "";
       const prompt =
         `You are working inside the Salesforce DX project at ${run.root} ` +
-        `(your current working directory). Only read and modify files in this project.\n\n` +
+        `(your current working directory). Only read and modify files in this project.\n` +
+        `CRITICAL: when the task references a document, attachment, requirement file, or design ` +
+        `file, read it COMPLETELY before acting — if your file-reading tool returns only part of ` +
+        `it (e.g. the first 2000 lines), keep reading with offsets until the end of the file. ` +
+        `Never analyse, design, or implement from a partially read document; if a referenced ` +
+        `document cannot be fully read, say so explicitly instead of proceeding.\n\n` +
         (role ? `${role}\n\n` : "") +
         `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
         template(def.prompt ?? "", run) +
