@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
 import type { RunState } from "@/lib/workflows/schema";
+import CliResult from "@/components/CliResult";
 
 interface CatalogItem {
   id: string;
@@ -84,7 +85,13 @@ function StepBody({
     ) : null;
   }
 
-  // cli / verify / changes output stays terminal-style
+  // cli steps: render recognized sf --json shapes as tables once finished
+  // (CliResult falls back to the terminal view for unrecognized output)
+  if (type === "cli" && !running) {
+    return <CliResult output={output} />;
+  }
+
+  // verify / changes / streaming cli output stays terminal-style
   if (type !== "agent") {
     return (
       <div ref={boxRef} className="max-h-72 overflow-y-auto border-t border-slate-100">
