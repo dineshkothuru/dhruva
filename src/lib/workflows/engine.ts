@@ -92,7 +92,7 @@ async function execute(run: RunState, def: WorkflowDef) {
         await persist(run);
         return;
       }
-      step.status = "done";
+      if (step.status === "running") step.status = "done";
     } catch (e) {
       step.status = "failed";
       step.output += `\n[engine] ${String(e)}`;
@@ -141,9 +141,16 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
     }
     case "agent": {
       const agentDef = AGENTS[run.agent];
-      const prompt = template(def.prompt ?? "", run);
+      // Ground the agent explicitly in the attached folder (prompt clarity +
+      // audit-log readability; the cwd already enforces it technically).
+      const prompt =
+        `You are working inside the Salesforce DX project at ${run.root} ` +
+        `(your current working directory). Only read and modify files in this project.\n\n` +
+        template(def.prompt ?? "", run);
       const { args, viaStdin } = agentDef.build(prompt, run.model);
-      return spawnToStep(run, step, agentDef.bin, args, viaStdin ? prompt : undefined);
+      const ok = await spawnToStep(run, step, agentDef.bin, args, viaStdin ? prompt : undefined);
+      harvestAffectedFiles(run, step.output);
+      return ok;
     }
     case "cli": {
       if (def.bin !== "sf" && def.bin !== "git") {
@@ -152,6 +159,11 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       }
       const args = expandArgs(def.args ?? [], run);
       if (!args) {
+        if (def.optional) {
+          step.output = "nothing to act on — step skipped";
+          step.status = "skipped";
+          return true;
+        }
         step.output = "no changed files to act on — nothing to validate/deploy";
         return false;
       }
@@ -170,6 +182,19 @@ function template(text: string, run: RunState): string {
     });
 }
 
+/** Parse a "FILES: a, b, c" line from agent output into run.affected —
+ * project-relative paths only; anything absolute or escaping is dropped. */
+function harvestAffectedFiles(run: RunState, output: string) {
+  const m = output.match(/FILES:\s*([^\n]+)/);
+  if (!m) return;
+  const files = m[1]
+    .split(",")
+    .map((f) => f.trim().replace(/\\/g, "/").replace(/^["'`]|["'`]$/g, ""))
+    .filter((f) => f && !f.includes("..") && !path.isAbsolute(f) && f.length < 300)
+    .slice(0, 30);
+  if (files.length) run.affected = files;
+}
+
 /** Expand argv templates. "{changedSourceDirs}" becomes repeated
  * --source-dir <file> pairs for every non-deleted changed file; returns null
  * when the expansion is required but there are no changed files. */
@@ -180,6 +205,10 @@ function expandArgs(argv: string[], run: RunState): string[] | null {
       const files = (run.changes ?? []).filter((c) => c.status !== "deleted");
       if (files.length === 0) return null;
       for (const f of files.slice(0, 50)) out.push("--source-dir", f.file);
+    } else if (a === "{affectedSourceDirs}") {
+      const files = run.affected ?? [];
+      if (files.length === 0) return null;
+      for (const f of files.slice(0, 30)) out.push("--source-dir", f);
     } else {
       out.push(template(a, run));
     }

@@ -24,6 +24,9 @@ export interface StepDef {
   message?: string;
   /** Skip this step unless the named run input is truthy. */
   onlyIf?: string;
+  /** cli: when an argv expansion has nothing to expand ({affectedSourceDirs}
+   * with no files named), skip the step instead of failing the run. */
+  optional?: boolean;
 }
 
 export interface WorkflowDef {
@@ -61,4 +64,7 @@ export interface RunState {
   steps: StepState[];
   /** Changed files as of the last "changes" step. */
   changes?: { file: string; status: string }[];
+  /** Files the investigation step named (parsed from its FILES: line) —
+   * used to retrieve fresh copies from the org before implementing. */
+  affected?: string[];
 }
