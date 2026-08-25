@@ -6,6 +6,7 @@ import type { AgentId } from "@/lib/agents";
 import { AGENTS } from "@/lib/agents";
 import { takeSnapshot, changesSince } from "@/lib/snapshot";
 import { STANDARDS_PROMPT, checkStandards } from "@/lib/standards";
+import { persona, standardsFor } from "@/lib/standardsLibrary";
 import type { RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { WORKFLOWS } from "./builtins";
 
@@ -146,10 +147,21 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       // audit-log readability; the cwd already enforces it technically).
       // Standards are injected by the ENGINE — same rules, verbatim, for
       // every agent vendor; never dependent on vendor file conventions.
+      // Scope: modules whose applyTo matches the files this run touches
+      // (affected from the investigation, or changed files); baseline +
+      // unscoped modules always. Distilled block is the fallback if the
+      // standards library is missing from the install.
+      const scopeFiles = [
+        ...(run.affected ?? []),
+        ...(run.changes ?? []).map((c) => c.file),
+      ];
+      const rules = (await standardsFor(scopeFiles).catch(() => "")) || STANDARDS_PROMPT;
+      const role = def.persona ? await persona(def.persona).catch(() => "") : "";
       const prompt =
         `You are working inside the Salesforce DX project at ${run.root} ` +
         `(your current working directory). Only read and modify files in this project.\n\n` +
-        `${STANDARDS_PROMPT}\n\n` +
+        (role ? `${role}\n\n` : "") +
+        `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
         template(def.prompt ?? "", run);
       const { args, viaStdin } = agentDef.build(prompt, run.model);
       const ok = await spawnToStep(run, step, agentDef.bin, args, viaStdin ? prompt : undefined);

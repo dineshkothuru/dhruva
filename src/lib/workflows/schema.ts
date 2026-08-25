@@ -20,6 +20,9 @@ export interface StepDef {
   args?: string[];
   /** agent: prompt template ("{...}" placeholders allowed). */
   prompt?: string;
+  /** agent: persona module from standards/personas (e.g. "salesforce-review")
+   * whose body is prepended to the prompt as the step's role. */
+  persona?: string;
   /** gate: message template shown to the approver. */
   message?: string;
   /** Skip this step unless the named run input is truthy. */

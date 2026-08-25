@@ -78,6 +78,19 @@ export const BUG_FIX: WorkflowDef = {
       type: "verify",
     },
     {
+      id: "review",
+      title: "Code review of the changes (agent, read-only)",
+      type: "agent",
+      persona: "salesforce-review",
+      prompt:
+        "Review ONLY the changes listed below (made in this run) against the team standards. " +
+        "Do not modify any files.\n" +
+        "Changed files:\n{steps.changes.output}\n" +
+        "Deterministic standards-check result:\n{steps.verify-standards.output}\n" +
+        "Read each changed file, review the actual change, and end with the explicit verdict: " +
+        "ready, or blocked with the specific blocking items.",
+    },
+    {
       id: "approve-changes",
       title: "Approve code changes",
       type: "gate",
@@ -180,6 +193,19 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "verify-standards",
       title: "Verify standards on changed files (deterministic)",
       type: "verify",
+    },
+    {
+      id: "review",
+      title: "Code review of the changes (agent, read-only)",
+      type: "agent",
+      persona: "salesforce-review",
+      prompt:
+        "Review ONLY the changes listed below (made in this run) against the team standards. " +
+        "Do not modify any files.\n" +
+        "Changed files:\n{steps.changes.output}\n" +
+        "Deterministic standards-check result:\n{steps.verify-standards.output}\n" +
+        "Read each changed file, review the actual change, and end with the explicit verdict: " +
+        "ready, or blocked with the specific blocking items.",
     },
     {
       id: "approve-changes",
