@@ -5,11 +5,13 @@ import type { AgentId } from "@/lib/agents";
 import type { RunState } from "@/lib/workflows/schema";
 import CliResult from "@/components/CliResult";
 import { loadTiers, saveTiers, tiersFor, type TierConfig } from "@/lib/tierStore";
+import WorkflowBuilder from "@/components/WorkflowBuilder";
 
 interface CatalogItem {
   id: string;
   title: string;
   description: string;
+  custom?: boolean;
   inputs: {
     key: string;
     label: string;
@@ -180,6 +182,12 @@ export default function WorkflowsPane({
     string,
     { tiers?: Record<string, string> }
   > | null>(null);
+  const [designing, setDesigning] = useState(false);
+
+  async function refreshCatalog() {
+    const { ok, data } = await api({ action: "list", root });
+    if (ok) setCatalog(data.workflows as CatalogItem[]);
+  }
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const api = useCallback(async (body: Record<string, unknown>) => {
@@ -208,7 +216,7 @@ export default function WorkflowsPane({
           if (!cancelled) setStatus(s);
         })
         .catch(() => {});
-      const { ok, data } = await api({ action: "list" });
+      const { ok, data } = await api({ action: "list", root });
       if (!cancelled && ok) setCatalog(data.workflows as CatalogItem[]);
       const runsRes = await api({ action: "runs", root });
       if (!cancelled && runsRes.ok) setHistory((runsRes.data.runs as RunState[]) ?? []);
@@ -524,19 +532,58 @@ export default function WorkflowsPane({
 
       <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
         {(catalog ?? []).map((w) => (
-          <button
+          <div
             key={w.id}
-            onClick={() => pick(w)}
-            className={`rounded-xl border p-4 text-left hover:border-slate-400 ${
-              selected?.id === w.id ? "border-slate-900 bg-white" : "border-slate-200 bg-white"
+            className={`relative rounded-xl border bg-white hover:border-slate-400 ${
+              selected?.id === w.id ? "border-slate-900" : "border-slate-200"
             }`}
           >
-            <div className="text-sm font-semibold">{w.title}</div>
-            <p className="mt-1 text-xs text-slate-500">{w.description}</p>
-          </button>
+            <button onClick={() => pick(w)} className="w-full p-4 text-left">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                {w.title}
+                {w.custom && (
+                  <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-600">
+                    custom
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">{w.description}</p>
+            </button>
+            {w.custom && (
+              <button
+                onClick={async () => {
+                  await api({ action: "delete-custom", root, workflow: w.id });
+                  if (selected?.id === w.id) setSelected(null);
+                  refreshCatalog();
+                }}
+                className="absolute right-2 top-2 rounded px-1.5 text-xs text-slate-300 hover:bg-red-50 hover:text-red-500"
+                title="Delete this custom workflow"
+              >
+                ✕
+              </button>
+            )}
+          </div>
         ))}
+        <button
+          onClick={() => setDesigning(true)}
+          className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-left text-slate-400 hover:border-slate-500 hover:text-slate-600"
+        >
+          <div className="text-sm font-semibold">+ Design a workflow</div>
+          <p className="mt-1 text-xs">Build your own step sequence — same engine, gates, and audit.</p>
+        </button>
         {catalog === null && <p className="text-xs text-slate-400">loading…</p>}
       </div>
+
+      {designing && (
+        <WorkflowBuilder
+          root={root}
+          onCancel={() => setDesigning(false)}
+          onSaved={() => {
+            setDesigning(false);
+            refreshCatalog();
+          }}
+        />
+      )}
 
       {selected && (
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">

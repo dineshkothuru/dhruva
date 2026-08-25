@@ -4,6 +4,12 @@ import { isAttachableRoot } from "@/lib/fsguard";
 import { isAgentId } from "@/lib/agents";
 import { isSafeModelId } from "@/lib/agents";
 import { WORKFLOWS } from "@/lib/workflows/builtins";
+import {
+  deleteCustomWorkflow,
+  listCustomWorkflows,
+  loadWorkflow,
+  saveCustomWorkflow,
+} from "@/lib/workflows/custom";
 import { getRun, listRuns, resolveGate, startRun } from "@/lib/workflows/engine";
 
 /** Workflow control plane.
@@ -21,13 +27,26 @@ export async function POST(req: Request) {
   }
 
   if (b.action === "list") {
+    const listRoot = typeof b.root === "string" ? path.normalize(b.root.trim()) : "";
+    const customs =
+      listRoot && (await isAttachableRoot(listRoot)) ? await listCustomWorkflows(listRoot) : [];
     return NextResponse.json({
-      workflows: Object.values(WORKFLOWS).map((w) => ({
-        id: w.id,
-        title: w.title,
-        description: w.description,
-        inputs: w.inputs,
-      })),
+      workflows: [
+        ...Object.values(WORKFLOWS).map((w) => ({
+          id: w.id,
+          title: w.title,
+          description: w.description,
+          inputs: w.inputs,
+          custom: false,
+        })),
+        ...customs.map((w) => ({
+          id: w.id,
+          title: w.title,
+          description: w.description,
+          inputs: w.inputs,
+          custom: true,
+        })),
+      ],
     });
   }
 
@@ -67,8 +86,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ runs: await listRuns(root) });
   }
 
+  if (b.action === "save-custom") {
+    try {
+      const def = await saveCustomWorkflow(root, b.def);
+      return NextResponse.json({ saved: def.id });
+    } catch (e) {
+      return NextResponse.json({ error: String((e as Error).message) }, { status: 400 });
+    }
+  }
+
+  if (b.action === "delete-custom") {
+    if (typeof b.workflow !== "string") {
+      return NextResponse.json({ error: "workflow id required" }, { status: 400 });
+    }
+    return NextResponse.json({ deleted: await deleteCustomWorkflow(root, b.workflow) });
+  }
+
   if (b.action === "start") {
-    if (typeof b.workflow !== "string" || !WORKFLOWS[b.workflow]) {
+    const def = typeof b.workflow === "string" ? await loadWorkflow(root, b.workflow) : null;
+    if (!def) {
       return NextResponse.json({ error: "unknown workflow" }, { status: 400 });
     }
     if (!isAgentId(b.agent)) {
@@ -90,7 +126,7 @@ export async function POST(req: Request) {
         if (isSafeModelId(v)) tiers[k] = v;
       }
     }
-    const run = startRun(root, b.workflow, inputs, b.agent, model, tiers);
+    const run = startRun(root, def, inputs, b.agent, model, tiers);
     if (!run) return NextResponse.json({ error: "could not start run" }, { status: 500 });
     return NextResponse.json({ runId: run.runId });
   }

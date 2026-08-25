@@ -9,7 +9,6 @@ import { STANDARDS_PROMPT, checkStandards } from "@/lib/standards";
 import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
 import type { GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
-import { WORKFLOWS } from "./builtins";
 
 /** Deterministic workflow runner. Runs live in this server process (a local
  * single-user tool); every state change is persisted to
@@ -61,14 +60,12 @@ export function resolveGate(runId: string, decision: GateDecision): boolean {
 
 export function startRun(
   root: string,
-  workflowId: string,
+  def: WorkflowDef,
   inputs: Record<string, string | boolean>,
   agent: AgentId,
   model?: string,
   tiers?: RunState["tiers"],
 ): RunState | null {
-  const def = WORKFLOWS[workflowId];
-  if (!def) return null;
   const run: RunState = {
     runId: randomUUID().slice(0, 12),
     workflowId: def.id,
