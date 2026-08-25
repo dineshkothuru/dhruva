@@ -31,7 +31,26 @@ const STATUS_ICON: Record<string, string> = {
   failed: "❌",
   skipped: "⤼",
 };
-// verify steps share the generic icons; type label shows "verify"
+
+/** Colored left edge per step status — the run's frontier at a glance. */
+const STATUS_EDGE: Record<string, string> = {
+  pending: "border-l-slate-200",
+  running: "border-l-sky-400",
+  waiting_gate: "border-l-amber-400",
+  done: "border-l-emerald-400",
+  failed: "border-l-red-400",
+  skipped: "border-l-slate-200",
+};
+
+/** Type chip tint: AI steps stand apart from deterministic ones. */
+const TYPE_CHIP: Record<string, string> = {
+  agent: "bg-violet-50 text-violet-600",
+  gate: "bg-amber-50 text-amber-600",
+  verify: "bg-teal-50 text-teal-600",
+  cli: "bg-slate-100 text-slate-500",
+  snapshot: "bg-slate-100 text-slate-500",
+  changes: "bg-slate-100 text-slate-500",
+};
 
 function runCost(r: RunState): number {
   return r.steps.reduce((n, s) => n + (s.usage?.costUsd ?? 0), 0);
@@ -272,7 +291,9 @@ export default function WorkflowsPane({
             <details
               key={s.id}
               open={s.status === "running" || s.status === "waiting_gate" || s.status === "failed"}
-              className={`rounded-xl border bg-white ${
+              className={`rounded-xl border border-l-4 bg-white ${
+                STATUS_EDGE[s.status] ?? "border-l-slate-200"
+              } ${
                 s.status === "waiting_gate" ? "border-amber-300 ring-1 ring-amber-200" : "border-slate-200"
               }`}
             >
@@ -281,7 +302,11 @@ export default function WorkflowsPane({
                 <span className={s.status === "skipped" ? "text-slate-400" : "font-medium"}>
                   {s.title}
                 </span>
-                <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-400">
+                <span
+                  className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                    TYPE_CHIP[s.type] ?? "bg-slate-100 text-slate-500"
+                  }`}
+                >
                   {s.type}
                 </span>
               </summary>
