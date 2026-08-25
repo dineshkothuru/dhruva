@@ -114,11 +114,14 @@ export default function Home() {
     }
   }
 
-  async function authorizeOrg() {
+  async function authorizeOrg(host?: string) {
     if (!result?.path) return;
     setLoginMsg(null);
     try {
-      const { ok, data } = await postJson("/api/org-login", { path: result.path });
+      // reuse the org's known host when re-authorizing — a sandbox login via
+      // login.salesforce.com fails the code exchange (invalid_grant)
+      const instanceUrl = host ?? result.org?.instanceUrl;
+      const { ok, data } = await postJson("/api/org-login", { path: result.path, instanceUrl });
       if (!ok) setError(String(data.error ?? "Could not start org login"));
       else setLoginMsg(String(data.message ?? "Login started — finish in your browser."));
     } catch (e) {
@@ -350,13 +353,32 @@ export default function Home() {
                       </>
                     ) : (
                       <>
-                        <button
-                          onClick={() => authorizeOrg()}
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                          title="Opens the Salesforce login in your browser — use 'Use Custom Domain' there for sandboxes or my-domain orgs"
-                        >
-                          {result.org?.connected ? "Re-authorize org" : "Authorize org"}
-                        </button>
+                        {result.org?.connected ? (
+                          <button
+                            onClick={() => authorizeOrg()}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                            title="Re-opens the login on this org's own domain"
+                          >
+                            Re-authorize org
+                          </button>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => authorizeOrg("https://test.salesforce.com")}
+                              className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                              title="Sandboxes log in via test.salesforce.com"
+                            >
+                              Authorize sandbox
+                            </button>
+                            <button
+                              onClick={() => authorizeOrg("https://login.salesforce.com")}
+                              className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                              title="Production/Developer orgs log in via login.salesforce.com"
+                            >
+                              Authorize production
+                            </button>
+                          </div>
+                        )}
                         {result.org?.connected && (
                           <button
                             onClick={async () => {

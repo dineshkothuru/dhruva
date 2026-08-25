@@ -8,7 +8,7 @@ import { promises as fs } from "node:fs";
  * through this app; the sf CLI captures the OAuth token when they finish.
  * Fire-and-forget: the UI re-runs detection afterwards to see the result. */
 export async function POST(req: Request) {
-  let body: { path?: unknown };
+  let body: { path?: unknown; instanceUrl?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -26,16 +26,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "folder not found" }, { status: 400 });
   }
 
-  // Always open the standard login host; sandboxes and my-domain orgs are
-  // reached via the login page's "Use Custom Domain" option.
-  const args = [
-    "org",
-    "login",
-    "web",
-    "--set-default",
-    "--instance-url",
-    "https://login.salesforce.com",
-  ];
+  // The login host MUST match where the user authenticates: a sandbox login
+  // through login.salesforce.com fails the auth-code exchange with
+  // invalid_grant. Reuse the org's known instance URL when we have it;
+  // otherwise the UI passes sandbox (test) or production (login).
+  const raw = typeof body.instanceUrl === "string" ? body.instanceUrl.trim() : "";
+  const okHost =
+    /^https:\/\/(login|test)\.salesforce\.com$/.test(raw) ||
+    /^https:\/\/[a-z0-9][a-z0-9.-]*\.my\.salesforce\.com$/i.test(raw);
+  const instanceUrl = okHost ? raw : "https://test.salesforce.com";
+  const args = ["org", "login", "web", "--set-default", "--instance-url", instanceUrl];
 
   try {
     const child = spawn("sf", args, {
