@@ -125,13 +125,32 @@ export default function Home() {
   async function authorizeOrg(host?: string) {
     if (!result?.path) return;
     setLoginMsg(null);
+    const projectPath = result.path;
+    const target = norm(projectPath);
     try {
       // reuse the org's known host when re-authorizing — a sandbox login via
       // login.salesforce.com fails the code exchange (invalid_grant)
       const instanceUrl = host ?? result.org?.instanceUrl;
-      const { ok, data } = await postJson("/api/org-login", { path: result.path, instanceUrl });
-      if (!ok) setError(String(data.error ?? "Could not start org login"));
-      else setLoginMsg(String(data.message ?? "Login started — finish in your browser."));
+      const { ok, data } = await postJson("/api/org-login", { path: projectPath, instanceUrl });
+      if (!ok) {
+        setError(String(data.error ?? "Could not start org login"));
+        return;
+      }
+      setLoginMsg("Finish the login in your browser — this panel updates automatically…");
+      // poll until the CLI has stored the new authorization (up to 3 minutes)
+      for (let i = 0; i < 36; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        if (connectTarget.current !== target) return; // switched projects
+        const probe = await postJson("/api/project", { path: projectPath, orgOnly: true });
+        const org = probe.ok ? (probe.data.org as DetectionResult["org"]) : undefined;
+        if (org?.connected) {
+          setResult((r) => (r && norm(r.path) === target ? { ...r, org } : r));
+          setDetailsOpen(false);
+          setLoginMsg(`Org authorized: ${org.username}`);
+          return;
+        }
+      }
+      setLoginMsg("Still not authorized — finish the browser login, then click Refresh org status.");
     } catch (e) {
       setError(String(e));
     }
