@@ -217,14 +217,16 @@ export default function Home() {
                         <button
                           onClick={() => authorizeOrg("https://login.salesforce.com")}
                           className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                          title="Login via login.salesforce.com (production & developer orgs)"
                         >
-                          {result.org?.connected ? "Re-authorize" : "Authorize org"}
+                          {result.org?.connected ? "Re-authorize (prod/dev)" : "Authorize prod/dev org"}
                         </button>
                         <button
                           onClick={() => authorizeOrg("https://test.salesforce.com")}
                           className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                          title="Login via test.salesforce.com (sandboxes)"
                         >
-                          Sandbox login
+                          Authorize sandbox
                         </button>
                       </div>
                     )}
