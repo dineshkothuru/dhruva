@@ -537,7 +537,13 @@ export default function WorkflowsPane({
               <button
                 key={r.runId}
                 onClick={() => setRun(r)}
-                className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs hover:border-slate-400"
+                className={`flex w-full items-center gap-3 rounded-lg border border-l-4 border-slate-200 bg-white px-3 py-2 text-left text-xs hover:border-slate-400 ${
+                  r.status === "done"
+                    ? "border-l-emerald-400"
+                    : r.status === "running" || r.status === "waiting_gate"
+                      ? "border-l-sky-400"
+                      : "border-l-red-300"
+                }`}
               >
                 <span className="font-medium">{r.workflowTitle}</span>
                 <span className="text-slate-400">{new Date(r.createdAt).toLocaleString()}</span>
