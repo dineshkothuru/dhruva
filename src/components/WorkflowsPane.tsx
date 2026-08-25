@@ -8,7 +8,13 @@ interface CatalogItem {
   id: string;
   title: string;
   description: string;
-  inputs: { key: string; label: string; kind: "text" | "boolean"; default?: string | boolean }[];
+  inputs: {
+    key: string;
+    label: string;
+    kind: "text" | "boolean" | "select";
+    options?: string[];
+    default?: string | boolean;
+  }[];
 }
 
 const AGENT_OPTIONS: { id: AgentId; label: string }[] = [
@@ -91,7 +97,9 @@ export default function WorkflowsPane({
     setSelected(w);
     setError(null);
     const init: Record<string, string | boolean> = {};
-    for (const i of w.inputs) init[i.key] = i.default ?? (i.kind === "boolean" ? false : "");
+    for (const i of w.inputs)
+      init[i.key] =
+        i.default ?? (i.kind === "boolean" ? false : i.kind === "select" ? (i.options?.[0] ?? "") : "");
     setInputs(init);
   }
 
@@ -249,6 +257,21 @@ export default function WorkflowsPane({
                   />
                   {i.label}
                 </label>
+              ) : i.kind === "select" ? (
+                <div key={i.key}>
+                  <label className="text-xs font-medium text-slate-500">{i.label}</label>
+                  <select
+                    value={String(inputs[i.key] ?? "")}
+                    onChange={(e) => setInputs((v) => ({ ...v, [i.key]: e.target.value }))}
+                    className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                  >
+                    {(i.options ?? []).map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               ) : (
                 <div key={i.key}>
                   <label className="text-xs font-medium text-slate-500">{i.label}</label>

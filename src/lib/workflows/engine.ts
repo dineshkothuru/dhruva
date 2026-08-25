@@ -209,11 +209,24 @@ function expandArgs(argv: string[], run: RunState): string[] | null {
       const files = run.affected ?? [];
       if (files.length === 0) return null;
       for (const f of files.slice(0, 30)) out.push("--source-dir", f);
+    } else if (a.startsWith("{opt:")) {
+      // "{opt:--flag:inputs.key}" → ["--flag", value] only when value non-empty
+      const m = a.match(/^\{opt:([\w-]+):inputs\.([\w-]+)\}$/);
+      if (m) {
+        const v = cliSafe(String(run.inputs[m[2]] ?? "").trim());
+        if (v) out.push(m[1], v);
+      }
     } else {
-      out.push(template(a, run));
+      out.push(cliSafe(template(a, run)));
     }
   }
   return out;
+}
+
+/** User-provided values that end up in argv must never carry shell
+ * metacharacters (args pass through cmd.exe to resolve .cmd shims). */
+function cliSafe(v: string): string {
+  return v.replace(/["'`^&|<>%$;\r\n]/g, " ").trim();
 }
 
 /** Args pass through cmd.exe (shell:true resolves .cmd shims) — quote paths

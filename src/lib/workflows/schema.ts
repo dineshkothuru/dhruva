@@ -34,7 +34,13 @@ export interface WorkflowDef {
   title: string;
   description: string;
   /** Inputs collected at start. */
-  inputs: { key: string; label: string; kind: "text" | "boolean"; default?: string | boolean }[];
+  inputs: {
+    key: string;
+    label: string;
+    kind: "text" | "boolean" | "select";
+    options?: string[];
+    default?: string | boolean;
+  }[];
   steps: StepDef[];
 }
 
