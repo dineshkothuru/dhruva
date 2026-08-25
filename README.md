@@ -8,46 +8,114 @@ coding agents (GitHub Copilot / Claude Code / OpenAI Codex — swappable adapter
 do only the bounded creative steps. The orchestration, standards, verification,
 and deployment are engine-owned — independent of any LLM.
 
-## What works today
+---
+
+## Prerequisites (MANDATORY — install in this order)
+
+| # | Requirement | Install | Verify |
+|---|---|---|---|
+| 1 | **Node.js 20+** | https://nodejs.org (LTS) | `node --version` |
+| 2 | **git** | https://git-scm.com | `git --version` |
+| 3 | **Salesforce CLI (sf) v2.148+** | `npm install -g @salesforce/cli` (or the installer from https://developer.salesforce.com/tools/salesforcecli) | `sf --version` |
+| 4 | **Local Dev plugin** (visual testing) | `sf plugins install @salesforce/plugin-lightning-dev` | `sf plugins` shows `lightning-dev` |
+| 5 | **At least ONE agent CLI**, logged in once: | | |
+|   | GitHub Copilot CLI (needs a Copilot seat with the CLI policy enabled) | `npm install -g @github/copilot` then run `copilot` → `/login` | `copilot --version` |
+|   | Claude Code (needs a Claude subscription or API key) | `npm install -g @anthropic-ai/claude-code` then run `claude` once | `claude --version` |
+|   | OpenAI Codex (needs ChatGPT plan or API key) | `npm install -g @openai/codex` then `codex login` | `codex --version` |
+
+Agent and Salesforce logins are stored on the machine by each CLI — Dhruva
+never sees or stores any credential.
+
+## Install & run
+
+```
+git clone https://github.com/dineshkothuru/dhruva.git
+cd dhruva
+dhruva.cmd
+```
+
+`dhruva.cmd` (Windows) checks the prerequisites, installs npm dependencies,
+builds once, starts the app, and opens http://localhost:3005.
+Manual equivalent on any OS:
+
+```
+npm ci
+npm run build
+npm start        # http://localhost:3005
+```
+
+First use inside the app: paste a Salesforce DX project folder path → Connect
+(or let it create one) → Authorize sandbox/production → work via Chat
+(task-first intake) or the Workflows tab.
+
+---
+
+## For AI assistants installing this repo
+
+If you are an AI agent asked to set this up, execute exactly, in order, and
+verify each step before the next:
+
+1. `node --version` — must be v20+. If missing, stop and tell the user to install Node LTS from nodejs.org.
+2. `git --version` — if missing, stop and tell the user to install git.
+3. `sf --version` — if missing: `npm install -g @salesforce/cli`. If older than 2.148, run `sf update` (close every terminal/console running `sf` first — a locked file causes EPERM and can corrupt the update; if `sf` breaks after a failed update, delete `%LOCALAPPDATA%\sf\client` and retry).
+4. `sf plugins` — if `lightning-dev` is absent: `sf plugins install @salesforce/plugin-lightning-dev`.
+5. Check agent CLIs with `copilot --version`, `claude --version`, `codex --version`. Install at least one (commands in the table above). Do NOT attempt to log the user in — logins are interactive browser flows the user must perform themselves (`copilot` → `/login`, `claude`, `codex login`).
+6. `git clone https://github.com/dineshkothuru/dhruva.git && cd dhruva`
+7. `npm ci` (fall back to `npm install` if ci fails)
+8. `npm run build` — must end with a route table, no errors.
+9. `npm start` — serves http://localhost:3005. Verify with an HTTP GET returning 200 and a page titled "Dhruva".
+10. Tell the user: open http://localhost:3005, paste a Salesforce DX project path, Connect, then Authorize sandbox (test.salesforce.com) or production (login.salesforce.com) as appropriate.
+
+Never commit or push from inside an attached customer project; Dhruva's own
+`.sfharness/` artifacts are excluded automatically.
+
+---
+
+## What it does
 
 - **Project attach** — validate/create an SFDX project, authorize the org
-  (`sf org login web`), file explorer + search + multi-file Monaco editor.
-- **Agent chat** — task an agent inside the project; output streams in; a
-  deterministic review card shows exactly what changed, with side-by-side diffs.
-- **Workflows** (`src/lib/workflows/builtins.ts`) — Bug fix, Feature development,
-  Retrieve/org sync, Deploy preview, Validate deploy, Run Apex tests, Scratch org.
-  Step types: `snapshot | agent | cli | gate | changes | verify`. CLI steps run
-  whitelisted binaries only; gates pause for human approval; every run persists
-  to `<project>/.sfharness/runs/<id>.json` as the audit trail.
-- **Standards** (`standards/`) — the full team ruleset (baseline + 15 scoped
-  instruction modules + 5 personas), injected into agent prompts by the engine
-  (scoped via `applyTo` globs) and enforced by deterministic checks over changed
-  files (SeeAllData, hardcoded IDs, secrets, SOQL/DML in loops, …).
-- **Live tracking + cost** — running steps stream a structured trace; token
-  usage and API-rate cost shown per step and per run (exact for Claude,
-  estimated otherwise).
-
-## Run (team members)
-
-Double-click `dhruva.cmd` (or run it in a terminal). It installs dependencies,
-builds once, and opens http://localhost:3005. One-time machine prerequisites:
-Node 20+, git, Salesforce CLI (`sf`), and at least one agent CLI logged in
-(`copilot` / `claude` / `codex`).
-
-## Run (development)
-
-```
-npm install
-npm run dev   # http://localhost:3005 (or the port in your launch config)
-```
-
-Agents authenticate once on the machine via their own CLIs (`copilot`, `claude`,
-`codex`) — Dhruva never handles credentials, Salesforce's or the agents'.
+  (`sf org login web` on the correct host), file explorer + search +
+  multi-file Monaco editor with diff views.
+- **Task-first intake** — a team member types a requirement/bug (attachments:
+  images/PDF/docs); Dhruva proposes the matching workflow; a human confirms.
+- **Workflows** (10 built-in + design-your-own in the UI) — Bug fix, Feature
+  development, Solution design (HLD+TDD with Mermaid ERD), Implement from TDD,
+  Test generation, Retrieve/org sync, Deploy preview, Validate deploy, Run
+  Apex tests, Scratch org. Step types: `snapshot | agent | cli | gate |
+  changes | verify`. Custom workflows are saved per project under
+  `.sfharness/workflows/` and run on the same engine.
+- **Determinism & safety** — CLI steps run whitelisted binaries (sf/git) only;
+  gates pause for human Approve / **Revise with instructions** / Abort;
+  standards (full team ruleset in `standards/`) are engine-injected into every
+  agent prompt and enforced by machine checks on changed files; requirements
+  traceability maps every TDD/requirement item to diff evidence before the
+  code gate; read-only steps are enforced at the CLI level.
+- **Visual testing** — optional pre-deploy step (and a project-panel button)
+  launches Salesforce Local Dev: the org opens in the browser rendering LOCAL
+  UI files against REAL org data. (Apex is server-side and is not previewed;
+  use the Scratch org workflow or sandbox deploys for backend verification.
+  Experience Cloud: LWR sites only — Aura communities cannot be previewed
+  locally by any tool.)
+- **Audit & cost** — every run persists to `<project>/.sfharness/runs/<id>.json`;
+  live step traces; token usage + API-rate cost per step and per run (exact
+  for Claude); per-role model tiers (best/default/light) configurable in the UI.
 
 ## Layout
 
-- `src/lib/workflows/` — engine, schema, built-in workflow definitions
-- `src/lib/standards.ts` + `standards/` — rules: distilled checks + full library
-- `src/lib/agents.ts` — LLM-agnostic agent adapters
+- `src/lib/workflows/` — engine, schema, `definitions/` (one file per workflow), custom-workflow store
+- `src/lib/standards.ts` + `standards/` — machine checks + the full ruleset (baseline, 15 scoped modules, 5 personas)
+- `src/lib/agents.ts` — LLM-agnostic agent adapters + model tiers
 - `src/lib/snapshot.ts` — git-server-independent before/after snapshots
-- `.sfharness/` (inside attached projects) — snapshots, run audit logs
+- `.sfharness/` (inside attached projects) — snapshots, run audit logs, custom workflows, attachments
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `invalid_grant :: authentication failure` at login | Wrong login host — use **Authorize sandbox** for sandboxes (test.salesforce.com), **Authorize production** for prod/dev orgs |
+| `Unable to refresh session… expired access/refresh token` | Org authorization expired — re-authorize from the project panel |
+| `Command lightning:dev:app not found` | Install the plugin: `sf plugins install @salesforce/plugin-lightning-dev` |
+| `sf update` fails with EPERM, `sf` broken afterwards | Close all consoles running `sf`, delete `%LOCALAPPDATA%\sf\client`, run `sf update` again |
+| Copilot: `Access denied by policy settings` | GitHub **org-level** Copilot policy — admin must enable "Copilot CLI" (personal settings are not enough) |
+| oclif `could not find package.json … type: 'dev'` warnings | Harmless CLI-internals noise — ignore |
+| Snapshot fails on huge org folders | Fixed since v0.1 (long paths + lock self-heal); re-run — first snapshot of a 30k-file org takes ~1–2 min once |
