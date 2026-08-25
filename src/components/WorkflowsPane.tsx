@@ -356,10 +356,11 @@ export default function WorkflowsPane({
               )}
               {s.usage && (
                 <p className="border-t border-slate-100 px-4 py-1.5 text-[10px] text-slate-400">
-                  ~{s.usage.inTokens.toLocaleString()} in / {s.usage.outTokens.toLocaleString()} out
+                  {s.usage.estimated ? "~" : ""}
+                  {s.usage.inTokens.toLocaleString()} in / {s.usage.outTokens.toLocaleString()} out
                   tokens · $
                   {s.usage.costUsd < 0.01 ? s.usage.costUsd.toFixed(4) : s.usage.costUsd.toFixed(2)}{" "}
-                  (est. at API rates)
+                  {s.usage.estimated ? "(est. at API rates)" : "(reported by the agent)"}
                 </p>
               )}
               {s.id === "changes" && run.changes && run.changes.length > 0 && (
