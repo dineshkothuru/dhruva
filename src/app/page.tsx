@@ -5,6 +5,25 @@ import type { DetectionResult } from "@/lib/types";
 
 type Tab = "chat" | "workflows";
 
+/** POST JSON and parse the response defensively — an empty/non-JSON body
+ * (crashed route, dev-server rebuild) becomes a readable error, not a
+ * "Unexpected end of JSON input" exception. */
+async function postJson(url: string, body: unknown) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: `Server returned an unexpected response (HTTP ${res.status})` };
+  }
+  return { ok: res.ok, data };
+}
+
 export default function Home() {
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,24 +35,15 @@ export default function Home() {
   async function initProject() {
     const target = path.trim();
     if (!target || loading) return;
-    const ok = window.confirm(
-      `Create a new Salesforce DX project at:\n\n${target}\n\nThe folder will be created if it doesn't exist and the standard structure (force-app, sfdx-project.json, …) scaffolded inside it.`,
-    );
-    if (!ok) return;
     setLoading(true);
     setError(null);
     setLoginMsg(null);
     try {
-      const res = await fetch("/api/init-project", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: target }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Could not create the project");
+      const { ok, data } = await postJson("/api/init-project", { path: target });
+      if (!ok) {
+        setError(String(data.error ?? "Could not create the project"));
       } else {
-        setResult(data as DetectionResult);
+        setResult(data as unknown as DetectionResult);
         localStorage.setItem("sfdh.lastPath", target);
       }
     } catch (e) {
@@ -47,14 +57,12 @@ export default function Home() {
     if (!result?.path) return;
     setLoginMsg(null);
     try {
-      const res = await fetch("/api/org-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: result.path, instanceUrl }),
+      const { ok, data } = await postJson("/api/org-login", {
+        path: result.path,
+        instanceUrl,
       });
-      const data = await res.json();
-      if (!res.ok) setError(data.error ?? "Could not start org login");
-      else setLoginMsg(data.message);
+      if (!ok) setError(String(data.error ?? "Could not start org login"));
+      else setLoginMsg(String(data.message ?? "Login started — finish in your browser."));
     } catch (e) {
       setError(String(e));
     }
@@ -75,16 +83,11 @@ export default function Home() {
     setLoginMsg(null);
     setResult(null);
     try {
-      const res = await fetch("/api/project", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: path.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Request failed");
+      const { ok, data } = await postJson("/api/project", { path: path.trim() });
+      if (!ok) {
+        setError(String(data.error ?? "Request failed"));
       } else {
-        setResult(data as DetectionResult);
+        setResult(data as unknown as DetectionResult);
         localStorage.setItem("sfdh.lastPath", path.trim());
       }
     } catch (e) {
@@ -246,7 +249,9 @@ export default function Home() {
                   disabled={loading}
                   className="mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-40"
                 >
-                  {loading ? "Creating…" : "Create Salesforce project here"}
+                  {loading
+                    ? "Creating project… (takes ~15s)"
+                    : "Create Salesforce project here"}
                 </button>
               )}
             </div>

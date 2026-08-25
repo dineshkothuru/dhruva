@@ -51,12 +51,29 @@ export async function POST(req: Request) {
     }
   }
 
-  await fs.mkdir(parent, { recursive: true });
+  // mkdir on an existing drive root ("d:\") throws EPERM on Windows even
+  // with recursive:true — only create the parent when it's actually missing.
+  const parentStat = await fs.stat(parent).catch(() => null);
+  if (!parentStat) {
+    try {
+      await fs.mkdir(parent, { recursive: true });
+    } catch (e) {
+      return NextResponse.json(
+        { error: `could not create parent folder: ${String(e)}` },
+        { status: 500 },
+      );
+    }
+  } else if (!parentStat.isDirectory()) {
+    return NextResponse.json({ error: "parent path is a file" }, { status: 400 });
+  }
 
+  // A parent like "d:\" ends in a backslash that would escape the closing
+  // quote under cmd.exe; "d:\." is equivalent and quote-safe.
+  const parentArg = parent.endsWith("\\") ? `${parent}.` : parent;
   const err = await new Promise<string | null>((resolve) => {
     execFile(
       "sf",
-      ["project", "generate", "--name", `"${name}"`, "--output-dir", `"${parent}"`, "--template", "standard"],
+      ["project", "generate", "--name", `"${name}"`, "--output-dir", `"${parentArg}"`, "--template", "standard"],
       {
         cwd: parent,
         timeout: 120_000,
