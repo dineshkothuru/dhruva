@@ -216,7 +216,6 @@ export default function WorkflowsPane({
 
   // ---------- run view ----------
   if (run) {
-    const waiting = run.steps.find((s) => s.status === "waiting_gate");
     const totalIn = run.steps.reduce((n, s) => n + (s.usage?.inTokens ?? 0), 0);
     const totalOut = run.steps.reduce((n, s) => n + (s.usage?.outTokens ?? 0), 0);
     const totalCost = run.steps.reduce((n, s) => n + (s.usage?.costUsd ?? 0), 0);
@@ -259,7 +258,9 @@ export default function WorkflowsPane({
             <details
               key={s.id}
               open={s.status === "running" || s.status === "waiting_gate" || s.status === "failed"}
-              className="rounded-xl border border-slate-200 bg-white"
+              className={`rounded-xl border bg-white ${
+                s.status === "waiting_gate" ? "border-amber-300 ring-1 ring-amber-200" : "border-slate-200"
+              }`}
             >
               <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm">
                 <span>{STATUS_ICON[s.status]}</span>
@@ -270,11 +271,27 @@ export default function WorkflowsPane({
                   {s.type}
                 </span>
               </summary>
-              <StepBody
-                output={s.output}
-                type={s.type}
-                running={s.status === "running"}
-              />
+              {s.status === "waiting_gate" ? (
+                <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-sm text-amber-800">{s.output}</p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => gate(true)}
+                      className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
+                    >
+                      Approve & continue
+                    </button>
+                    <button
+                      onClick={() => gate(false)}
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-1.5 text-xs font-medium hover:bg-slate-50"
+                    >
+                      Abort run
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <StepBody output={s.output} type={s.type} running={s.status === "running"} />
+              )}
               {s.usage && (
                 <p className="border-t border-slate-100 px-4 py-1.5 text-[10px] text-slate-400">
                   ~{s.usage.inTokens.toLocaleString()} in / {s.usage.outTokens.toLocaleString()} out
@@ -304,25 +321,6 @@ export default function WorkflowsPane({
           ))}
         </div>
 
-        {waiting && (
-          <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
-            <p className="text-sm text-amber-800">{waiting.output}</p>
-            <div className="mt-3 flex gap-2">
-              <button
-                onClick={() => gate(true)}
-                className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
-              >
-                Approve & continue
-              </button>
-              <button
-                onClick={() => gate(false)}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-1.5 text-xs font-medium hover:bg-slate-50"
-              >
-                Abort run
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
