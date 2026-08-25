@@ -361,7 +361,7 @@ export default function Home() {
                           >
                             Re-authorize org
                           </button>
-                        ) : (
+                        ) : result.org?.reason === "checking…" ? null : (
                           <div className="flex gap-2">
                             <button
                               onClick={() => authorizeOrg("https://test.salesforce.com")}
