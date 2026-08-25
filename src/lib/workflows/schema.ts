@@ -61,8 +61,8 @@ export interface StepState {
   output: string;
   startedAt?: number;
   endedAt?: number;
-  /** Agent steps: estimated token usage + hypothetical API cost. */
-  usage?: { inTokens: number; outTokens: number; costUsd: number; estimated: true };
+  /** Agent steps: token usage + API-rate cost (exact when the vendor reports it). */
+  usage?: { inTokens: number; outTokens: number; costUsd: number; estimated: boolean };
 }
 
 export interface RunState {

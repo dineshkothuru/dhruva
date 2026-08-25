@@ -22,6 +22,9 @@ export interface AgentDef {
     prompt: string,
     model?: string,
     readOnly?: boolean,
+    /** claude only: emit stream-json events so the engine can render a live
+     * step trace (and exact token usage) instead of end-only output. */
+    streamJson?: boolean,
   ) => { args: string[]; viaStdin: boolean };
   installHint: string;
 }
@@ -90,11 +93,12 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     // -p reads the prompt from stdin; acceptEdits lets it write files without
     // interactive approval while still refusing arbitrary commands.
     // readOnly → plan mode: reads allowed, edits/commands structurally denied.
-    build: (_prompt, model, readOnly) => ({
+    build: (_prompt, model, readOnly, streamJson) => ({
       args: [
         "-p",
         "--permission-mode",
         readOnly ? "plan" : "acceptEdits",
+        ...(streamJson ? ["--output-format", "stream-json", "--verbose"] : []),
         ...(model ? ["--model", model] : []),
       ],
       viaStdin: true,

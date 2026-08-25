@@ -12,7 +12,8 @@ export interface Usage {
   inTokens: number;
   outTokens: number;
   costUsd: number;
-  estimated: true;
+  /** false when the vendor reported exact usage (claude stream-json). */
+  estimated: boolean;
 }
 
 const RATES: { match: RegExp; inPerM: number; outPerM: number }[] = [
@@ -54,5 +55,7 @@ export function estimateUsage(
 
 export function formatUsage(u: Usage): string {
   const cost = u.costUsd < 0.01 ? `$${u.costUsd.toFixed(4)}` : `$${u.costUsd.toFixed(2)}`;
-  return `~${u.inTokens.toLocaleString()} in / ${u.outTokens.toLocaleString()} out tokens · ${cost} (est. at API rates)`;
+  const prefix = u.estimated ? "~" : "";
+  const label = u.estimated ? "(est. at API rates)" : "(reported by the agent, API-rate equivalent)";
+  return `${prefix}${u.inTokens.toLocaleString()} in / ${u.outTokens.toLocaleString()} out tokens · ${cost} ${label}`;
 }

@@ -164,10 +164,25 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         (role ? `${role}\n\n` : "") +
         `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
         template(def.prompt ?? "", run);
-      const { args, viaStdin } = agentDef.build(prompt, run.model, def.readOnly === true);
-      const ok = await spawnToStep(run, step, agentDef.bin, args, viaStdin ? prompt : undefined);
+      // claude: stream-json gives a LIVE trace (tool uses + text as produced)
+      // and exact token usage in the final event; others stream plain text.
+      const streamJson = run.agent === "claude";
+      const { args, viaStdin } = agentDef.build(
+        prompt,
+        run.model,
+        def.readOnly === true,
+        streamJson,
+      );
+      const ok = await spawnToStep(
+        run,
+        step,
+        agentDef.bin,
+        args,
+        viaStdin ? prompt : undefined,
+        streamJson ? makeClaudeTraceTransform(step) : undefined,
+      );
       harvestAffectedFiles(run, step.output);
-      step.usage = estimateUsage(run.agent, run.model, prompt, step.output);
+      if (!step.usage) step.usage = estimateUsage(run.agent, run.model, prompt, step.output);
       return ok;
     }
     case "verify": {
@@ -289,12 +304,57 @@ function winQuote(a: string): string {
   return /[ ]/.test(a) && !a.startsWith('"') ? `"${a}"` : a;
 }
 
+/** Translate claude stream-json lines into a human-readable live trace and
+ * capture the exact usage from the final "result" event onto the step. */
+function makeClaudeTraceTransform(step: StepState): (chunk: string) => string {
+  let buf = "";
+  return (chunk: string) => {
+    buf += chunk;
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? ""; // keep the trailing partial line
+    let out = "";
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith("{")) continue;
+      try {
+        const ev = JSON.parse(t);
+        if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
+          for (const block of ev.message.content) {
+            if (block.type === "text" && block.text) out += block.text + "\n";
+            else if (block.type === "tool_use") {
+              const arg = JSON.stringify(block.input ?? {}).slice(0, 160);
+              out += `  ⚙ ${block.name} ${arg}\n`;
+            }
+          }
+        } else if (ev.type === "result") {
+          if (ev.usage) {
+            step.usage = {
+              inTokens:
+                (ev.usage.input_tokens ?? 0) +
+                (ev.usage.cache_read_input_tokens ?? 0) +
+                (ev.usage.cache_creation_input_tokens ?? 0),
+              outTokens: ev.usage.output_tokens ?? 0,
+              costUsd: typeof ev.total_cost_usd === "number" ? ev.total_cost_usd : 0,
+              estimated: false,
+            };
+          }
+          if (ev.is_error && ev.result) out += `\n[agent error] ${String(ev.result).slice(0, 500)}\n`;
+        }
+      } catch {
+        /* partial or non-JSON line — ignore */
+      }
+    }
+    return out;
+  };
+}
+
 function spawnToStep(
   run: RunState,
   step: StepState,
   bin: string,
   args: string[],
   stdin?: string,
+  transform?: (chunk: string) => string,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const child = spawn(bin, args, {
@@ -310,8 +370,10 @@ function spawnToStep(
     if (stdin) child.stdin.write(stdin);
     child.stdin.end();
     const push = (chunk: Buffer) => {
-      if (step.output.length < STEP_OUTPUT_CAP) {
-        step.output += chunk.toString("utf8").replace(/\x1b\[[0-9;]*m/g, "");
+      const text = chunk.toString("utf8").replace(/\x1b\[[0-9;]*m/g, "");
+      const rendered = transform ? transform(text) : text;
+      if (rendered && step.output.length < STEP_OUTPUT_CAP) {
+        step.output += rendered;
       }
       void persist(run);
     };

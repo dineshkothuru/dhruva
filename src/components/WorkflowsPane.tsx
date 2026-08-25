@@ -33,6 +33,96 @@ const STATUS_ICON: Record<string, string> = {
 };
 // verify steps share the generic icons; type label shows "verify"
 
+/** Structured step-output view: agent narration as prose, tool calls as
+ * rows, exit/engine/error lines as badges; auto-follows while streaming. */
+function StepBody({
+  output,
+  type,
+  running,
+}: {
+  output: string;
+  type: string;
+  running: boolean;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (running) boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight });
+  }, [output, running]);
+
+  if (!output) {
+    return running ? (
+      <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
+        <span className="mr-1 inline-block animate-pulse text-sky-500">●</span>
+        running — output streams here…
+      </p>
+    ) : null;
+  }
+
+  // cli / verify / changes output stays terminal-style
+  if (type !== "agent") {
+    return (
+      <div ref={boxRef} className="max-h-72 overflow-y-auto border-t border-slate-100">
+        <pre className="whitespace-pre-wrap break-words px-4 py-3 font-mono text-xs text-slate-600">
+          {output}
+        </pre>
+      </div>
+    );
+  }
+
+  const lines = output.split("\n");
+  return (
+    <div ref={boxRef} className="max-h-80 space-y-0.5 overflow-y-auto border-t border-slate-100 px-4 py-3">
+      {lines.map((line, i) => {
+        const t = line.trimEnd();
+        if (!t) return null;
+        if (t.startsWith("⚙")) {
+          return (
+            <div
+              key={i}
+              className="flex items-center gap-1.5 rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-500"
+            >
+              <span className="text-sky-500">⚙</span>
+              <span className="truncate">{t.slice(1).trim()}</span>
+            </div>
+          );
+        }
+        const exit = t.match(/^\[exit (-?\d+)\]$/);
+        if (exit) {
+          const ok = exit[1] === "0";
+          return (
+            <div key={i} className="pt-1">
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  ok ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                }`}
+              >
+                {ok ? "completed" : `exited ${exit[1]}`}
+              </span>
+            </div>
+          );
+        }
+        if (t.startsWith("[engine]") || t.startsWith("[agent error]")) {
+          return (
+            <p key={i} className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">
+              {t}
+            </p>
+          );
+        }
+        return (
+          <p key={i} className="text-xs leading-relaxed text-slate-700">
+            {t}
+          </p>
+        );
+      })}
+      {running && (
+        <p className="pt-1 text-[11px] text-slate-400">
+          <span className="mr-1 inline-block animate-pulse text-sky-500">●</span> working…
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function WorkflowsPane({
   root,
   onOpenDiff,
@@ -150,13 +240,19 @@ export default function WorkflowsPane({
           </span>
           <span className="ml-auto font-mono text-[10px] text-slate-400">run {run.runId}</span>
         </div>
-        {totalIn + totalOut > 0 && (
-          <p className="mb-3 text-[11px] text-slate-500">
-            Agent usage: ~{totalIn.toLocaleString()} in / {totalOut.toLocaleString()} out tokens ·{" "}
-            {totalCost < 0.01 ? `$${totalCost.toFixed(4)}` : `$${totalCost.toFixed(2)}`} if billed at
-            public API rates (estimate — runs on your subscription, not billed)
-          </p>
-        )}
+        <p className="mb-3 text-[11px] text-slate-500">
+          <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 font-medium">
+            {run.agent}
+            {run.model ? ` · ${run.model}` : " · default model"}
+          </span>
+          {totalIn + totalOut > 0 && (
+            <>
+              {totalIn.toLocaleString()} in / {totalOut.toLocaleString()} out tokens ·{" "}
+              {totalCost < 0.01 ? `$${totalCost.toFixed(4)}` : `$${totalCost.toFixed(2)}`} at API
+              rates (runs on your subscription — not billed)
+            </>
+          )}
+        </p>
 
         <div className="space-y-2">
           {run.steps.map((s) => (
@@ -174,11 +270,11 @@ export default function WorkflowsPane({
                   {s.type}
                 </span>
               </summary>
-              {s.output && (
-                <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words border-t border-slate-100 px-4 py-3 font-mono text-xs text-slate-600">
-                  {s.output}
-                </pre>
-              )}
+              <StepBody
+                output={s.output}
+                type={s.type}
+                running={s.status === "running"}
+              />
               {s.usage && (
                 <p className="border-t border-slate-100 px-4 py-1.5 text-[10px] text-slate-400">
                   ~{s.usage.inTokens.toLocaleString()} in / {s.usage.outTokens.toLocaleString()} out
