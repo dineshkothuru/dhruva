@@ -8,7 +8,7 @@
 
 import type { AgentId } from "@/lib/agents";
 
-export type StepType = "snapshot" | "agent" | "cli" | "gate" | "changes";
+export type StepType = "snapshot" | "agent" | "cli" | "gate" | "changes" | "verify";
 
 export interface StepDef {
   id: string;

@@ -73,6 +73,11 @@ export const BUG_FIX: WorkflowDef = {
     },
     { id: "changes", title: "Collect changed files", type: "changes" },
     {
+      id: "verify-standards",
+      title: "Verify standards on changed files (deterministic)",
+      type: "verify",
+    },
+    {
       id: "approve-changes",
       title: "Approve code changes",
       type: "gate",
@@ -171,6 +176,11 @@ export const FEATURE_DEV: WorkflowDef = {
         "something that already exists. Do not deploy.",
     },
     { id: "changes", title: "Collect changed files", type: "changes" },
+    {
+      id: "verify-standards",
+      title: "Verify standards on changed files (deterministic)",
+      type: "verify",
+    },
     {
       id: "approve-changes",
       title: "Approve code changes",

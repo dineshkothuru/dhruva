@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import type { AgentId } from "@/lib/agents";
 import { AGENTS } from "@/lib/agents";
 import { takeSnapshot, changesSince } from "@/lib/snapshot";
+import { STANDARDS_PROMPT, checkStandards } from "@/lib/standards";
 import type { RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { WORKFLOWS } from "./builtins";
 
@@ -143,14 +144,53 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const agentDef = AGENTS[run.agent];
       // Ground the agent explicitly in the attached folder (prompt clarity +
       // audit-log readability; the cwd already enforces it technically).
+      // Standards are injected by the ENGINE — same rules, verbatim, for
+      // every agent vendor; never dependent on vendor file conventions.
       const prompt =
         `You are working inside the Salesforce DX project at ${run.root} ` +
         `(your current working directory). Only read and modify files in this project.\n\n` +
+        `${STANDARDS_PROMPT}\n\n` +
         template(def.prompt ?? "", run);
       const { args, viaStdin } = agentDef.build(prompt, run.model);
       const ok = await spawnToStep(run, step, agentDef.bin, args, viaStdin ? prompt : undefined);
       harvestAffectedFiles(run, step.output);
       return ok;
+    }
+    case "verify": {
+      // Deterministic standards enforcement over the actual changed files —
+      // catches violations regardless of which agent (or human) wrote them.
+      const changed = (run.changes ?? []).filter((c) => c.status !== "deleted");
+      if (changed.length === 0) {
+        step.output = "no changed files to verify";
+        return true;
+      }
+      const contents: { file: string; content: string }[] = [];
+      for (const c of changed.slice(0, 100)) {
+        const abs = path.join(run.root, c.file);
+        try {
+          const st = await fs.stat(abs);
+          if (st.isFile() && st.size < 1_500_000) {
+            contents.push({ file: c.file, content: await fs.readFile(abs, "utf8") });
+          }
+        } catch {
+          /* deleted/renamed between steps — skip */
+        }
+      }
+      const violations = checkStandards(contents);
+      if (violations.length === 0) {
+        step.output = `standards check passed (${contents.length} file(s))`;
+        return true;
+      }
+      step.output = violations
+        .map((v) => `${v.severity.toUpperCase().padEnd(8)} ${v.rule}  ${v.file}\n         ${v.detail}`)
+        .join("\n");
+      const errors = violations.filter((v) => v.severity === "error");
+      if (errors.length > 0) {
+        step.output += `\n\n${errors.length} error-level violation(s) — run blocked. Fix and re-run.`;
+        return false;
+      }
+      step.output += "\n\nwarnings only — review them at the next gate.";
+      return true;
     }
     case "cli": {
       if (def.bin !== "sf" && def.bin !== "git") {

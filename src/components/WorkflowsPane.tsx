@@ -31,6 +31,7 @@ const STATUS_ICON: Record<string, string> = {
   failed: "❌",
   skipped: "⤼",
 };
+// verify steps share the generic icons; type label shows "verify"
 
 export default function WorkflowsPane({
   root,
