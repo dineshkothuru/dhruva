@@ -8,7 +8,7 @@ import { takeSnapshot, changesSince } from "@/lib/snapshot";
 import { STANDARDS_PROMPT, checkStandards } from "@/lib/standards";
 import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
-import type { RunState, StepDef, StepState, WorkflowDef } from "./schema";
+import type { GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { WORKFLOWS } from "./builtins";
 
 /** Deterministic workflow runner. Runs live in this server process (a local
@@ -16,7 +16,7 @@ import { WORKFLOWS } from "./builtins";
  * <project>/.sfharness/runs/<runId>.json — the audit trail. */
 
 const runs = new Map<string, RunState>();
-const gateWaiters = new Map<string, (approved: boolean) => void>(); // key: runId
+const gateWaiters = new Map<string, (decision: GateDecision) => void>(); // key: runId
 const STEP_OUTPUT_CAP = 60_000;
 const STEP_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -51,11 +51,11 @@ export async function listRuns(root: string): Promise<RunState[]> {
   return [...byId.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
 }
 
-export function resolveGate(runId: string, approved: boolean): boolean {
+export function resolveGate(runId: string, decision: GateDecision): boolean {
   const waiter = gateWaiters.get(runId);
   if (!waiter) return false;
   gateWaiters.delete(runId);
-  waiter(approved);
+  waiter(decision);
   return true;
 }
 
@@ -91,10 +91,13 @@ export function startRun(
   return run;
 }
 
+const MAX_REVISIONS_PER_GATE = 5;
+
 async function execute(run: RunState, def: WorkflowDef) {
-  for (const stepDef of def.steps) {
+  for (let i = 0; i < def.steps.length; i++) {
+    const stepDef = def.steps[i];
     const step = run.steps.find((s) => s.id === stepDef.id)!;
-    if (run.status === "aborted") {
+    if ((run.status as string) === "aborted") {
       step.status = "skipped";
       continue;
     }
@@ -103,6 +106,74 @@ async function execute(run: RunState, def: WorkflowDef) {
       await persist(run);
       continue;
     }
+
+    // Gates run here (not in runStep) so a "revise" decision can re-run the
+    // steps this gate reviews — everything back to the nearest agent step —
+    // with the reviewer's feedback injected, then gate again.
+    if (stepDef.type === "gate") {
+      let revisions = 0;
+      for (;;) {
+        step.status = "waiting_gate";
+        step.startedAt ??= Date.now();
+        step.output = template(stepDef.message ?? "Proceed?", run);
+        run.status = "waiting_gate";
+        await persist(run);
+        const decision = await new Promise<GateDecision>((resolve) => {
+          gateWaiters.set(run.runId, resolve);
+        });
+        if (decision.action === "approve") {
+          run.status = "running";
+          step.output += "\n→ approved";
+          step.status = "done";
+          step.endedAt = Date.now();
+          await persist(run);
+          break;
+        }
+        if (decision.action === "abort" || !decision.feedback?.trim()) {
+          run.status = "aborted";
+          step.output += "\n→ aborted by user";
+          step.status = "failed";
+          step.endedAt = Date.now();
+          await persist(run);
+          return;
+        }
+        // revise: replay from the nearest preceding agent step with feedback
+        const from = nearestAgentIndex(def, i);
+        if (from < 0 || ++revisions > MAX_REVISIONS_PER_GATE) {
+          step.output += "\n→ revision not possible here — approve or abort";
+          continue;
+        }
+        const targetId = def.steps[from].id;
+        run.revisions ??= {};
+        (run.revisions[targetId] ??= []).push(decision.feedback.trim());
+        step.output += `\n→ revision requested: ${decision.feedback.trim().slice(0, 300)}`;
+        run.status = "running";
+        await persist(run);
+        for (let k = from; k < i; k++) {
+          const replayDef = def.steps[k];
+          if (replayDef.onlyIf && !run.inputs[replayDef.onlyIf]) continue;
+          const replayStep = run.steps.find((s) => s.id === replayDef.id)!;
+          replayStep.output = "";
+          replayStep.usage = undefined;
+          replayStep.status = "running";
+          replayStep.startedAt = Date.now();
+          await persist(run);
+          const ok = await runStep(run, replayDef, replayStep);
+          replayStep.endedAt = Date.now();
+          if (!ok) {
+            if (replayStep.status === "running") replayStep.status = "failed";
+            run.status = "failed";
+            await persist(run);
+            return;
+          }
+          if (replayStep.status === "running") replayStep.status = "done";
+          await persist(run);
+        }
+        // loop: gate again on the revised state
+      }
+      continue;
+    }
+
     step.status = "running";
     step.startedAt = Date.now();
     await persist(run);
@@ -130,6 +201,14 @@ async function execute(run: RunState, def: WorkflowDef) {
   await persist(run);
 }
 
+/** The nearest agent step before index i — the step a gate's revision re-runs. */
+function nearestAgentIndex(def: WorkflowDef, i: number): number {
+  for (let j = i - 1; j >= 0; j--) {
+    if (def.steps[j].type === "agent") return j;
+  }
+  return -1;
+}
+
 async function runStep(run: RunState, def: StepDef, step: StepState): Promise<boolean> {
   switch (def.type) {
     case "snapshot": {
@@ -150,17 +229,9 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       return true;
     }
     case "gate": {
-      step.status = "waiting_gate";
-      step.output = template(def.message ?? "Proceed?", run);
-      run.status = "waiting_gate";
-      await persist(run);
-      const approved = await new Promise<boolean>((resolve) => {
-        gateWaiters.set(run.runId, resolve);
-      });
-      run.status = approved ? "running" : "aborted";
-      step.output += approved ? "\n→ approved" : "\n→ aborted by user";
-      step.status = approved ? "done" : "failed";
-      return approved;
+      // gates are handled by the executor (revise loop); reaching here is a bug
+      step.output = "[engine] gate reached runStep — executor should handle gates";
+      return false;
     }
     case "agent": {
       const agentDef = AGENTS[run.agent];
@@ -178,12 +249,21 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       ];
       const rules = (await standardsFor(scopeFiles).catch(() => "")) || STANDARDS_PROMPT;
       const role = def.persona ? await persona(def.persona).catch(() => "") : "";
+      // Reviewer feedback from gates: mandatory, most recent last.
+      const feedback = run.revisions?.[def.id];
+      const feedbackBlock =
+        feedback && feedback.length > 0
+          ? `\n\nREVIEWER INSTRUCTIONS (mandatory — this is a revision of your earlier output; follow every point):\n${feedback
+              .map((f, n) => `${n + 1}. ${f}`)
+              .join("\n")}`
+          : "";
       const prompt =
         `You are working inside the Salesforce DX project at ${run.root} ` +
         `(your current working directory). Only read and modify files in this project.\n\n` +
         (role ? `${role}\n\n` : "") +
         `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
-        template(def.prompt ?? "", run);
+        template(def.prompt ?? "", run) +
+        feedbackBlock;
       // claude: stream-json gives a LIVE trace (tool uses + text as produced)
       // and exact token usage in the final event; others stream plain text.
       const streamJson = run.agent === "claude";

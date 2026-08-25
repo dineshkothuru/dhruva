@@ -173,6 +173,7 @@ export default function WorkflowsPane({
   const [run, setRun] = useState<RunState | null>(null);
   const [history, setHistory] = useState<RunState[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [gateNote, setGateNote] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const api = useCallback(async (body: Record<string, unknown>) => {
@@ -256,9 +257,10 @@ export default function WorkflowsPane({
     setSelected(null);
   }
 
-  async function gate(approve: boolean) {
+  async function gate(decision: "approve" | "abort" | "revise", feedback?: string) {
     if (!run) return;
-    await api({ action: "gate", runId: run.runId, approve });
+    await api({ action: "gate", runId: run.runId, decision, feedback });
+    setGateNote("");
     const st = await api({ action: "state", runId: run.runId });
     if (st.ok) setRun(st.data as unknown as RunState);
   }
@@ -335,16 +337,31 @@ export default function WorkflowsPane({
               </summary>
               {s.status === "waiting_gate" ? (
                 <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
-                  <p className="text-sm text-amber-800">{s.output}</p>
-                  <div className="mt-3 flex gap-2">
+                  <p className="whitespace-pre-wrap text-sm text-amber-800">{s.output}</p>
+                  <textarea
+                    value={gateNote}
+                    onChange={(e) => setGateNote(e.target.value)}
+                    rows={2}
+                    placeholder="Optional instructions — e.g. 'use a flow instead of a trigger', 'split the service class'. Filling this enables Revise: the previous analysis re-runs following your instructions, then gates again."
+                    className="mt-3 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs outline-none focus:border-amber-400"
+                  />
+                  <div className="mt-2 flex gap-2">
                     <button
-                      onClick={() => gate(true)}
+                      onClick={() => gate("approve")}
                       className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
                     >
                       Approve & continue
                     </button>
                     <button
-                      onClick={() => gate(false)}
+                      onClick={() => gate("revise", gateNote)}
+                      disabled={!gateNote.trim()}
+                      className="rounded-lg border border-amber-400 bg-white px-4 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-40"
+                      title="Re-run the analysis with your instructions, then review again"
+                    >
+                      Revise with instructions
+                    </button>
+                    <button
+                      onClick={() => gate("abort")}
                       className="rounded-lg border border-slate-300 bg-white px-4 py-1.5 text-xs font-medium hover:bg-slate-50"
                     >
                       Abort run

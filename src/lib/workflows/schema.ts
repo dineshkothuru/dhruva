@@ -81,4 +81,13 @@ export interface RunState {
   /** Files the investigation step named (parsed from its FILES: line) —
    * used to retrieve fresh copies from the org before implementing. */
   affected?: string[];
+  /** Reviewer feedback given at gates, keyed by the agent step it revises —
+   * injected into that step's prompt on re-run (and kept in the audit). */
+  revisions?: Record<string, string[]>;
+}
+
+/** How a human resolved a gate. */
+export interface GateDecision {
+  action: "approve" | "abort" | "revise";
+  feedback?: string;
 }

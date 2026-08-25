@@ -38,10 +38,22 @@ export async function POST(req: Request) {
   }
 
   if (b.action === "gate") {
-    if (typeof b.runId !== "string" || typeof b.approve !== "boolean") {
-      return NextResponse.json({ error: "runId + approve required" }, { status: 400 });
+    const decision = b.decision;
+    if (
+      typeof b.runId !== "string" ||
+      (decision !== "approve" && decision !== "abort" && decision !== "revise")
+    ) {
+      return NextResponse.json(
+        { error: "runId + decision (approve|abort|revise) required" },
+        { status: 400 },
+      );
     }
-    const ok = resolveGate(b.runId, b.approve);
+    const feedback =
+      typeof b.feedback === "string" ? b.feedback.trim().slice(0, 4000) : undefined;
+    if (decision === "revise" && !feedback) {
+      return NextResponse.json({ error: "revise requires feedback text" }, { status: 400 });
+    }
+    const ok = resolveGate(b.runId, { action: decision, feedback });
     return NextResponse.json({ resolved: ok });
   }
 
