@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { DetectionResult } from "@/lib/types";
 import FileTree from "@/components/FileTree";
 import EditorPane from "@/components/EditorPane";
+import ChatPane from "@/components/ChatPane";
 
 type Tab = "chat" | "workflows" | "editor";
 
@@ -92,15 +93,22 @@ export default function Home() {
   }
 
   useEffect(() => {
-    // Hydrate the last-used path after mount; reading localStorage during
-    // render (or a lazy initializer) mismatches the server-rendered HTML.
+    // Hydrate the last-used path after mount and RECONNECT automatically —
+    // a refresh should land back in the attached project, not on the
+    // connect form. (localStorage can't be read during render: hydration.)
     const saved = localStorage.getItem("sfdh.lastPath");
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (saved) setPath((p) => p || saved);
+    if (saved) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPath((p) => p || saved);
+      connect(saved);
+    }
+    // connect is stable enough for a mount-only effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function connect() {
-    if (!path.trim() || loading) return;
+  async function connect(pathOverride?: string) {
+    const target = (typeof pathOverride === "string" ? pathOverride : path).trim();
+    if (!target || loading) return;
     setLoading(true);
     setError(null);
     setLoginMsg(null);
@@ -109,14 +117,14 @@ export default function Home() {
     setActiveFile(null);
     setTab((t) => (t === "editor" ? "chat" : t));
     try {
-      const { ok, data } = await postJson("/api/project", { path: path.trim() });
+      const { ok, data } = await postJson("/api/project", { path: target });
       if (!ok) {
         setError(String(data.error ?? "Request failed"));
       } else {
         const det = data as unknown as DetectionResult;
         setResult(det);
         setDetailsOpen(!det.org?.connected); // keep authorize visible until an org is set
-        localStorage.setItem("sfdh.lastPath", path.trim());
+        localStorage.setItem("sfdh.lastPath", target);
       }
     } catch (e) {
       setError(String(e));
@@ -152,7 +160,7 @@ export default function Home() {
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm outline-none focus:border-slate-500"
             />
             <button
-              onClick={connect}
+              onClick={() => connect()}
               disabled={loading || !path.trim()}
               className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700 disabled:opacity-40"
             >
@@ -255,7 +263,7 @@ export default function Home() {
                       <>
                         <p className="text-[11px] text-sky-700">{loginMsg}</p>
                         <button
-                          onClick={connect}
+                          onClick={() => connect()}
                           disabled={loading}
                           className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
                         >
@@ -343,8 +351,10 @@ export default function Home() {
           </span>
         </div>
 
-        {tab === "editor" && openFiles.length > 0 && result?.path ? (
-          <div className="flex min-h-0 flex-1 flex-col">
+        {/* All panes stay MOUNTED and are hidden by CSS — switching tabs must
+            never drop the chat transcript or unsaved editor buffers. */}
+        {openFiles.length > 0 && result?.path && (
+          <div className={`min-h-0 flex-1 flex-col ${tab === "editor" ? "flex" : "hidden"}`}>
             {/* file tab strip — open buffers keep unsaved changes when switching */}
             <div className="flex items-center gap-0.5 overflow-x-auto border-b border-slate-200 bg-slate-100 px-2 pt-1.5">
               {openFiles.map((f) => (
@@ -375,42 +385,27 @@ export default function Home() {
               </div>
             ))}
           </div>
-        ) : tab === "chat" ? (
-          <div className="flex flex-1 flex-col">
-            <div className="flex flex-1 items-center justify-center px-8">
-              <div className="max-w-md text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-200 text-xl">
-                  💬
-                </div>
-                <h2 className="mt-4 text-base font-semibold">Agent chat</h2>
-                <p className="mt-1.5 text-sm text-slate-500">
-                  {connected
-                    ? "The Copilot CLI adapter lands in the next phase — you'll describe a task here and the agent will work inside the attached project."
-                    : "Attach a Salesforce project on the left to start."}
-                </p>
-              </div>
-            </div>
-            <div className="border-t border-slate-200 bg-white p-4">
-              <div className="flex gap-2">
-                <input
-                  disabled
-                  placeholder={
-                    connected
-                      ? "Describe a task… (agent adapter coming next)"
-                      : "Attach a project first"
-                  }
-                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400"
-                />
-                <button
-                  disabled
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white opacity-40"
-                >
-                  Send
-                </button>
-              </div>
-            </div>
+        )}
+
+        {connected && result?.path ? (
+          <div className={`min-h-0 flex-1 flex-col ${tab === "chat" ? "flex" : "hidden"}`}>
+            <ChatPane key={result.path} root={result.path} />
           </div>
         ) : (
+          <div className={`flex-1 items-center justify-center px-8 ${tab === "chat" ? "flex" : "hidden"}`}>
+            <div className="max-w-md text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-200 text-xl">
+                💬
+              </div>
+              <h2 className="mt-4 text-base font-semibold">Agent chat</h2>
+              <p className="mt-1.5 text-sm text-slate-500">
+                Attach a Salesforce project on the left to start.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {tab === "workflows" && (
           <div className="flex-1 overflow-y-auto p-6">
             <h2 className="text-sm font-semibold text-slate-700">Delivery workflows</h2>
             <p className="mt-1 text-xs text-slate-500">
