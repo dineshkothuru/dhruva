@@ -6,6 +6,7 @@ import FileTree from "@/components/FileTree";
 import EditorPane from "@/components/EditorPane";
 import ChatPane from "@/components/ChatPane";
 import DiffPane from "@/components/DiffPane";
+import WorkflowsPane from "@/components/WorkflowsPane";
 
 type Tab = "chat" | "workflows" | "editor";
 
@@ -457,39 +458,14 @@ export default function Home() {
           </div>
         )}
 
-        {tab === "workflows" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <h2 className="text-sm font-semibold text-slate-700">Delivery workflows</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Guarded, repeatable delivery steps that run inside the attached project. Coming in the
-              next phases.
-            </p>
-            <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {[
-                ["🚀", "Validate deploy", "Check-only deploy to the default org with test-level enforcement."],
-                ["🧪", "Run Apex tests", "Run local tests and surface coverage per class."],
-                ["🛡️", "Prod guard", "Detects production orgs and blocks unguarded deploys."],
-                ["📦", "Package diff", "Diff local source against the org before delivery."],
-                ["🧹", "Code scan", "Static analysis on Apex/LWC before a PR."],
-                ["🔁", "Sandbox sync", "Pull org changes into source, review, and commit."],
-              ].map(([icon, title, desc]) => (
-                <div
-                  key={title}
-                  className="rounded-xl border border-slate-200 bg-white p-4 opacity-70"
-                >
-                  <div className="text-lg">{icon}</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-sm font-semibold">{title}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                      soon
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">{desc}</p>
-                </div>
-              ))}
+        {tab === "workflows" &&
+          (connected && result?.path ? (
+            <WorkflowsPane key={result.path} root={result.path} onOpenDiff={openDiff} />
+          ) : (
+            <div className="flex flex-1 items-center justify-center px-8">
+              <p className="text-sm text-slate-500">Attach a Salesforce project to run workflows.</p>
             </div>
-          </div>
-        )}
+          ))}
       </section>
     </div>
   );

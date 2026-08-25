@@ -1,0 +1,250 @@
+import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { promises as fs } from "node:fs";
+import { spawn } from "node:child_process";
+import type { AgentId } from "@/lib/agents";
+import { AGENTS } from "@/lib/agents";
+import { takeSnapshot, changesSince } from "@/lib/snapshot";
+import type { RunState, StepDef, StepState, WorkflowDef } from "./schema";
+import { WORKFLOWS } from "./builtins";
+
+/** Deterministic workflow runner. Runs live in this server process (a local
+ * single-user tool); every state change is persisted to
+ * <project>/.sfharness/runs/<runId>.json — the audit trail. */
+
+const runs = new Map<string, RunState>();
+const gateWaiters = new Map<string, (approved: boolean) => void>(); // key: runId
+const STEP_OUTPUT_CAP = 60_000;
+const STEP_TIMEOUT_MS = 15 * 60 * 1000;
+
+export function getRun(runId: string): RunState | undefined {
+  return runs.get(runId);
+}
+
+export function listRuns(root: string): RunState[] {
+  return [...runs.values()]
+    .filter((r) => r.root === root)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 20);
+}
+
+export function resolveGate(runId: string, approved: boolean): boolean {
+  const waiter = gateWaiters.get(runId);
+  if (!waiter) return false;
+  gateWaiters.delete(runId);
+  waiter(approved);
+  return true;
+}
+
+export function startRun(
+  root: string,
+  workflowId: string,
+  inputs: Record<string, string | boolean>,
+  agent: AgentId,
+  model?: string,
+): RunState | null {
+  const def = WORKFLOWS[workflowId];
+  if (!def) return null;
+  const run: RunState = {
+    runId: randomUUID().slice(0, 12),
+    workflowId: def.id,
+    workflowTitle: def.title,
+    root,
+    createdAt: Date.now(),
+    status: "running",
+    agent,
+    model,
+    inputs,
+    steps: def.steps.map((s) => ({
+      id: s.id,
+      title: s.title,
+      type: s.type,
+      status: "pending",
+      output: "",
+    })),
+  };
+  runs.set(run.runId, run);
+  void execute(run, def); // fire and forget; UI polls state
+  return run;
+}
+
+async function execute(run: RunState, def: WorkflowDef) {
+  for (const stepDef of def.steps) {
+    const step = run.steps.find((s) => s.id === stepDef.id)!;
+    if (run.status === "aborted") {
+      step.status = "skipped";
+      continue;
+    }
+    if (stepDef.onlyIf && !run.inputs[stepDef.onlyIf]) {
+      step.status = "skipped";
+      await persist(run);
+      continue;
+    }
+    step.status = "running";
+    step.startedAt = Date.now();
+    await persist(run);
+    try {
+      const ok = await runStep(run, stepDef, step);
+      step.endedAt = Date.now();
+      if (!ok) {
+        if (step.status === "running") step.status = "failed";
+        if ((run.status as string) !== "aborted") run.status = "failed";
+        await persist(run);
+        return;
+      }
+      step.status = "done";
+    } catch (e) {
+      step.status = "failed";
+      step.output += `\n[engine] ${String(e)}`;
+      step.endedAt = Date.now();
+      run.status = "failed";
+      await persist(run);
+      return;
+    }
+    await persist(run);
+  }
+  run.status = "done";
+  await persist(run);
+}
+
+async function runStep(run: RunState, def: StepDef, step: StepState): Promise<boolean> {
+  switch (def.type) {
+    case "snapshot": {
+      const ok = await takeSnapshot(run.root);
+      step.output = ok ? "baseline snapshot taken" : "snapshot unavailable (git missing?)";
+      return ok;
+    }
+    case "changes": {
+      const changes = await changesSince(run.root);
+      if (changes === null) {
+        step.output = "snapshot store unavailable";
+        return false;
+      }
+      run.changes = changes;
+      step.output = changes.length
+        ? changes.map((c) => `${c.status.padEnd(8)} ${c.file}`).join("\n")
+        : "no files changed";
+      return true;
+    }
+    case "gate": {
+      step.status = "waiting_gate";
+      step.output = template(def.message ?? "Proceed?", run);
+      run.status = "waiting_gate";
+      await persist(run);
+      const approved = await new Promise<boolean>((resolve) => {
+        gateWaiters.set(run.runId, resolve);
+      });
+      run.status = approved ? "running" : "aborted";
+      step.output += approved ? "\n→ approved" : "\n→ aborted by user";
+      step.status = approved ? "done" : "failed";
+      return approved;
+    }
+    case "agent": {
+      const agentDef = AGENTS[run.agent];
+      const prompt = template(def.prompt ?? "", run);
+      const { args, viaStdin } = agentDef.build(prompt, run.model);
+      return spawnToStep(run, step, agentDef.bin, args, viaStdin ? prompt : undefined);
+    }
+    case "cli": {
+      if (def.bin !== "sf" && def.bin !== "git") {
+        step.output = `binary not whitelisted: ${def.bin}`;
+        return false;
+      }
+      const args = expandArgs(def.args ?? [], run);
+      if (!args) {
+        step.output = "no changed files to act on — nothing to validate/deploy";
+        return false;
+      }
+      return spawnToStep(run, step, def.bin, args.map(winQuote));
+    }
+  }
+}
+
+/** Fill "{inputs.x}" and "{steps.id.output}" placeholders. */
+function template(text: string, run: RunState): string {
+  return text
+    .replace(/\{inputs\.([\w-]+)\}/g, (_, k) => String(run.inputs[k] ?? ""))
+    .replace(/\{steps\.([\w-]+)\.output\}/g, (_, id) => {
+      const s = run.steps.find((x) => x.id === id);
+      return s ? s.output.slice(0, 8000) : "";
+    });
+}
+
+/** Expand argv templates. "{changedSourceDirs}" becomes repeated
+ * --source-dir <file> pairs for every non-deleted changed file; returns null
+ * when the expansion is required but there are no changed files. */
+function expandArgs(argv: string[], run: RunState): string[] | null {
+  const out: string[] = [];
+  for (const a of argv) {
+    if (a === "{changedSourceDirs}") {
+      const files = (run.changes ?? []).filter((c) => c.status !== "deleted");
+      if (files.length === 0) return null;
+      for (const f of files.slice(0, 50)) out.push("--source-dir", f.file);
+    } else {
+      out.push(template(a, run));
+    }
+  }
+  return out;
+}
+
+/** Args pass through cmd.exe (shell:true resolves .cmd shims) — quote paths
+ * with spaces; templates never contain quotes (whitelisted argv, not shell). */
+function winQuote(a: string): string {
+  return /[ ]/.test(a) && !a.startsWith('"') ? `"${a}"` : a;
+}
+
+function spawnToStep(
+  run: RunState,
+  step: StepState,
+  bin: string,
+  args: string[],
+  stdin?: string,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn(bin, args, {
+      cwd: run.root,
+      shell: true,
+      windowsHide: true,
+      env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", CI: "true" },
+    });
+    const timer = setTimeout(() => {
+      step.output += "\n[engine] step timed out";
+      child.kill();
+    }, STEP_TIMEOUT_MS);
+    if (stdin) child.stdin.write(stdin);
+    child.stdin.end();
+    const push = (chunk: Buffer) => {
+      if (step.output.length < STEP_OUTPUT_CAP) {
+        step.output += chunk.toString("utf8").replace(/\x1b\[[0-9;]*m/g, "");
+      }
+      void persist(run);
+    };
+    child.stdout.on("data", push);
+    child.stderr.on("data", push);
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      step.output += `\n[engine] could not start ${bin}: ${e.message}`;
+      resolve(false);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      step.output += `\n[exit ${code}]`;
+      resolve(code === 0);
+    });
+  });
+}
+
+let persistChain = Promise.resolve();
+async function persist(run: RunState) {
+  // serialize writes; audit file lives with the project
+  persistChain = persistChain.then(async () => {
+    try {
+      const dir = path.join(run.root, ".sfharness", "runs");
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, `${run.runId}.json`), JSON.stringify(run, null, 2), "utf8");
+    } catch {
+      /* audit persistence is best-effort */
+    }
+  });
+  await persistChain;
+}
