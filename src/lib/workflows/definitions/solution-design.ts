@@ -68,7 +68,19 @@ export const SOLUTION_DESIGN: WorkflowDef = {
         "strategy section with the test classes/scenarios to write (positive/negative/bulk).\n\n" +
         "Approved design from the analysis step:\n{steps.analyse.output}\n\n" +
         "Incorporate every detail from the approved design; expand where precision is needed but " +
-        "do not contradict what was approved. Cross-link the two documents at the top of each.",
+        "do not contradict what was approved. Cross-link the two documents at the top of each.\n\n" +
+        "DOCUMENT STYLE (mandatory for both files):\n" +
+        "- Plain ASCII punctuation only: use the normal hyphen '-', NEVER em dashes or en dashes, " +
+        "and straight quotes, never smart quotes. These documents get pasted into Word and email.\n" +
+        "- Start each document with a metadata table: Document, Version (0.1 Draft), Date, Author " +
+        "(leave as 'TBD'), Status (Draft for review), and a link to the sibling document.\n" +
+        "- Use numbered section headings (1., 1.1) so reviewers can reference sections in feedback.\n" +
+        "- Use Markdown tables for the estimate, the component list, and field definitions; " +
+        "prose only where explanation is genuinely needed.\n" +
+        "- Exact Salesforce API names in backticks everywhere a component is mentioned.\n" +
+        "- The Mermaid block must be valid erDiagram syntax (test mentally: every relationship " +
+        "line has both entities and a label); no styling directives.\n" +
+        "- No filler: every sentence must carry information a reviewer or developer acts on.",
     },
     { id: "changes", title: "Collect created documents", type: "changes" },
     {
