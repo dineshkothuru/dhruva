@@ -350,6 +350,24 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         step.output = "no changed files to act on — nothing to validate/deploy";
         return false;
       }
+      if (def.detached) {
+        // long-lived server (e.g. sf lightning dev app): visible console the
+        // user watches/closes; the run continues to the next step (a gate)
+        try {
+          const cmdline = [def.bin, ...args.map(winQuote)].join(" ");
+          const child = spawn(
+            "cmd.exe",
+            ["/c", "start", `"Dhruva - ${def.id}"`, "cmd", "/k", cmdline],
+            { cwd: run.root, detached: true, stdio: "ignore", windowsHide: false, shell: false },
+          );
+          child.unref();
+          step.output = `launched in a console window: ${def.bin} ${args.join(" ")}`;
+          return true;
+        } catch (e) {
+          step.output = `could not launch: ${String(e)}`;
+          return false;
+        }
+      }
       return spawnToStep(run, step, def.bin, args.map(winQuote));
     }
   }

@@ -9,6 +9,12 @@ export const BUG_FIX: WorkflowDef = {
     { key: "description", label: "Bug description", kind: "text" },
     { key: "runTests", label: "Run local Apex tests during validation", kind: "boolean", default: false },
     { key: "deploy", label: "Deploy to the default org at the end", kind: "boolean", default: true },
+    {
+      key: "visualTest",
+      label: "Visual test before deploy (opens the org in the browser with your LOCAL UI files + live org data)",
+      kind: "boolean",
+      default: false,
+    },
   ],
   steps: [
     { id: "snapshot", title: "Snapshot baseline", type: "snapshot" },
@@ -117,11 +123,21 @@ export const BUG_FIX: WorkflowDef = {
       ],
     },
     {
+      id: "visual-preview",
+      title: "Visual test — local files against live org data (Local Dev)",
+      type: "cli",
+      bin: "sf",
+      detached: true,
+      onlyIf: "visualTest",
+      args: ["lightning", "dev", "app"],
+    },
+    {
       id: "approve-deploy",
       title: "Approve deploy",
       type: "gate",
       onlyIf: "deploy",
-      message: "Validation passed. Deploy the changed files to the default org now?",
+      message:
+        "Validation passed. If you enabled the visual test, click through the app in the browser first. Deploy the changed files to the default org now?",
     },
     {
       id: "deploy",

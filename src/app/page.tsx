@@ -349,13 +349,29 @@ export default function Home() {
                         </button>
                       </>
                     ) : (
-                      <button
-                        onClick={() => authorizeOrg()}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                        title="Opens the Salesforce login in your browser — use 'Use Custom Domain' there for sandboxes or my-domain orgs"
-                      >
-                        {result.org?.connected ? "Re-authorize org" : "Authorize org"}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => authorizeOrg()}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                          title="Opens the Salesforce login in your browser — use 'Use Custom Domain' there for sandboxes or my-domain orgs"
+                        >
+                          {result.org?.connected ? "Re-authorize org" : "Authorize org"}
+                        </button>
+                        {result.org?.connected && (
+                          <button
+                            onClick={async () => {
+                              const { data } = await postJson("/api/preview-org", {
+                                path: result.path,
+                              });
+                              setLoginMsg(String(data.message ?? data.error ?? "started"));
+                            }}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                            title="Salesforce Local Dev: the org opens in your browser with your LOCAL UI files rendered against real org data (no deploy). Apex is not previewed."
+                          >
+                            🖥 Visual preview (local files + live data)
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

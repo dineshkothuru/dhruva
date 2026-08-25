@@ -42,6 +42,9 @@ export interface StepDef {
   /** cli: when an argv expansion has nothing to expand ({affectedSourceDirs}
    * with no files named), skip the step instead of failing the run. */
   optional?: boolean;
+  /** cli: launch in a visible console window and continue immediately —
+   * for long-lived servers like Salesforce Local Dev (visual testing). */
+  detached?: boolean;
 }
 
 export interface WorkflowDef {
