@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { DetectionResult } from "@/lib/types";
+import FileTree from "@/components/FileTree";
+import EditorPane from "@/components/EditorPane";
 
-type Tab = "chat" | "workflows";
+type Tab = "chat" | "workflows" | "editor";
 
 /** POST JSON and parse the response defensively — an empty/non-JSON body
  * (crashed route, dev-server rebuild) becomes a readable error, not a
@@ -31,6 +33,28 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
   const [loginMsg, setLoginMsg] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [activeFile, setActiveFile] = useState<string | null>(null);
+
+  function openFile(rel: string) {
+    setOpenFiles((fs) => (fs.includes(rel) ? fs : [...fs, rel]));
+    setActiveFile(rel);
+    setTab("editor");
+  }
+
+  function closeFile(rel: string) {
+    setOpenFiles((fs) => {
+      const next = fs.filter((f) => f !== rel);
+      if (activeFile === rel) {
+        const idx = fs.indexOf(rel);
+        const neighbor = next[Math.min(idx, next.length - 1)] ?? null;
+        setActiveFile(neighbor);
+        if (!neighbor) setTab("chat");
+      }
+      return next;
+    });
+  }
 
   async function initProject() {
     const target = path.trim();
@@ -43,7 +67,9 @@ export default function Home() {
       if (!ok) {
         setError(String(data.error ?? "Could not create the project"));
       } else {
-        setResult(data as unknown as DetectionResult);
+        const det = data as unknown as DetectionResult;
+        setResult(det);
+        setDetailsOpen(!det.org?.connected);
         localStorage.setItem("sfdh.lastPath", target);
       }
     } catch (e) {
@@ -79,12 +105,17 @@ export default function Home() {
     setError(null);
     setLoginMsg(null);
     setResult(null);
+    setOpenFiles([]);
+    setActiveFile(null);
+    setTab((t) => (t === "editor" ? "chat" : t));
     try {
       const { ok, data } = await postJson("/api/project", { path: path.trim() });
       if (!ok) {
         setError(String(data.error ?? "Request failed"));
       } else {
-        setResult(data as unknown as DetectionResult);
+        const det = data as unknown as DetectionResult;
+        setResult(det);
+        setDetailsOpen(!det.org?.connected); // keep authorize visible until an org is set
         localStorage.setItem("sfdh.lastPath", path.trim());
       }
     } catch (e) {
@@ -137,10 +168,32 @@ export default function Home() {
 
           {result && connected && (
             <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                <span className="text-sm font-semibold text-emerald-700">Connected</span>
-              </div>
+              <button
+                onClick={() => setDetailsOpen(!detailsOpen)}
+                className="flex w-full flex-col gap-0.5 text-left"
+                title={result.path}
+              >
+                <span className="flex w-full items-center gap-2">
+                  <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
+                  <span className="truncate text-sm font-semibold text-emerald-700">
+                    {result.projectName ?? "Connected"}
+                  </span>
+                  <span
+                    className={`inline-flex h-2 w-2 shrink-0 rounded-full ${
+                      result.org?.connected ? "bg-emerald-500" : "bg-slate-300"
+                    }`}
+                    title={result.org?.connected ? result.org.username : "no org authorized"}
+                  />
+                  <span className="ml-auto text-xs text-slate-400">{detailsOpen ? "▾" : "▸"}</span>
+                </span>
+                <span className="truncate pl-[18px] font-mono text-[10px] text-slate-400">
+                  {result.org?.connected
+                    ? result.org.instanceUrl?.replace(/^https?:\/\//, "")
+                    : "no org authorized"}
+                </span>
+              </button>
+              {detailsOpen && (
+                <>
               <p className="mt-1 break-all font-mono text-[11px] text-slate-400">{result.path}</p>
 
               <dl className="mt-4 space-y-3 text-sm">
@@ -221,6 +274,26 @@ export default function Home() {
                   </div>
                 </div>
               </dl>
+                </>
+              )}
+            </div>
+          )}
+
+          {result && connected && (
+            <div className="mt-4">
+              <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">
+                Files
+              </div>
+              <FileTree
+                key={result.path}
+                root={result.path}
+                onOpenFile={openFile}
+                selected={activeFile}
+                defaultDir={
+                  result.packageDirectories?.find((d) => d.default)?.path ??
+                  result.packageDirectories?.[0]?.path
+                }
+              />
             </div>
           )}
 
@@ -252,7 +325,7 @@ export default function Home() {
       {/* Right panel — chat & workflows */}
       <section className="flex flex-1 flex-col bg-slate-50">
         <div className="flex items-center gap-1 border-b border-slate-200 bg-white px-5 py-2.5">
-          {(["chat", "workflows"] as Tab[]).map((t) => (
+          {([...(openFiles.length ? (["editor"] as Tab[]) : []), "chat", "workflows"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -270,7 +343,39 @@ export default function Home() {
           </span>
         </div>
 
-        {tab === "chat" ? (
+        {tab === "editor" && openFiles.length > 0 && result?.path ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* file tab strip — open buffers keep unsaved changes when switching */}
+            <div className="flex items-center gap-0.5 overflow-x-auto border-b border-slate-200 bg-slate-100 px-2 pt-1.5">
+              {openFiles.map((f) => (
+                <span
+                  key={f}
+                  className={`group flex shrink-0 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 py-1.5 text-xs ${
+                    activeFile === f
+                      ? "border-slate-200 bg-white font-medium"
+                      : "border-transparent text-slate-500 hover:bg-slate-200"
+                  }`}
+                >
+                  <button onClick={() => setActiveFile(f)} title={f} className="max-w-[180px] truncate">
+                    {f.split("/").pop()}
+                  </button>
+                  <button
+                    onClick={() => closeFile(f)}
+                    className="rounded px-0.5 text-slate-400 hover:bg-slate-300 hover:text-slate-700"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+            {openFiles.map((f) => (
+              <div key={f} className={`min-h-0 flex-1 ${activeFile === f ? "" : "hidden"}`}>
+                <EditorPane root={result.path} file={f} />
+              </div>
+            ))}
+          </div>
+        ) : tab === "chat" ? (
           <div className="flex flex-1 flex-col">
             <div className="flex flex-1 items-center justify-center px-8">
               <div className="max-w-md text-center">
