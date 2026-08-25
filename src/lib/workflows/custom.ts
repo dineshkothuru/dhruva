@@ -2,6 +2,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import type { StepDef, WorkflowDef } from "./schema";
 import { WORKFLOWS } from "./builtins";
+import { checkWorkflowSemantics } from "./validate";
 
 /** Custom workflows — user-designed in the UI, stored per project as
  * .sfharness/workflows/<id>.json in the SAME shape as built-ins, so the
@@ -97,7 +98,14 @@ export function validateWorkflowDef(raw: unknown): WorkflowDef {
     return step;
   });
 
-  return { id: d.id, title: d.title.trim(), description, inputs, steps };
+  const def: WorkflowDef = { id: d.id, title: d.title.trim(), description, inputs, steps };
+  // Deterministic semantic checks: every reference must resolve, every step
+  // must have its producers earlier, real deploys must be gated.
+  const problems = checkWorkflowSemantics(def);
+  if (problems.length > 0) {
+    throw new Error(problems.join("; "));
+  }
+  return def;
 }
 
 export async function listCustomWorkflows(root: string): Promise<WorkflowDef[]> {
