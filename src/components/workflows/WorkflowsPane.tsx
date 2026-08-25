@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
 import type { RunState } from "@/lib/workflows/schema";
-import CliResult from "@/components/CliResult";
+import CliResult from "@/components/workflows/CliResult";
 import { loadTiers, saveTiers, tiersFor, type TierConfig } from "@/lib/tierStore";
-import WorkflowBuilder from "@/components/WorkflowBuilder";
+import WorkflowBuilder from "@/components/workflows/WorkflowBuilder";
 
 interface CatalogItem {
   id: string;
@@ -20,6 +20,14 @@ interface CatalogItem {
     default?: string | boolean;
   }[];
 }
+
+/** Catalog grouping — anything unlisted lands in the first group. */
+const CATEGORIES: [string, string[]][] = [
+  ["Development", ["bug-fix", "feature-dev", "solution-design", "implement-tdd"]],
+  ["Testing", ["test-gen", "run-tests"]],
+  ["Org & deployment", ["retrieve-sync", "deploy-preview", "validate-deploy", "scratch-org"]],
+  ["Custom", []],
+];
 
 const AGENT_OPTIONS: { id: AgentId; label: string }[] = [
   { id: "copilot", label: "GitHub Copilot" },
@@ -557,65 +565,114 @@ export default function WorkflowsPane({
         </details>
       )}
 
-      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-        {(catalog ?? []).map((w) => (
-          <div
-            key={w.id}
-            className={`relative rounded-xl border bg-white hover:border-slate-400 ${
-              selected?.id === w.id ? "border-slate-900" : "border-slate-200"
-            }`}
-          >
-            <button onClick={() => pick(w)} className="w-full p-4 text-left">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                {w.title}
-                {w.custom && (
-                  <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-600">
-                    custom
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-xs text-slate-500">{w.description}</p>
-            </button>
-            {w.custom && (
-              <button
-                onClick={async () => {
-                  await api({ action: "delete-custom", root, workflow: w.id });
-                  if (selected?.id === w.id) setSelected(null);
-                  refreshCatalog();
-                }}
-                className="absolute right-2 top-2 rounded px-1.5 text-xs text-slate-300 hover:bg-red-50 hover:text-red-500"
-                title="Delete this custom workflow"
-              >
-                ✕
-              </button>
-            )}
+      {CATEGORIES.map(([label, ids]) => {
+        const items = (catalog ?? []).filter((w) =>
+          label === "Custom" ? w.custom : !w.custom && ids.includes(w.id),
+        );
+        const uncategorized =
+          label === "Custom"
+            ? []
+            : (catalog ?? []).filter(
+                (w) => !w.custom && !CATEGORIES.some(([, x]) => x.includes(w.id)),
+              );
+        const list = label === CATEGORIES[0][0] ? [...items, ...uncategorized] : items;
+        if (list.length === 0 && label !== "Custom") return null;
+        return (
+          <div key={label} className="mt-5">
+            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+              {label}
+            </h3>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {list.map((w) => (
+                <div
+                  key={w.id}
+                  className={`group relative rounded-xl border bg-white transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md ${
+                    selected?.id === w.id
+                      ? "border-slate-900 ring-2 ring-slate-900/10"
+                      : "border-slate-200"
+                  }`}
+                >
+                  <button onClick={() => pick(w)} className="w-full p-4 text-left">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      {w.title}
+                      {w.custom && (
+                        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-600">
+                          custom
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-3 text-xs text-slate-500">{w.description}</p>
+                  </button>
+                  {w.custom && (
+                    <button
+                      onClick={async () => {
+                        await api({ action: "delete-custom", root, workflow: w.id });
+                        if (selected?.id === w.id) setSelected(null);
+                        refreshCatalog();
+                      }}
+                      className="absolute right-2 top-2 rounded px-1.5 text-xs text-slate-300 hover:bg-red-50 hover:text-red-500"
+                      title="Delete this custom workflow"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              {label === "Custom" && (
+                <button
+                  onClick={() => setDesigning(true)}
+                  className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-left text-slate-400 transition-all hover:-translate-y-0.5 hover:border-slate-500 hover:text-slate-600 hover:shadow-md"
+                >
+                  <div className="text-sm font-semibold">+ Design a workflow</div>
+                  <p className="mt-1 text-xs">
+                    Build your own step sequence — same engine, gates, and audit.
+                  </p>
+                </button>
+              )}
+            </div>
           </div>
-        ))}
-        <button
-          onClick={() => setDesigning(true)}
-          className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-left text-slate-400 hover:border-slate-500 hover:text-slate-600"
-        >
-          <div className="text-sm font-semibold">+ Design a workflow</div>
-          <p className="mt-1 text-xs">Build your own step sequence — same engine, gates, and audit.</p>
-        </button>
-        {catalog === null && <p className="text-xs text-slate-400">loading…</p>}
-      </div>
+        );
+      })}
+      {catalog === null && <p className="mt-4 text-xs text-slate-400">loading…</p>}
 
       {designing && (
-        <WorkflowBuilder
-          root={root}
-          onCancel={() => setDesigning(false)}
-          onSaved={() => {
-            setDesigning(false);
-            refreshCatalog();
-          }}
-        />
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-6"
+          onClick={(e) => e.target === e.currentTarget && setDesigning(false)}
+        >
+          <div className="w-full max-w-3xl">
+            <WorkflowBuilder
+              root={root}
+              onCancel={() => setDesigning(false)}
+              onSaved={() => {
+                setDesigning(false);
+                refreshCatalog();
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {selected && (
-        <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="text-sm font-semibold">{selected.title}</h3>
-          <div className="mt-3 space-y-3">
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-6"
+          onClick={(e) => e.target === e.currentTarget && !starting && setSelected(null)}
+        >
+          <div className="mt-10 w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold">{selected.title}</h3>
+                <p className="mt-0.5 text-xs text-slate-500">{selected.description}</p>
+              </div>
+              <button
+                onClick={() => !starting && setSelected(null)}
+                className="rounded px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
             {selected.inputs.map((i) =>
               i.kind === "boolean" ? (
                 <label key={i.key} className="flex items-center gap-2 text-sm">
@@ -667,17 +724,23 @@ export default function WorkflowsPane({
                 ))}
               </select>
               <button
+                onClick={() => !starting && setSelected(null)}
+                className="ml-auto rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
                 onClick={start}
                 disabled={starting}
-                className="ml-auto rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40"
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40"
               >
                 {starting ? "Starting…" : "Start run"}
               </button>
             </div>
           </div>
         </div>
+        </div>
       )}
-
     </div>
   );
 }

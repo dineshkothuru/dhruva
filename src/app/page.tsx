@@ -6,7 +6,7 @@ import FileTree from "@/components/FileTree";
 import EditorPane from "@/components/EditorPane";
 import ChatPane from "@/components/ChatPane";
 import DiffPane from "@/components/DiffPane";
-import WorkflowsPane from "@/components/WorkflowsPane";
+import WorkflowsPane from "@/components/workflows/WorkflowsPane";
 
 type Tab = "chat" | "workflows" | "editor";
 
