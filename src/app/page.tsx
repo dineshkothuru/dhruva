@@ -42,6 +42,27 @@ export default function Home() {
   const [tab, setTab] = useState<Tab>("chat");
   const [loginMsg, setLoginMsg] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(380);
+
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panelWidth;
+    function onMove(ev: MouseEvent) {
+      const w = Math.min(700, Math.max(240, startW + (ev.clientX - startX)));
+      setPanelWidth(w);
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setPanelWidth((w) => {
+        localStorage.setItem("sfdh.panelWidth", String(w));
+        return w;
+      });
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
 
@@ -109,8 +130,10 @@ export default function Home() {
     // a refresh should land back in the attached project, not on the
     // connect form. (localStorage can't be read during render: hydration.)
     const saved = localStorage.getItem("sfdh.lastPath");
+    const savedWidth = Number(localStorage.getItem("sfdh.panelWidth"));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (savedWidth >= 240 && savedWidth <= 700) setPanelWidth(savedWidth);
     if (saved) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPath((p) => p || saved);
       connect(saved);
     }
@@ -186,13 +209,13 @@ export default function Home() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Left panel — project */}
-      <aside className="flex w-[30%] min-w-[320px] flex-col border-r border-slate-200 bg-white">
+      {/* Left panel — project (resizable via the divider) */}
+      <aside
+        style={{ width: panelWidth }}
+        className="flex shrink-0 flex-col bg-white"
+      >
         <div className="border-b border-slate-200 px-5 py-4">
           <h1 className="text-lg font-semibold tracking-tight">SF Delivery Harness</h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Attach a Salesforce project folder. The harness works inside it.
-          </p>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-5">
@@ -378,6 +401,13 @@ export default function Home() {
           )}
         </div>
       </aside>
+
+      {/* drag handle — the border line itself resizes the panel */}
+      <div
+        onMouseDown={startResize}
+        className="w-1 shrink-0 cursor-col-resize bg-slate-200 transition-colors hover:bg-slate-400 active:bg-slate-500"
+        title="Drag to resize"
+      />
 
       {/* Right panel — chat & workflows */}
       <section className="flex flex-1 flex-col bg-slate-50">
