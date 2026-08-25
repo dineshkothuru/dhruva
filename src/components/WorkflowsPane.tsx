@@ -127,6 +127,9 @@ export default function WorkflowsPane({
   // ---------- run view ----------
   if (run) {
     const waiting = run.steps.find((s) => s.status === "waiting_gate");
+    const totalIn = run.steps.reduce((n, s) => n + (s.usage?.inTokens ?? 0), 0);
+    const totalOut = run.steps.reduce((n, s) => n + (s.usage?.outTokens ?? 0), 0);
+    const totalCost = run.steps.reduce((n, s) => n + (s.usage?.costUsd ?? 0), 0);
     return (
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mb-4 flex items-center gap-3">
@@ -147,6 +150,13 @@ export default function WorkflowsPane({
           </span>
           <span className="ml-auto font-mono text-[10px] text-slate-400">run {run.runId}</span>
         </div>
+        {totalIn + totalOut > 0 && (
+          <p className="mb-3 text-[11px] text-slate-500">
+            Agent usage: ~{totalIn.toLocaleString()} in / {totalOut.toLocaleString()} out tokens ·{" "}
+            {totalCost < 0.01 ? `$${totalCost.toFixed(4)}` : `$${totalCost.toFixed(2)}`} if billed at
+            public API rates (estimate — runs on your subscription, not billed)
+          </p>
+        )}
 
         <div className="space-y-2">
           {run.steps.map((s) => (
@@ -168,6 +178,14 @@ export default function WorkflowsPane({
                 <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words border-t border-slate-100 px-4 py-3 font-mono text-xs text-slate-600">
                   {s.output}
                 </pre>
+              )}
+              {s.usage && (
+                <p className="border-t border-slate-100 px-4 py-1.5 text-[10px] text-slate-400">
+                  ~{s.usage.inTokens.toLocaleString()} in / {s.usage.outTokens.toLocaleString()} out
+                  tokens · $
+                  {s.usage.costUsd < 0.01 ? s.usage.costUsd.toFixed(4) : s.usage.costUsd.toFixed(2)}{" "}
+                  (est. at API rates)
+                </p>
               )}
               {s.id === "changes" && run.changes && run.changes.length > 0 && (
                 <div className="border-t border-slate-100 px-4 py-2">

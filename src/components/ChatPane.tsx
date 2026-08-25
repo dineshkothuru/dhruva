@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
+import { estimateUsage, formatUsage } from "@/lib/pricing";
 
 interface Msg {
   role: "user" | "agent" | "system" | "changes";
   agent?: AgentId;
   text: string;
   changes?: { file: string; status: string }[];
+  usage?: string;
 }
 
 interface AgentStatus {
@@ -127,6 +129,16 @@ export default function ChatPane({
     } finally {
       setRunning(false);
     }
+    // Informational usage: what would this exchange cost at public API rates
+    setMessages((m) => {
+      const next = [...m];
+      const last = next[next.length - 1];
+      if (last?.role === "agent") {
+        const u = estimateUsage(agent, models[agent], prompt, last.text);
+        next[next.length - 1] = { ...last, usage: formatUsage(u) };
+      }
+      return next;
+    });
     // Deterministic review: what did this run change since the snapshot?
     try {
       const res = await fetch("/api/changes", {
@@ -250,6 +262,11 @@ export default function ChatPane({
                 <pre className="whitespace-pre-wrap break-words font-mono text-xs text-slate-700">
                   {m.text || (running && i === messages.length - 1 ? "working…" : "")}
                 </pre>
+                {m.usage && (
+                  <p className="mt-2 border-t border-slate-100 pt-1.5 text-[10px] text-slate-400">
+                    {m.usage}
+                  </p>
+                )}
               </div>
             ) : m.role === "changes" ? (
               <div key={i} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">

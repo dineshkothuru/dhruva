@@ -7,6 +7,7 @@ import { AGENTS } from "@/lib/agents";
 import { takeSnapshot, changesSince } from "@/lib/snapshot";
 import { STANDARDS_PROMPT, checkStandards } from "@/lib/standards";
 import { persona, standardsFor } from "@/lib/standardsLibrary";
+import { estimateUsage } from "@/lib/pricing";
 import type { RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { WORKFLOWS } from "./builtins";
 
@@ -166,6 +167,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const { args, viaStdin } = agentDef.build(prompt, run.model);
       const ok = await spawnToStep(run, step, agentDef.bin, args, viaStdin ? prompt : undefined);
       harvestAffectedFiles(run, step.output);
+      step.usage = estimateUsage(run.agent, run.model, prompt, step.output);
       return ok;
     }
     case "verify": {

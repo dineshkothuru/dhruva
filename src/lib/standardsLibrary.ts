@@ -27,7 +27,11 @@ function globToRegex(glob: string): RegExp {
   // split on "**/" and "**" first so the single-"*" pass can't mangle the
   // regex fragments those expand to
   const esc = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const body = esc
+  // brace expansion: "\{js,html\}" → "(?:js|html)"
+  const braced = esc.replace(/\\\{([^}]*)\\\}/g, (_, inner: string) => {
+    return `(?:${inner.split(",").map((s) => s.trim()).join("|")})`;
+  });
+  const body = braced
     .split("**/")
     .map((seg) =>
       seg
