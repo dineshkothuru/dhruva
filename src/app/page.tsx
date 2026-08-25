@@ -11,6 +11,24 @@ export default function Home() {
   const [result, setResult] = useState<DetectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
+  const [loginMsg, setLoginMsg] = useState<string | null>(null);
+
+  async function authorizeOrg(instanceUrl: string) {
+    if (!result?.path) return;
+    setLoginMsg(null);
+    try {
+      const res = await fetch("/api/org-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: result.path, instanceUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) setError(data.error ?? "Could not start org login");
+      else setLoginMsg(data.message);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
 
   useEffect(() => {
     // Hydrate the last-used path after mount; reading localStorage during
@@ -24,6 +42,7 @@ export default function Home() {
     if (!path.trim() || loading) return;
     setLoading(true);
     setError(null);
+    setLoginMsg(null);
     setResult(null);
     try {
       const res = await fetch("/api/project", {
@@ -148,6 +167,35 @@ export default function Home() {
                       </span>
                     )}
                   </dd>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {loginMsg ? (
+                      <>
+                        <p className="text-[11px] text-sky-700">{loginMsg}</p>
+                        <button
+                          onClick={connect}
+                          disabled={loading}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
+                        >
+                          {loading ? "Checking…" : "Refresh org status"}
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => authorizeOrg("https://login.salesforce.com")}
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                        >
+                          {result.org?.connected ? "Re-authorize" : "Authorize org"}
+                        </button>
+                        <button
+                          onClick={() => authorizeOrg("https://test.salesforce.com")}
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                        >
+                          Sandbox login
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </dl>
             </div>
