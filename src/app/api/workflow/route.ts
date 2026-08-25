@@ -81,7 +81,16 @@ export async function POST(req: Request) {
       if (typeof v === "string" && v.length > 8000) inputs[k] = v.slice(0, 8000);
     }
     const model = isSafeModelId(b.model) ? b.model : undefined;
-    const run = startRun(root, b.workflow, inputs, b.agent, model);
+    // user-configured tier overrides — model ids validated like any model
+    let tiers: { best?: string; default?: string; light?: string } | undefined;
+    if (b.tiers && typeof b.tiers === "object") {
+      tiers = {};
+      for (const k of ["best", "default", "light"] as const) {
+        const v = (b.tiers as Record<string, unknown>)[k];
+        if (isSafeModelId(v)) tiers[k] = v;
+      }
+    }
+    const run = startRun(root, b.workflow, inputs, b.agent, model, tiers);
     if (!run) return NextResponse.json({ error: "could not start run" }, { status: 500 });
     return NextResponse.json({ runId: run.runId });
   }

@@ -20,7 +20,13 @@ export async function GET() {
   const entries = await Promise.all(
     Object.values(AGENTS).map(async (a) => [
       a.id,
-      { ...(await probe(a.bin)), label: a.label, installHint: a.installHint, models: a.models },
+      {
+        ...(await probe(a.bin)),
+        label: a.label,
+        installHint: a.installHint,
+        models: a.models,
+        tiers: a.tiers,
+      },
     ]),
   );
   return NextResponse.json(Object.fromEntries(entries));

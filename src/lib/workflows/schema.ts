@@ -85,6 +85,9 @@ export interface RunState {
   status: "running" | "waiting_gate" | "done" | "failed" | "aborted";
   agent: AgentId;
   model?: string;
+  /** User-configured tier overrides for this run (UI setting); falls back to
+   * the agent's shipped tiers map. */
+  tiers?: { best?: string; default?: string; light?: string };
   inputs: Record<string, string | boolean>;
   steps: StepState[];
   /** Changed files as of the last "changes" step. */

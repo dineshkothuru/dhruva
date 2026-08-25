@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
 import { estimateUsage, formatUsage } from "@/lib/pricing";
 import { classifyIntake } from "@/lib/intake";
+import { tiersFor } from "@/lib/tierStore";
 
 interface Msg {
   role: "user" | "agent" | "system" | "changes" | "proposal";
@@ -245,6 +246,7 @@ export default function ChatPane({
           inputs: inputsMap[workflowId] ?? { description: msg.proposal.taskText },
           agent,
           model: models[agent] ?? status?.[agent]?.models?.[0]?.id ?? "",
+          tiers: tiersFor(agent),
         }),
       });
       const data = await res.json();

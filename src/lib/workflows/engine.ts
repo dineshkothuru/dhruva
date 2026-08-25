@@ -65,6 +65,7 @@ export function startRun(
   inputs: Record<string, string | boolean>,
   agent: AgentId,
   model?: string,
+  tiers?: RunState["tiers"],
 ): RunState | null {
   const def = WORKFLOWS[workflowId];
   if (!def) return null;
@@ -77,6 +78,7 @@ export function startRun(
     status: "running",
     agent,
     model,
+    tiers,
     inputs,
     steps: def.steps.map((s) => ({
       id: s.id,
@@ -274,7 +276,9 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         feedbackBlock;
       // Model tier: "best" for judgment steps, "light" for mechanical ones,
       // otherwise the run's selected model. Empty tier value = CLI default.
-      const tierModel = def.modelTier ? agentDef.tiers[def.modelTier] : undefined;
+      const tierModel = def.modelTier
+        ? (run.tiers?.[def.modelTier] ?? agentDef.tiers[def.modelTier])
+        : undefined;
       const stepModel = def.modelTier ? tierModel || run.model : run.model;
       step.model = stepModel || "default";
       // claude: stream-json gives a LIVE trace (tool uses + text as produced)

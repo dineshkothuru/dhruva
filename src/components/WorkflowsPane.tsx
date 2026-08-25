@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
 import type { RunState } from "@/lib/workflows/schema";
 import CliResult from "@/components/CliResult";
+import { loadTiers, saveTiers, tiersFor, type TierConfig } from "@/lib/tierStore";
 
 interface CatalogItem {
   id: string;
@@ -174,6 +175,11 @@ export default function WorkflowsPane({
   const [history, setHistory] = useState<RunState[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [gateNote, setGateNote] = useState("");
+  const [tierCfg, setTierCfg] = useState<Record<string, TierConfig>>({});
+  const [status, setStatus] = useState<Record<
+    string,
+    { tiers?: Record<string, string> }
+  > | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const api = useCallback(async (body: Record<string, unknown>) => {
@@ -195,6 +201,13 @@ export default function WorkflowsPane({
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (!cancelled) setTierCfg(loadTiers());
+      fetch("/api/agent-status")
+        .then((r) => r.json())
+        .then((s) => {
+          if (!cancelled) setStatus(s);
+        })
+        .catch(() => {});
       const { ok, data } = await api({ action: "list" });
       if (!cancelled && ok) setCatalog(data.workflows as CatalogItem[]);
       const runsRes = await api({ action: "runs", root });
@@ -247,7 +260,14 @@ export default function WorkflowsPane({
   async function start() {
     if (!selected) return;
     setError(null);
-    const { ok, data } = await api({ action: "start", root, workflow: selected.id, inputs, agent });
+    const { ok, data } = await api({
+      action: "start",
+      root,
+      workflow: selected.id,
+      inputs,
+      agent,
+      tiers: tiersFor(agent),
+    });
     if (!ok) {
       setError(String(data.error ?? "could not start"));
       return;
@@ -420,6 +440,46 @@ export default function WorkflowsPane({
           {error}
         </div>
       )}
+
+      <details className="mt-4 rounded-xl border border-slate-200 bg-white">
+        <summary className="cursor-pointer px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
+          Model tiers — which model runs judgment vs coding steps
+        </summary>
+        <div className="space-y-3 border-t border-slate-100 p-4">
+          <p className="text-[11px] text-slate-400">
+            <span className="font-medium">best</span> runs analysis/design/review/traceability
+            steps; <span className="font-medium">default</span> runs implementation;{" "}
+            <span className="font-medium">light</span> is reserved for cheap mechanical steps.
+            Empty = the shipped default shown as placeholder. Pick models your org policy allows.
+          </p>
+          {AGENT_OPTIONS.map((a) => {
+            const s = status?.[a.id];
+            const cfg = tierCfg[a.id] ?? {};
+            return (
+              <div key={a.id} className="flex flex-wrap items-center gap-2">
+                <span className="w-28 text-xs font-medium text-slate-600">{a.label}</span>
+                {(["best", "default", "light"] as const).map((tier) => (
+                  <label key={tier} className="flex items-center gap-1 text-[11px] text-slate-400">
+                    {tier}
+                    <input
+                      value={cfg[tier] ?? ""}
+                      onChange={(e) => {
+                        const all = loadTiers();
+                        all[a.id] = { ...all[a.id], [tier]: e.target.value.trim() };
+                        saveTiers(all);
+                        setTierCfg(all);
+                      }}
+                      placeholder={s?.tiers?.[tier] || "cli default"}
+                      spellCheck={false}
+                      className="w-36 rounded-lg border border-slate-200 px-2 py-1 font-mono text-[11px] outline-none focus:border-slate-400"
+                    />
+                  </label>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </details>
 
       {history.length > 0 && (
         <details className="mt-4 rounded-xl border border-slate-200 bg-white">
