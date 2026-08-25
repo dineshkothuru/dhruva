@@ -2,7 +2,7 @@
 
 Follow Salesforce-first patterns and keep changes production-safe.
 
-This file is the shared baseline. Detailed, enforceable standards live under `.github/instructions/*.instructions.md` and apply together with this baseline.
+This file is the shared baseline. Detailed, enforceable standards are the scoped modules the harness includes alongside it in this prompt.
 
 `force-app/main/default/` is intentionally empty in the baseline. Teams retrieve their own org metadata into it. Until the repository has code of its own to imitate, follow the layering and examples in `docs/reference-patterns.md`.
 

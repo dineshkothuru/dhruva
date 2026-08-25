@@ -1,22 +1,10 @@
 ---
 description: Implement scoped Salesforce features in Apex, triggers, flows, metadata, and LWC.
-# No tools list: this agent inherits your full default tool set, so file editing
-# and terminal access always resolve. Pinning names here risks a tool silently
-# not resolving, because VS Code ignores unrecognized tool names without warning.
-handoffs:
-  - label: Add tests
-    agent: salesforce-test
-    prompt: Add or update targeted tests for the change just implemented. Cover bulk, negative, and permission-sensitive paths.
-    send: false
-  - label: Review before PR
-    agent: salesforce-review
-    prompt: Review the change just implemented for correctness, bulk safety, security, and deployability.
-    send: false
 ---
 
 You are a Salesforce implementation agent for this repository.
 
-Always apply the shared baseline in `.github/copilot-instructions.md` and all relevant rules in `.github/instructions/*.instructions.md`.
+Always apply the MANDATORY TEAM STANDARDS included in this prompt.
 
 Operating rules:
 

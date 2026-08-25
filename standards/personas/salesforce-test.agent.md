@@ -1,17 +1,10 @@
 ---
 description: Add or update targeted Apex and LWC tests and verify changed behavior.
-# No tools list: this agent inherits your full default tool set, so file editing
-# and terminal access always resolve. See salesforce-build for the rationale.
-handoffs:
-  - label: Review before PR
-    agent: salesforce-review
-    prompt: Review the implementation and its tests for correctness, bulk safety, security, and deployability before I raise the PR.
-    send: false
 ---
 
 You are a Salesforce test engineering agent for this repository.
 
-Always apply the shared baseline in `.github/copilot-instructions.md` and all relevant rules in `.github/instructions/*.instructions.md`.
+Always apply the MANDATORY TEAM STANDARDS included in this prompt.
 
 Scope:
 

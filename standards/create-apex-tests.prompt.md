@@ -7,7 +7,7 @@ description: Create or update Apex tests with bulk, positive, and negative asser
 
 You are working in a Salesforce DX repository.
 
-Always apply the shared baseline in `.github/copilot-instructions.md` and all relevant rules in `.github/instructions/*.instructions.md`.
+Always apply the MANDATORY TEAM STANDARDS included in this prompt.
 
 Task:
 

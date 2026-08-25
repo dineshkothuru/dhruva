@@ -7,7 +7,7 @@ description: Scaffold or update LWC with SLDS, accessibility, and Apex integrati
 
 You are implementing a Lightning Web Component in a Salesforce DX repo.
 
-Always apply the shared baseline in `.github/copilot-instructions.md` and all relevant rules in `.github/instructions/*.instructions.md`.
+Always apply the MANDATORY TEAM STANDARDS included in this prompt.
 
 Task:
 
