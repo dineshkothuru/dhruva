@@ -13,6 +13,36 @@ export default function Home() {
   const [tab, setTab] = useState<Tab>("chat");
   const [loginMsg, setLoginMsg] = useState<string | null>(null);
 
+  async function initProject() {
+    const target = path.trim();
+    if (!target || loading) return;
+    const ok = window.confirm(
+      `Create a new Salesforce DX project at:\n\n${target}\n\nThe folder will be created if it doesn't exist and the standard structure (force-app, sfdx-project.json, …) scaffolded inside it.`,
+    );
+    if (!ok) return;
+    setLoading(true);
+    setError(null);
+    setLoginMsg(null);
+    try {
+      const res = await fetch("/api/init-project", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: target }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Could not create the project");
+      } else {
+        setResult(data as DetectionResult);
+        localStorage.setItem("sfdh.lastPath", target);
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function authorizeOrg(instanceUrl: string) {
     if (!result?.path) return;
     setLoginMsg(null);
@@ -210,6 +240,15 @@ export default function Home() {
                 </span>
               </div>
               <p className="mt-2 text-xs text-amber-700">{result.message}</p>
+              {(result.status === "not_found" || result.isEmptyFolder) && (
+                <button
+                  onClick={initProject}
+                  disabled={loading}
+                  className="mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-40"
+                >
+                  {loading ? "Creating…" : "Create Salesforce project here"}
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -23,11 +23,15 @@ export async function detectProject(rawPath: string): Promise<DetectionResult> {
   try {
     raw = await fs.readFile(path.join(p, "sfdx-project.json"), "utf8");
   } catch {
+    const entries = await fs.readdir(p).catch(() => null);
+    const isEmptyFolder = entries !== null && entries.length === 0;
     return {
       status: "not_salesforce",
       path: p,
-      message:
-        "No sfdx-project.json found at the folder root — this is not a Salesforce DX project.",
+      isEmptyFolder,
+      message: isEmptyFolder
+        ? "Empty folder — you can scaffold a new Salesforce project here."
+        : "No sfdx-project.json found at the folder root — this is not a Salesforce DX project.",
     };
   }
 
