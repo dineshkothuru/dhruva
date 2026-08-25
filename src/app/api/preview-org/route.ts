@@ -23,11 +23,14 @@ export async function POST(req: Request) {
   try {
     // visible console so the user sees the dev-server status/prompts and can
     // stop it; detached so this request returns immediately
-    const child = spawn(
-      "cmd.exe",
-      ["/c", "start", '"Dhruva - Salesforce Local Dev"', "cmd", "/k", "sf lightning dev app"],
-      { cwd: root, detached: true, stdio: "ignore", windowsHide: false, shell: false },
-    );
+    // single shell string: node's arg-quoting breaks `start`'s title parsing
+    const child = spawn('start "DhruvaLocalDev" cmd /k "sf lightning dev app"', {
+      cwd: root,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+      shell: true,
+    });
     child.unref();
   } catch (e) {
     return NextResponse.json({ error: `could not start Local Dev: ${String(e)}` }, { status: 500 });

@@ -355,11 +355,14 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         // user watches/closes; the run continues to the next step (a gate)
         try {
           const cmdline = [def.bin, ...args.map(winQuote)].join(" ");
-          const child = spawn(
-            "cmd.exe",
-            ["/c", "start", `"Dhruva - ${def.id}"`, "cmd", "/k", cmdline],
-            { cwd: run.root, detached: true, stdio: "ignore", windowsHide: false, shell: false },
-          );
+          // single shell string: node's arg-quoting breaks `start` title parsing
+          const child = spawn(`start "Dhruva" cmd /k "${cmdline}"`, {
+            cwd: run.root,
+            detached: true,
+            stdio: "ignore",
+            windowsHide: false,
+            shell: true,
+          });
           child.unref();
           step.output = `launched in a console window: ${def.bin} ${args.join(" ")}`;
           return true;
