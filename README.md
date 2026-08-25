@@ -27,7 +27,14 @@ and deployment are engine-owned — independent of any LLM.
   usage and API-rate cost shown per step and per run (exact for Claude,
   estimated otherwise).
 
-## Run
+## Run (team members)
+
+Double-click `dhruva.cmd` (or run it in a terminal). It installs dependencies,
+builds once, and opens http://localhost:3005. One-time machine prerequisites:
+Node 20+, git, Salesforce CLI (`sf`), and at least one agent CLI logged in
+(`copilot` / `claude` / `codex`).
+
+## Run (development)
 
 ```
 npm install
