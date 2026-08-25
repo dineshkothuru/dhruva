@@ -159,9 +159,12 @@ function StepBody({
 export default function WorkflowsPane({
   root,
   onOpenDiff,
+  jumpToRun,
 }: {
   root: string;
   onOpenDiff?: (rel: string) => void;
+  /** Run id to open on arrival (a run started from the chat intake). */
+  jumpToRun?: string | null;
 }) {
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
   const [selected, setSelected] = useState<CatalogItem | null>(null);
@@ -200,6 +203,19 @@ export default function WorkflowsPane({
       cancelled = true;
     };
   }, [api, root]);
+
+  // a run started from the chat intake opens directly
+  useEffect(() => {
+    if (!jumpToRun) return;
+    let cancelled = false;
+    (async () => {
+      const { ok, data } = await api({ action: "state", runId: jumpToRun });
+      if (!cancelled && ok) setRun(data as unknown as RunState);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, jumpToRun]);
 
   // poll the active run
   useEffect(() => {

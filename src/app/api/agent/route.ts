@@ -18,7 +18,13 @@ const RUN_TIMEOUT_MS = 10 * 60 * 1000;
  *
  * POST {root, agent, prompt} → text/plain chunked stream of the CLI output. */
 export async function POST(req: Request) {
-  let body: { root?: unknown; agent?: unknown; prompt?: unknown; model?: unknown };
+  let body: {
+    root?: unknown;
+    agent?: unknown;
+    prompt?: unknown;
+    model?: unknown;
+    attachments?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -37,9 +43,27 @@ export async function POST(req: Request) {
     return new Response("prompt required (max 8000 chars)", { status: 400 });
   }
 
+  // attachments: harness-saved files only (.sfharness/attachments/*), never
+  // arbitrary caller paths
+  const attachments = (Array.isArray(body.attachments) ? body.attachments : [])
+    .filter(
+      (a): a is string =>
+        typeof a === "string" &&
+        /^\.sfharness\/attachments\/[A-Za-z0-9._-]+$/.test(a.replace(/\\/g, "/")),
+    )
+    .slice(0, 8);
+
   const def = AGENTS[body.agent];
   const model = isSafeModelId(body.model) ? body.model : undefined;
-  const { args, viaStdin } = def.build(prompt, model);
+  const fullPrompt =
+    attachments.length > 0
+      ? `${prompt}\n\nAttached files (read them from the project root): ${attachments.join(", ")}`
+      : prompt;
+  const { args, viaStdin } = def.build(fullPrompt, model);
+  if (body.agent === "copilot") {
+    // Copilot has native attachment support (images/documents)
+    for (const a of attachments) args.push("--attachment", `"${a}"`);
+  }
 
   // Baseline snapshot so the review layer can show exactly what this run
   // changed — deterministic, works for projects without git.
@@ -62,7 +86,7 @@ export async function POST(req: Request) {
         child.kill();
       }, RUN_TIMEOUT_MS);
 
-      if (viaStdin) child.stdin.write(prompt);
+      if (viaStdin) child.stdin.write(fullPrompt);
       child.stdin.end();
 
       const push = (chunk: Buffer) => {

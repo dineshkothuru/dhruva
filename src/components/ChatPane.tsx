@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
 import { estimateUsage, formatUsage } from "@/lib/pricing";
+import { classifyIntake } from "@/lib/intake";
 
 interface Msg {
-  role: "user" | "agent" | "system" | "changes";
+  role: "user" | "agent" | "system" | "changes" | "proposal";
   agent?: AgentId;
   text: string;
   changes?: { file: string; status: string }[];
   usage?: string;
+  /** proposal: the task text + suggested workflow awaiting the user's choice */
+  proposal?: { taskText: string; workflow: string; title: string; reason: string; resolved?: string };
 }
 
 interface AgentStatus {
@@ -38,9 +41,13 @@ function toPersistable(messages: Msg[]): Msg[] {
 export default function ChatPane({
   root,
   onOpenDiff,
+  onRunStarted,
 }: {
   root: string;
   onOpenDiff?: (rel: string) => void;
+  /** Called when an intake proposal starts a workflow run — the app switches
+   * to the Workflows tab and opens the run. */
+  onRunStarted?: (runId: string) => void;
 }) {
   const [status, setStatus] = useState<Record<string, AgentStatus> | null>(null);
   const [agent, setAgent] = useState<AgentId>("copilot");
@@ -59,7 +66,32 @@ export default function ChatPane({
     }
   });
   const [running, setRunning] = useState(false);
+  const [attachments, setAttachments] = useState<{ rel: string; name: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function uploadFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      for (const f of Array.from(files).slice(0, 8)) {
+        const fd = new FormData();
+        fd.append("root", root);
+        fd.append("file", f);
+        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        const data = await res.json();
+        if (res.ok) {
+          setAttachments((a) => [...a, { rel: String(data.rel), name: String(data.name) }]);
+        } else {
+          setMessages((m) => [...m, { role: "system", text: String(data.error ?? "upload failed") }]);
+        }
+      }
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -92,9 +124,43 @@ export default function ChatPane({
   async function send() {
     const prompt = input.trim();
     if (!prompt || running) return;
+    // Task-first intake: delivery-shaped text proposes the matching workflow
+    // (deterministic classifier; the user confirms — nothing starts silently).
+    // attachments ride along as project-relative paths the agents can read
+    const attached = attachments.map((a) => a.rel);
+    const taskText =
+      attached.length > 0
+        ? `${prompt}\n\nAttached files (read them from the project root): ${attached.join(", ")}`
+        : prompt;
+    const proposal = classifyIntake(prompt);
+    if (proposal) {
+      setInput("");
+      setAttachments([]);
+      setMessages((m) => [
+        ...m,
+        { role: "user", text: prompt + (attached.length ? `\n📎 ${attachments.map((a) => a.name).join(", ")}` : "") },
+        {
+          role: "proposal",
+          text: "",
+          proposal: { taskText, ...proposal },
+        },
+      ]);
+      return;
+    }
     setInput("");
+    setAttachments([]);
+    await runAgentChat(prompt, true, attached);
+  }
+
+  /** Plain agent chat (streaming) — also the "just chat" path of a proposal. */
+  async function runAgentChat(prompt: string, addUserMsg: boolean, attached: string[] = []) {
+    if (running) return;
     setRunning(true);
-    setMessages((m) => [...m, { role: "user", text: prompt }, { role: "agent", agent, text: "" }]);
+    setMessages((m) => [
+      ...m,
+      ...(addUserMsg ? [{ role: "user", text: prompt } as Msg] : []),
+      { role: "agent", agent, text: "" },
+    ]);
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
@@ -104,6 +170,7 @@ export default function ChatPane({
           agent,
           prompt,
           model: models[agent] ?? status?.[agent]?.models?.[0]?.id ?? "",
+          attachments: attached,
         }),
       });
       if (!res.ok || !res.body) {
@@ -156,6 +223,47 @@ export default function ChatPane({
     } catch {
       /* review is best-effort; the agent output above still stands */
     }
+  }
+
+  /** Start a workflow from an intake proposal and hand off to the run view. */
+  async function startWorkflowFromProposal(msgIndex: number, workflowId: string) {
+    const msg = messages[msgIndex];
+    if (!msg?.proposal || msg.proposal.resolved) return;
+    const inputsMap: Record<string, Record<string, string | boolean>> = {
+      "bug-fix": { description: msg.proposal.taskText, runTests: false, deploy: false },
+      "feature-dev": { requirement: msg.proposal.taskText, runTests: true, deploy: false },
+    };
+    try {
+      const res = await fetch("/api/workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "start",
+          root,
+          workflow: workflowId,
+          inputs: inputsMap[workflowId] ?? { description: msg.proposal.taskText },
+          agent,
+          model: models[agent] ?? status?.[agent]?.models?.[0]?.id ?? "",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessages((m) => [...m, { role: "system", text: String(data.error ?? "could not start workflow") }]);
+        return;
+      }
+      markProposal(msgIndex, `started ${workflowId} run ${data.runId}`);
+      onRunStarted?.(String(data.runId));
+    } catch (e) {
+      setMessages((m) => [...m, { role: "system", text: String(e) }]);
+    }
+  }
+
+  function markProposal(msgIndex: number, resolved: string) {
+    setMessages((m) =>
+      m.map((msg, i) =>
+        i === msgIndex && msg.proposal ? { ...msg, proposal: { ...msg.proposal, resolved } } : msg,
+      ),
+    );
   }
 
   const current = status?.[agent];
@@ -268,6 +376,45 @@ export default function ChatPane({
                   </p>
                 )}
               </div>
+            ) : m.role === "proposal" && m.proposal ? (
+              <div key={i} className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+                <p className="text-sm text-sky-900">
+                  This looks like a <span className="font-semibold">{m.proposal.title}</span> task
+                  ({m.proposal.reason}).
+                </p>
+                {m.proposal.resolved ? (
+                  <p className="mt-2 text-xs text-sky-700">→ {m.proposal.resolved}</p>
+                ) : (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => startWorkflowFromProposal(i, m.proposal!.workflow)}
+                      className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
+                    >
+                      Run {m.proposal.title} workflow
+                    </button>
+                    <button
+                      onClick={() =>
+                        startWorkflowFromProposal(
+                          i,
+                          m.proposal!.workflow === "bug-fix" ? "feature-dev" : "bug-fix",
+                        )
+                      }
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
+                    >
+                      {m.proposal.workflow === "bug-fix" ? "Feature development instead" : "Bug fix instead"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        markProposal(i, "answered in chat");
+                        runAgentChat(m.proposal!.taskText, false);
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
+                    >
+                      Just ask the agent
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : m.role === "changes" ? (
               <div key={i} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                 <div className="mb-2 text-[10px] font-medium uppercase tracking-wide text-emerald-700">
@@ -308,7 +455,42 @@ export default function ChatPane({
 
       {/* composer */}
       <div className="border-t border-slate-200 bg-white p-4">
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {attachments.map((a) => (
+              <span
+                key={a.rel}
+                className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
+              >
+                📎 {a.name}
+                <button
+                  onClick={() => setAttachments((x) => x.filter((y) => y.rel !== a.rel))}
+                  className="text-slate-400 hover:text-slate-700"
+                  title="Remove"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.doc,.txt,.log,.csv,.md"
+            className="hidden"
+            onChange={(e) => uploadFiles(e.target.files)}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading || running}
+            className="self-end rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-40"
+            title="Attach images, PDFs, or documents (saved into the project's harness area)"
+          >
+            {uploading ? "…" : "📎"}
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

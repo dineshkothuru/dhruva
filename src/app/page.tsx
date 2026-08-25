@@ -64,6 +64,7 @@ export default function Home() {
     window.addEventListener("mouseup", onUp);
   }
   const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [jumpToRun, setJumpToRun] = useState<string | null>(null);
   const [activeFile, setActiveFile] = useState<string | null>(null);
 
   function openFile(rel: string) {
@@ -477,7 +478,15 @@ export default function Home() {
 
         {connected && result?.path ? (
           <div className={`min-h-0 flex-1 flex-col ${tab === "chat" ? "flex" : "hidden"}`}>
-            <ChatPane key={result.path} root={result.path} onOpenDiff={openDiff} />
+            <ChatPane
+              key={result.path}
+              root={result.path}
+              onOpenDiff={openDiff}
+              onRunStarted={(runId) => {
+                setJumpToRun(runId);
+                setTab("workflows");
+              }}
+            />
           </div>
         ) : (
           <div className={`flex-1 items-center justify-center px-8 ${tab === "chat" ? "flex" : "hidden"}`}>
@@ -495,7 +504,12 @@ export default function Home() {
 
         {tab === "workflows" &&
           (connected && result?.path ? (
-            <WorkflowsPane key={result.path} root={result.path} onOpenDiff={openDiff} />
+            <WorkflowsPane
+              key={result.path}
+              root={result.path}
+              onOpenDiff={openDiff}
+              jumpToRun={jumpToRun}
+            />
           ) : (
             <div className="flex flex-1 items-center justify-center px-8">
               <p className="text-sm text-slate-500">Attach a Salesforce project to run workflows.</p>
