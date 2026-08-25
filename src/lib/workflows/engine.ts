@@ -24,11 +24,31 @@ export function getRun(runId: string): RunState | undefined {
   return runs.get(runId);
 }
 
-export function listRuns(root: string): RunState[] {
-  return [...runs.values()]
-    .filter((r) => r.root === root)
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 20);
+/** Recent runs for a project: in-memory (live) runs merged with the audit
+ * files on disk, so history survives server restarts. A disk run still
+ * marked running belongs to a dead server process → shown as aborted. */
+export async function listRuns(root: string): Promise<RunState[]> {
+  const byId = new Map<string, RunState>();
+  const dir = path.join(root, ".sfharness", "runs");
+  try {
+    for (const f of await fs.readdir(dir)) {
+      if (!f.endsWith(".json")) continue;
+      try {
+        const r = JSON.parse(await fs.readFile(path.join(dir, f), "utf8")) as RunState;
+        if (!r.runId || !Array.isArray(r.steps)) continue;
+        if (r.status === "running" || r.status === "waiting_gate") r.status = "aborted";
+        byId.set(r.runId, r);
+      } catch {
+        /* corrupt audit file — skip */
+      }
+    }
+  } catch {
+    /* no runs dir yet */
+  }
+  for (const r of runs.values()) {
+    if (r.root === root) byId.set(r.runId, r); // live state wins over disk
+  }
+  return [...byId.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
 }
 
 export function resolveGate(runId: string, approved: boolean): boolean {

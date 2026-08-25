@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   }
 
   if (b.action === "runs") {
-    return NextResponse.json({ runs: listRuns(root) });
+    return NextResponse.json({ runs: await listRuns(root) });
   }
 
   if (b.action === "start") {

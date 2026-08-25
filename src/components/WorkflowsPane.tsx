@@ -33,6 +33,13 @@ const STATUS_ICON: Record<string, string> = {
 };
 // verify steps share the generic icons; type label shows "verify"
 
+function runCost(r: RunState): number {
+  return r.steps.reduce((n, s) => n + (s.usage?.costUsd ?? 0), 0);
+}
+function fmtCost(c: number): string {
+  return c < 0.01 ? `$${c.toFixed(4)}` : `$${c.toFixed(2)}`;
+}
+
 /** Structured step-output view: agent narration as prose, tool calls as
  * rows, exit/engine/error lines as badges; auto-follows while streaming. */
 function StepBody({
@@ -222,7 +229,14 @@ export default function WorkflowsPane({
     return (
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mb-4 flex items-center gap-3">
-          <button onClick={() => setRun(null)} className="text-xs text-slate-500 hover:underline">
+          <button
+            onClick={async () => {
+              setRun(null);
+              const r = await api({ action: "runs", root });
+              if (r.ok) setHistory((r.data.runs as RunState[]) ?? []);
+            }}
+            className="text-xs text-slate-500 hover:underline"
+          >
             ← workflows
           </button>
           <h2 className="text-sm font-semibold">{run.workflowTitle}</h2>
@@ -340,6 +354,47 @@ export default function WorkflowsPane({
         </div>
       )}
 
+      {history.length > 0 && (
+        <details className="mt-4 rounded-xl border border-slate-200 bg-white">
+          <summary className="flex cursor-pointer items-center px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
+            Recent runs ({history.length})
+            <span className="ml-auto font-normal normal-case tracking-normal text-slate-400">
+              total {fmtCost(history.reduce((n, r) => n + runCost(r), 0))} at API rates
+            </span>
+          </summary>
+          <div className="space-y-1 border-t border-slate-100 p-3">
+            {history.map((r) => (
+              <button
+                key={r.runId}
+                onClick={() => setRun(r)}
+                className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs hover:border-slate-400"
+              >
+                <span className="font-medium">{r.workflowTitle}</span>
+                <span className="text-slate-400">{new Date(r.createdAt).toLocaleString()}</span>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                  {r.agent}
+                  {r.model ? ` · ${r.model}` : ""}
+                </span>
+                {runCost(r) > 0 && (
+                  <span className="text-[10px] text-slate-400">{fmtCost(runCost(r))}</span>
+                )}
+                <span
+                  className={`ml-auto text-[10px] font-semibold uppercase ${
+                    r.status === "done"
+                      ? "text-emerald-600"
+                      : r.status === "running" || r.status === "waiting_gate"
+                        ? "text-sky-600"
+                        : "text-red-500"
+                  }`}
+                >
+                  {r.status.replace("_", " ")}
+                </span>
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
+
       <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
         {(catalog ?? []).map((w) => (
           <button
@@ -421,28 +476,6 @@ export default function WorkflowsPane({
         </div>
       )}
 
-      {history.length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">
-            Recent runs
-          </h3>
-          <div className="mt-2 space-y-1">
-            {history.map((r) => (
-              <button
-                key={r.runId}
-                onClick={() => setRun(r)}
-                className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs hover:border-slate-400"
-              >
-                <span className="font-medium">{r.workflowTitle}</span>
-                <span className="text-slate-400">{new Date(r.createdAt).toLocaleString()}</span>
-                <span className="ml-auto uppercase text-[10px] font-semibold text-slate-500">
-                  {r.status}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
