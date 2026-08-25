@@ -10,7 +10,13 @@ import {
   loadWorkflow,
   saveCustomWorkflow,
 } from "@/lib/workflows/custom";
-import { getRun, listRuns, resolveGate, startRun } from "@/lib/workflows/engine";
+import {
+  getRun,
+  listRuns,
+  pendingGateCount,
+  resolveGate,
+  startRun,
+} from "@/lib/workflows/engine";
 
 /** Workflow control plane.
  * POST {action:"list"}                         → workflow catalog
@@ -84,6 +90,10 @@ export async function POST(req: Request) {
 
   if (b.action === "runs") {
     return NextResponse.json({ runs: await listRuns(root) });
+  }
+
+  if (b.action === "pending") {
+    return NextResponse.json({ pendingGates: pendingGateCount(root) });
   }
 
   if (b.action === "save-custom") {

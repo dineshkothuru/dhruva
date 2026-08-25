@@ -236,6 +236,29 @@ export default function Home() {
     if (tab === "editor" && openFiles.length === 0) setTab("chat");
   }, [tab, openFiles.length]);
 
+  // gate indicator: poll the cheap in-memory count so an approval waiting on
+  // a human never sits unnoticed while they're in the editor or chat
+  const [pendingGates, setPendingGates] = useState(0);
+  useEffect(() => {
+    if (!connected || !result?.path) return;
+    const root = result.path;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { ok, data } = await postJson("/api/workflow", { action: "pending", root });
+        if (!cancelled && ok) setPendingGates(Number(data.pendingGates ?? 0));
+      } catch {
+        /* indicator is best-effort */
+      }
+    };
+    void tick();
+    const id = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [connected, result?.path]);
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Left panel — project (resizable via the divider) */}
@@ -484,13 +507,19 @@ export default function Home() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`rounded-lg px-3.5 py-1.5 text-sm font-medium capitalize transition ${
+              className={`relative rounded-lg px-3.5 py-1.5 text-sm font-medium capitalize transition ${
                 tab === t
                   ? "bg-slate-900 text-white"
                   : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
               }`}
             >
               {t}
+              {t === "workflows" && pendingGates > 0 && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 inline-flex h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-white"
+                  title={`${pendingGates} run(s) waiting for your approval`}
+                />
+              )}
             </button>
           ))}
           <span className="ml-auto text-xs text-slate-400">

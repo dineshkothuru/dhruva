@@ -32,6 +32,16 @@ export function hasActiveRun(root: string): boolean {
   return false;
 }
 
+/** Live runs for this project waiting on a human gate (in-memory only —
+ * cheap enough to poll for the tab-bar indicator). */
+export function pendingGateCount(root: string): number {
+  let n = 0;
+  for (const r of runs.values()) {
+    if (r.root === root && r.status === "waiting_gate") n++;
+  }
+  return n;
+}
+
 /** Recent runs for a project: in-memory (live) runs merged with the audit
  * files on disk, so history survives server restarts. A disk run still
  * marked running belongs to a dead server process → shown as aborted. */
