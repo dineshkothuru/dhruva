@@ -215,7 +215,12 @@ export default function Home() {
         className="flex shrink-0 flex-col bg-white"
       >
         <div className="border-b border-slate-200 px-5 py-4">
-          <h1 className="text-lg font-semibold tracking-tight">SF Delivery Harness</h1>
+          <h1 className="text-lg font-semibold tracking-tight">
+            Dhruva
+            <span className="ml-2 align-middle text-[10px] font-medium uppercase tracking-widest text-slate-400">
+              Salesforce delivery
+            </span>
+          </h1>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-5">

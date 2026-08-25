@@ -56,7 +56,7 @@ async function ensureShadow(root: string): Promise<boolean> {
       "utf8",
     );
     await runGit(root, ["config", "user.email", "harness@local"]);
-    await runGit(root, ["config", "user.name", "sf-delivery-harness"]);
+    await runGit(root, ["config", "user.name", "dhruva"]);
     // Salesforce org retrieves routinely exceed Windows' 260-char path limit
     // (e.g. nested report folders) — long paths must be on or add fails.
     await runGit(root, ["config", "core.longpaths", "true"]);

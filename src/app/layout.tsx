@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SF Delivery Harness",
-  description: "Attach a Salesforce project folder and drive delivery agents inside it.",
+  title: "Dhruva",
+  description:
+    "Dhruva — deterministic Salesforce delivery harness. Attach a project folder and drive gated, auditable delivery workflows with any coding agent.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
