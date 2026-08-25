@@ -2,6 +2,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { AGENTS, isAgentId, isSafeModelId } from "@/lib/agents";
 import { isAttachableRoot } from "@/lib/fsguard";
+import { takeSnapshot } from "@/lib/snapshot";
 
 export const maxDuration = 800;
 
@@ -39,6 +40,10 @@ export async function POST(req: Request) {
   const def = AGENTS[body.agent];
   const model = isSafeModelId(body.model) ? body.model : undefined;
   const { args, viaStdin } = def.build(prompt, model);
+
+  // Baseline snapshot so the review layer can show exactly what this run
+  // changed — deterministic, works for projects without git.
+  await takeSnapshot(root);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({

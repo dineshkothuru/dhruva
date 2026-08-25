@@ -7,6 +7,7 @@ export const IGNORED_DIRS = new Set([
   ".git",
   ".sfdx",
   ".sf",
+  ".sfharness",
   ".next",
   "dist",
   "out",

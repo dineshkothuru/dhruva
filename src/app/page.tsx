@@ -5,6 +5,7 @@ import type { DetectionResult } from "@/lib/types";
 import FileTree from "@/components/FileTree";
 import EditorPane from "@/components/EditorPane";
 import ChatPane from "@/components/ChatPane";
+import DiffPane from "@/components/DiffPane";
 
 type Tab = "chat" | "workflows" | "editor";
 
@@ -42,6 +43,11 @@ export default function Home() {
     setOpenFiles((fs) => (fs.includes(rel) ? fs : [...fs, rel]));
     setActiveFile(rel);
     setTab("editor");
+  }
+
+  // Diff views ride the same tab strip as editors, keyed "diff:<rel>".
+  function openDiff(rel: string) {
+    openFile(`diff:${rel}`);
   }
 
   function closeFile(rel: string) {
@@ -367,7 +373,7 @@ export default function Home() {
                   }`}
                 >
                   <button onClick={() => setActiveFile(f)} title={f} className="max-w-[180px] truncate">
-                    {f.split("/").pop()}
+                    {(f.startsWith("diff:") ? "Δ " : "") + f.split("/").pop()}
                   </button>
                   <button
                     onClick={() => closeFile(f)}
@@ -381,7 +387,11 @@ export default function Home() {
             </div>
             {openFiles.map((f) => (
               <div key={f} className={`min-h-0 flex-1 ${activeFile === f ? "" : "hidden"}`}>
-                <EditorPane root={result.path} file={f} />
+                {f.startsWith("diff:") ? (
+                  <DiffPane root={result.path} file={f.slice(5)} />
+                ) : (
+                  <EditorPane root={result.path} file={f} />
+                )}
               </div>
             ))}
           </div>
@@ -389,7 +399,7 @@ export default function Home() {
 
         {connected && result?.path ? (
           <div className={`min-h-0 flex-1 flex-col ${tab === "chat" ? "flex" : "hidden"}`}>
-            <ChatPane key={result.path} root={result.path} />
+            <ChatPane key={result.path} root={result.path} onOpenDiff={openDiff} />
           </div>
         ) : (
           <div className={`flex-1 items-center justify-center px-8 ${tab === "chat" ? "flex" : "hidden"}`}>

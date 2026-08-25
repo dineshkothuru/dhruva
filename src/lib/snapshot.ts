@@ -1,0 +1,106 @@
+import path from "node:path";
+import { promises as fs } from "node:fs";
+import { execFile } from "node:child_process";
+
+/** Deterministic before/after snapshots of the attached project, independent
+ * of whether the customer uses git: the harness keeps a PRIVATE shadow git
+ * repo under <project>/.sfharness/shadow.git (git as a snapshot engine —
+ * no remote, never pushed, invisible to the customer's own git because the
+ * work-tree's .git dir is untouched and .sfharness is excluded). */
+
+const SHADOW_DIRNAME = ".sfharness";
+
+function shadowGitDir(root: string) {
+  return path.join(root, SHADOW_DIRNAME, "shadow.git");
+}
+
+function runGit(root: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
+  const fixed = [`--git-dir=${shadowGitDir(root)}`, `--work-tree=${root}`, ...args];
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      fixed,
+      { cwd: root, timeout: 60_000, windowsHide: true, maxBuffer: 20_000_000 },
+      (err, stdout) => resolve({ ok: !err, stdout: stdout ?? "" }),
+    );
+  });
+}
+
+async function ensureShadow(root: string): Promise<boolean> {
+  const gitDir = shadowGitDir(root);
+  const exists = await fs
+    .stat(path.join(gitDir, "HEAD"))
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) {
+    await fs.mkdir(gitDir, { recursive: true });
+    const init = await runGit(root, ["init", "-q"]);
+    if (!init.ok) return false;
+    // never snapshot the shadow store itself, deps, or the customer's git
+    await fs.writeFile(
+      path.join(gitDir, "info", "exclude"),
+      [SHADOW_DIRNAME, ".git", "node_modules", ".sfdx", ".sf", ""].join("\n"),
+      "utf8",
+    );
+    await runGit(root, ["config", "user.email", "harness@local"]);
+    await runGit(root, ["config", "user.name", "sf-delivery-harness"]);
+  }
+  // keep the customer's git (when present) blind to the shadow store
+  const realGitInfo = path.join(root, ".git", "info");
+  try {
+    await fs.access(realGitInfo);
+    const excludeFile = path.join(realGitInfo, "exclude");
+    const cur = await fs.readFile(excludeFile, "utf8").catch(() => "");
+    if (!cur.includes(SHADOW_DIRNAME)) {
+      await fs.writeFile(excludeFile, `${cur.replace(/\n*$/, "\n")}${SHADOW_DIRNAME}\n`, "utf8");
+    }
+  } catch {
+    /* no customer git — nothing to exclude */
+  }
+  return true;
+}
+
+/** Commit the current state as the "before" baseline. Returns false when git
+ * is unavailable — callers degrade gracefully (no review, agent still runs). */
+export async function takeSnapshot(root: string): Promise<boolean> {
+  if (!(await ensureShadow(root))) return false;
+  await runGit(root, ["add", "-A"]);
+  // --allow-empty keeps the baseline moving even when nothing changed
+  const c = await runGit(root, ["commit", "-q", "--allow-empty", "-m", "baseline"]);
+  return c.ok;
+}
+
+export interface ChangedFile {
+  file: string;
+  status: "modified" | "added" | "deleted";
+}
+
+/** Changes in the work tree since the last snapshot. */
+export async function changesSince(root: string): Promise<ChangedFile[] | null> {
+  if (!(await ensureShadow(root))) return null;
+  // No baseline yet (first use): take one now — current state becomes the
+  // reference, so "no changes" is the correct answer.
+  const head = await runGit(root, ["rev-parse", "HEAD"]);
+  if (!head.ok) {
+    return (await takeSnapshot(root)) ? [] : null;
+  }
+  await runGit(root, ["add", "-A", "-N"]); // track new files without staging content
+  const res = await runGit(root, ["diff", "--name-status", "HEAD"]);
+  if (!res.ok) return null;
+  const out: ChangedFile[] = [];
+  for (const line of res.stdout.split("\n")) {
+    const m = line.match(/^([AMD])\S*\t(.+)$/);
+    if (!m) continue;
+    out.push({
+      file: m[2].replace(/\\/g, "/"),
+      status: m[1] === "A" ? "added" : m[1] === "D" ? "deleted" : "modified",
+    });
+  }
+  return out.slice(0, 200);
+}
+
+/** The snapshot ("before") content of one file; null when it didn't exist. */
+export async function baselineContent(root: string, rel: string): Promise<string | null> {
+  const res = await runGit(root, ["show", `HEAD:${rel.replace(/\\/g, "/")}`]);
+  return res.ok ? res.stdout : null;
+}

@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
 
 interface Msg {
-  role: "user" | "agent" | "system";
+  role: "user" | "agent" | "system" | "changes";
   agent?: AgentId;
   text: string;
+  changes?: { file: string; status: string }[];
 }
 
 interface AgentStatus {
@@ -20,7 +21,13 @@ interface AgentStatus {
 const AGENT_ORDER: AgentId[] = ["copilot", "claude", "codex"];
 const CUSTOM = "__custom__";
 
-export default function ChatPane({ root }: { root: string }) {
+export default function ChatPane({
+  root,
+  onOpenDiff,
+}: {
+  root: string;
+  onOpenDiff?: (rel: string) => void;
+}) {
   const [status, setStatus] = useState<Record<string, AgentStatus> | null>(null);
   const [agent, setAgent] = useState<AgentId>("copilot");
   // model per agent, so switching agents remembers each one's choice
@@ -90,6 +97,23 @@ export default function ChatPane({ root }: { root: string }) {
       setMessages((m) => [...m, { role: "system", text: String(e) }]);
     } finally {
       setRunning(false);
+    }
+    // Deterministic review: what did this run change since the snapshot?
+    try {
+      const res = await fetch("/api/changes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root }),
+      });
+      const d = await res.json();
+      if (res.ok && Array.isArray(d.changes) && d.changes.length > 0) {
+        setMessages((m) => [
+          ...m,
+          { role: "changes", text: `${d.changes.length} file(s) changed`, changes: d.changes },
+        ]);
+      }
+    } catch {
+      /* review is best-effort; the agent output above still stands */
     }
   }
 
@@ -197,6 +221,35 @@ export default function ChatPane({ root }: { root: string }) {
                 <pre className="whitespace-pre-wrap break-words font-mono text-xs text-slate-700">
                   {m.text || (running && i === messages.length - 1 ? "working…" : "")}
                 </pre>
+              </div>
+            ) : m.role === "changes" ? (
+              <div key={i} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div className="mb-2 text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+                  Review — {m.text}
+                </div>
+                <div className="flex flex-col gap-1">
+                  {m.changes?.map((c) => (
+                    <button
+                      key={c.file}
+                      onClick={() => onOpenDiff?.(c.file)}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-emerald-100"
+                      title="Open side-by-side diff"
+                    >
+                      <span
+                        className={`w-14 shrink-0 text-[10px] font-semibold uppercase ${
+                          c.status === "added"
+                            ? "text-emerald-600"
+                            : c.status === "deleted"
+                              ? "text-red-500"
+                              : "text-amber-600"
+                        }`}
+                      >
+                        {c.status}
+                      </span>
+                      <span className="truncate font-mono">{c.file}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               <div key={i} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
