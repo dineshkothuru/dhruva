@@ -18,12 +18,14 @@ interface AgentStatus {
 }
 
 const AGENT_ORDER: AgentId[] = ["copilot", "claude", "codex"];
+const CUSTOM = "__custom__";
 
 export default function ChatPane({ root }: { root: string }) {
   const [status, setStatus] = useState<Record<string, AgentStatus> | null>(null);
   const [agent, setAgent] = useState<AgentId>("copilot");
   // model per agent, so switching agents remembers each one's choice
   const [models, setModels] = useState<Partial<Record<AgentId, string>>>({});
+  const [custom, setCustom] = useState<Partial<Record<AgentId, boolean>>>({});
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [running, setRunning] = useState(false);
@@ -92,6 +94,7 @@ export default function ChatPane({ root }: { root: string }) {
   }
 
   const current = status?.[agent];
+  const isCustomModel = custom[agent] === true;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -122,19 +125,40 @@ export default function ChatPane({ root }: { root: string }) {
           );
         })}
         {current?.installed && current.models?.length > 0 && (
-          <select
-            value={models[agent] ?? current.models[0].id}
-            onChange={(e) => setModels((m) => ({ ...m, [agent]: e.target.value }))}
-            disabled={running}
-            className="ml-auto rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 outline-none focus:border-slate-400 disabled:opacity-50"
-            title="Model the agent runs with — pick one your org's policy allows"
-          >
-            {current.models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <div className="ml-auto flex items-center gap-1.5">
+            {isCustomModel && (
+              <input
+                value={models[agent] ?? ""}
+                onChange={(e) => setModels((m) => ({ ...m, [agent]: e.target.value }))}
+                placeholder="model id, e.g. claude-sonnet-5"
+                spellCheck={false}
+                disabled={running}
+                className="w-44 rounded-lg border border-slate-200 bg-white px-2 py-1 font-mono text-xs outline-none focus:border-slate-400 disabled:opacity-50"
+              />
+            )}
+            <select
+              value={isCustomModel ? CUSTOM : (models[agent] ?? current.models[0].id)}
+              onChange={(e) => {
+                if (e.target.value === CUSTOM) {
+                  setCustom((c) => ({ ...c, [agent]: true }));
+                  setModels((m) => ({ ...m, [agent]: "" }));
+                } else {
+                  setCustom((c) => ({ ...c, [agent]: false }));
+                  setModels((m) => ({ ...m, [agent]: e.target.value }));
+                }
+              }}
+              disabled={running}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 outline-none focus:border-slate-400 disabled:opacity-50"
+              title="Model the agent runs with — pick one your org's policy allows, or Custom for any model id"
+            >
+              {current.models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+              <option value={CUSTOM}>Custom…</option>
+            </select>
+          </div>
         )}
       </div>
 

@@ -45,6 +45,7 @@ export const AGENTS: Record<AgentId, AgentDef> = {
       { id: "claude-opus-5", label: "Claude Opus 5" },
       { id: "auto", label: "Auto (Copilot picks)" },
       { id: "gpt-5.4", label: "GPT-5.4" },
+      { id: "gpt-5.4-mini", label: "GPT-5.4 mini" },
       { id: "gemini-3.0-pro", label: "Gemini 3.0 Pro" },
     ],
     // --allow-all-tools: the agent may edit files and run commands inside the
@@ -68,9 +69,13 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     bin: "claude",
     models: [
       { id: "", label: "Default" },
-      { id: "sonnet", label: "Sonnet" },
-      { id: "opus", label: "Opus" },
-      { id: "haiku", label: "Haiku" },
+      { id: "claude-fable-5", label: "Fable 5" },
+      { id: "claude-opus-5", label: "Opus 5" },
+      { id: "claude-sonnet-5", label: "Sonnet 5" },
+      { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
+      { id: "sonnet", label: "Latest Sonnet (alias)" },
+      { id: "opus", label: "Latest Opus (alias)" },
+      { id: "haiku", label: "Latest Haiku (alias)" },
     ],
     // -p reads the prompt from stdin; acceptEdits lets it write files without
     // interactive approval while still refusing arbitrary commands.
