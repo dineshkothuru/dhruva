@@ -53,14 +53,11 @@ export default function Home() {
     }
   }
 
-  async function authorizeOrg(instanceUrl: string) {
+  async function authorizeOrg() {
     if (!result?.path) return;
     setLoginMsg(null);
     try {
-      const { ok, data } = await postJson("/api/org-login", {
-        path: result.path,
-        instanceUrl,
-      });
+      const { ok, data } = await postJson("/api/org-login", { path: result.path });
       if (!ok) setError(String(data.error ?? "Could not start org login"));
       else setLoginMsg(String(data.message ?? "Login started — finish in your browser."));
     } catch (e) {
@@ -213,22 +210,13 @@ export default function Home() {
                         </button>
                       </>
                     ) : (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => authorizeOrg("https://login.salesforce.com")}
-                          className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                          title="Login via login.salesforce.com (production & developer orgs)"
-                        >
-                          {result.org?.connected ? "Re-authorize (prod/dev)" : "Authorize prod/dev org"}
-                        </button>
-                        <button
-                          onClick={() => authorizeOrg("https://test.salesforce.com")}
-                          className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                          title="Login via test.salesforce.com (sandboxes)"
-                        >
-                          Authorize sandbox
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => authorizeOrg()}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                        title="Opens the Salesforce login in your browser — use 'Use Custom Domain' there for sandboxes or my-domain orgs"
+                      >
+                        {result.org?.connected ? "Re-authorize org" : "Authorize org"}
+                      </button>
                     )}
                   </div>
                 </div>

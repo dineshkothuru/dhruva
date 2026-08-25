@@ -8,7 +8,7 @@ import { promises as fs } from "node:fs";
  * through this app; the sf CLI captures the OAuth token when they finish.
  * Fire-and-forget: the UI re-runs detection afterwards to see the result. */
 export async function POST(req: Request) {
-  let body: { path?: unknown; instanceUrl?: unknown };
+  let body: { path?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -26,13 +26,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "folder not found" }, { status: 400 });
   }
 
-  // Only the two Salesforce login hosts are accepted — never a caller-supplied URL.
-  const instanceUrl =
-    body.instanceUrl === "https://test.salesforce.com"
-      ? "https://test.salesforce.com"
-      : "https://login.salesforce.com";
-
-  const args = ["org", "login", "web", "--set-default", "--instance-url", instanceUrl];
+  // Always open the standard login host; sandboxes and my-domain orgs are
+  // reached via the login page's "Use Custom Domain" option.
+  const args = [
+    "org",
+    "login",
+    "web",
+    "--set-default",
+    "--instance-url",
+    "https://login.salesforce.com",
+  ];
 
   try {
     const child = spawn("sf", args, {
