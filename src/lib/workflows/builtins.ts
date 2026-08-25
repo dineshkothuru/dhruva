@@ -257,7 +257,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
   id: "solution-design",
   title: "Solution design",
   description:
-    "Architect path: analyse a requirement against the existing codebase, gate on the proposed design, then produce a full design document (with an ERD) in the project.",
+    "Architect path: analyse a requirement against the existing codebase, gate on the proposed design, then produce HLD + TDD documents (with an ERD) in the project.",
   inputs: [
     {
       key: "requirement",
@@ -297,18 +297,26 @@ export const SOLUTION_DESIGN: WorkflowDef = {
     },
     {
       id: "write-doc",
-      title: "Write the design document (with ERD)",
+      title: "Write HLD + TDD documents (with ERD)",
       type: "agent",
       prompt:
-        "Write the APPROVED solution design into a Markdown file at docs/designs/{inputs.docName}.md " +
-        "(create the folders if needed). This is the only file you may create or modify in this step.\n\n" +
+        "Write the APPROVED solution design as TWO Markdown documents (create folders if needed). " +
+        "These two files are the only ones you may create or modify in this step:\n\n" +
+        "1. docs/designs/{inputs.docName}-hld.md — HIGH-LEVEL DESIGN, written for stakeholders and " +
+        "review boards: requirement summary, business context, solution overview and approach " +
+        "(declarative vs code and why), architecture at component-group level, data model section " +
+        "with a Mermaid er-diagram code block (```mermaid / erDiagram) of new and impacted objects " +
+        "with relationships and key fields, integration touchpoints, security model overview, " +
+        "impact analysis, risks/assumptions/open questions, effort estimate table.\n\n" +
+        "2. docs/designs/{inputs.docName}-tdd.md — TECHNICAL DESIGN DOCUMENT, written for the " +
+        "developers who will build it: per component (each apex class, trigger, LWC, flow, object/" +
+        "field) — exact API names, purpose, reuse-vs-new decision, method-level design or flow " +
+        "outline, key logic/pseudocode where non-trivial, error handling, governor-limit " +
+        "considerations, sharing/FLS specifics, deployment order and dependencies, and a test " +
+        "strategy section with the test classes/scenarios to write (positive/negative/bulk).\n\n" +
         "Approved design from the analysis step:\n{steps.analyse.output}\n\n" +
-        "Document structure: title, requirement summary, solution overview, data model section " +
-        "INCLUDING a Mermaid er-diagram code block (```mermaid / erDiagram) showing the new and " +
-        "impacted objects with their relationships and key fields, component design (per component: " +
-        "purpose, reuse-vs-new, key logic), security model, impact analysis, test strategy, risks and " +
-        "assumptions, effort estimate table. Incorporate every detail from the approved design; " +
-        "expand where the document needs precision, but do not contradict what was approved.",
+        "Incorporate every detail from the approved design; expand where precision is needed but " +
+        "do not contradict what was approved. Cross-link the two documents at the top of each.",
     },
     { id: "changes", title: "Collect created documents", type: "changes" },
     {
@@ -316,7 +324,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       title: "Accept the design document",
       type: "gate",
       message:
-        "The design document is written (open it from the changed-files list or the file tree under docs/designs/). Accept to complete the run.",
+        "HLD and TDD are written (open them from the changed-files list or the file tree under docs/designs/). Accept to complete the run.",
     },
   ],
 };
