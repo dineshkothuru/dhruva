@@ -23,6 +23,15 @@ export function getRun(runId: string): RunState | undefined {
   return runs.get(runId);
 }
 
+/** Is a run currently active (running or parked at a gate) for this project?
+ * The chat route checks this before re-baselining the shared snapshot store. */
+export function hasActiveRun(root: string): boolean {
+  for (const r of runs.values()) {
+    if (r.root === root && (r.status === "running" || r.status === "waiting_gate")) return true;
+  }
+  return false;
+}
+
 /** Recent runs for a project: in-memory (live) runs merged with the audit
  * files on disk, so history survives server restarts. A disk run still
  * marked running belongs to a dead server process → shown as aborted. */
@@ -111,10 +120,11 @@ async function execute(run: RunState, def: WorkflowDef) {
     // with the reviewer's feedback injected, then gate again.
     if (stepDef.type === "gate") {
       let revisions = 0;
+      let notice = ""; // survives re-render (e.g. "revision not possible")
       for (;;) {
         step.status = "waiting_gate";
         step.startedAt ??= Date.now();
-        step.output = template(stepDef.message ?? "Proceed?", run);
+        step.output = template(stepDef.message ?? "Proceed?", run) + notice;
         run.status = "waiting_gate";
         await persist(run);
         const decision = await new Promise<GateDecision>((resolve) => {
@@ -142,7 +152,10 @@ async function execute(run: RunState, def: WorkflowDef) {
           ? def.steps.findIndex((s) => s.id === stepDef.reviseTarget)
           : nearestAgentIndex(def, i);
         if (from < 0 || from >= i || ++revisions > MAX_REVISIONS_PER_GATE) {
-          step.output += "\n→ revision not possible here — approve or abort";
+          notice =
+            revisions > MAX_REVISIONS_PER_GATE
+              ? "\n\n→ revision limit reached — approve or abort"
+              : "\n\n→ revision is not possible at this gate (no earlier agent step) — approve or abort";
           continue;
         }
         const targetId = def.steps[from].id;
@@ -153,6 +166,8 @@ async function execute(run: RunState, def: WorkflowDef) {
         await persist(run);
         for (let k = from; k < i; k++) {
           const replayDef = def.steps[k];
+          // intermediate gates were already approved — never replay them
+          if (replayDef.type === "gate") continue;
           if (replayDef.onlyIf && !run.inputs[replayDef.onlyIf]) continue;
           const replayStep = run.steps.find((s) => s.id === replayDef.id)!;
           replayStep.output = "";
@@ -259,7 +274,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
               .map((f, n) => `${n + 1}. ${f}`)
               .join("\n")}`
           : "";
-      const prompt =
+      let prompt =
         `You are working inside the Salesforce DX project at ${run.root} ` +
         `(your current working directory). Only read and modify files in this project.\n` +
         `CRITICAL: when the task references a document, attachment, requirement file, or design ` +
@@ -271,6 +286,21 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
         template(def.prompt ?? "", run) +
         feedbackBlock;
+      // Inline-prompt agents (copilot) hit cmd.exe's ~8k command-line limit —
+      // the standards alone exceed it and the task would be truncated away.
+      // Write the full prompt to a harness file and pass a short pointer.
+      if (run.agent === "copilot") {
+        const rel = `.sfharness/tmp/prompt-${run.runId}-${def.id}.txt`;
+        try {
+          await fs.mkdir(path.join(run.root, ".sfharness", "tmp"), { recursive: true });
+          await fs.writeFile(path.join(run.root, rel), prompt, "utf8");
+          prompt =
+            `Read the file ${rel} in this project COMPLETELY (it contains your full ` +
+            `instructions, mandatory standards, and the task) and then carry out the task exactly.`;
+        } catch {
+          /* fall back to the inline prompt (may truncate) */
+        }
+      }
       // Model tier: "best" for judgment steps, "light" for mechanical ones,
       // otherwise the run's selected model. Empty tier value = CLI default.
       const tierModel = def.modelTier
@@ -408,11 +438,12 @@ function expandArgs(argv: string[], run: RunState): string[] | null {
     if (a === "{changedSourceDirs}") {
       const files = (run.changes ?? []).filter((c) => c.status !== "deleted");
       if (files.length === 0) return null;
-      for (const f of files.slice(0, 50)) out.push("--source-dir", f.file);
+      // file names can be agent-created — sanitize like any templated value
+      for (const f of files.slice(0, 50)) out.push("--source-dir", cliSafe(f.file));
     } else if (a === "{affectedSourceDirs}") {
       const files = run.affected ?? [];
       if (files.length === 0) return null;
-      for (const f of files.slice(0, 30)) out.push("--source-dir", f);
+      for (const f of files.slice(0, 30)) out.push("--source-dir", cliSafe(f));
     } else if (a.startsWith("{opt:")) {
       // "{opt:--flag:inputs.key}" → ["--flag", value] only when value non-empty
       const m = a.match(/^\{opt:([\w-]+):inputs\.([\w-]+)\}$/);
@@ -430,13 +461,13 @@ function expandArgs(argv: string[], run: RunState): string[] | null {
 /** User-provided values that end up in argv must never carry shell
  * metacharacters (args pass through cmd.exe to resolve .cmd shims). */
 function cliSafe(v: string): string {
-  return v.replace(/["'`^&|<>%$;\r\n]/g, " ").trim();
+  return v.replace(/["'`^&|<>%$;\r\n\t]/g, " ").trim();
 }
 
 /** Args pass through cmd.exe (shell:true resolves .cmd shims) — quote paths
  * with spaces; templates never contain quotes (whitelisted argv, not shell). */
 function winQuote(a: string): string {
-  return /[ ]/.test(a) && !a.startsWith('"') ? `"${a}"` : a;
+  return /[\s&|^<>%()]/.test(a) && !a.startsWith('"') ? `"${a}"` : a;
 }
 
 /** Translate claude stream-json lines into a human-readable live trace and
@@ -500,8 +531,14 @@ function spawnToStep(
     });
     const timer = setTimeout(() => {
       step.output += "\n[engine] step timed out";
+      // shell:true means child is cmd.exe — kill the whole tree or the real
+      // CLI survives as an orphan still editing the project
+      if (child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: false });
       child.kill();
     }, STEP_TIMEOUT_MS);
+    // EPIPE when the CLI exits before draining (e.g. expired login) must not
+    // crash the server process
+    child.stdin.on("error", () => {});
     if (stdin) child.stdin.write(stdin);
     child.stdin.end();
     const push = (chunk: Buffer) => {

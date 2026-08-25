@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DetectionResult } from "@/lib/types";
 import FileTree from "@/components/FileTree";
 import EditorPane from "@/components/EditorPane";
@@ -43,22 +43,26 @@ export default function Home() {
   const [loginMsg, setLoginMsg] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [panelWidth, setPanelWidth] = useState(380);
+  const connectTarget = useRef("");
 
   function startResize(e: React.MouseEvent) {
     e.preventDefault();
     const startX = e.clientX;
     const startW = panelWidth;
+    let lastW = startW;
     function onMove(ev: MouseEvent) {
       const w = Math.min(700, Math.max(240, startW + (ev.clientX - startX)));
+      lastW = w;
       setPanelWidth(w);
     }
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      setPanelWidth((w) => {
-        localStorage.setItem("sfdh.panelWidth", String(w));
-        return w;
-      });
+      try {
+        localStorage.setItem("sfdh.panelWidth", String(lastW));
+      } catch {
+        /* quota — persistence is best-effort */
+      }
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -74,7 +78,11 @@ export default function Home() {
   }
 
   // Diff views ride the same tab strip as editors, keyed "diff:<rel>".
+  // Re-opening a diff bumps its nonce so the pane remounts and refetches —
+  // a second agent run on the same file must never show the previous diff.
+  const [diffNonce, setDiffNonce] = useState<Record<string, number>>({});
   function openDiff(rel: string) {
+    setDiffNonce((n) => ({ ...n, [rel]: (n[rel] ?? 0) + 1 }));
     openFile(`diff:${rel}`);
   }
 
@@ -151,6 +159,7 @@ export default function Home() {
     // Only a DIFFERENT project resets the workspace — reconnecting or
     // refreshing the same one must keep open tabs and chat context.
     const switching = result?.path !== undefined && norm(result.path) !== norm(target);
+    connectTarget.current = norm(target);
     setLoading(true);
     setError(null);
     setLoginMsg(null);
@@ -178,8 +187,14 @@ export default function Home() {
         try {
           const ws = JSON.parse(localStorage.getItem(`sfdh.ws.${norm(target)}`) ?? "null");
           if (ws && Array.isArray(ws.openFiles)) {
-            setOpenFiles(ws.openFiles.slice(0, 20));
-            setActiveFile(typeof ws.activeFile === "string" ? ws.activeFile : null);
+            const files = ws.openFiles.slice(0, 20) as string[];
+            setOpenFiles(files);
+            // the persisted active file may have been truncated away
+            setActiveFile(
+              typeof ws.activeFile === "string" && files.includes(ws.activeFile)
+                ? ws.activeFile
+                : (files[0] ?? null),
+            );
           }
         } catch {
           /* corrupt workspace entry — start clean */
@@ -188,7 +203,7 @@ export default function Home() {
 
       // Phase 2: fill the org badge in the background.
       const orgRes = await postJson("/api/project", { path: target, orgOnly: true });
-      if (orgRes.ok && orgRes.data.org) {
+      if (orgRes.ok && orgRes.data.org && connectTarget.current === norm(target)) {
         const org = orgRes.data.org as DetectionResult["org"];
         setResult((r) => (r && norm(r.path) === norm(target) ? { ...r, org } : r));
         setDetailsOpen(!org?.connected); // keep authorize visible until an org is set
@@ -205,11 +220,21 @@ export default function Home() {
   // Persist the workspace (open tabs) per project so refreshes restore it.
   useEffect(() => {
     if (!connected || !result?.path) return;
-    localStorage.setItem(
-      `sfdh.ws.${norm(result.path)}`,
-      JSON.stringify({ openFiles, activeFile }),
-    );
+    try {
+      localStorage.setItem(
+        `sfdh.ws.${norm(result.path)}`,
+        JSON.stringify({ openFiles: openFiles.slice(0, 20), activeFile }),
+      );
+    } catch {
+      /* quota — persistence is best-effort, never crash the tree */
+    }
   }, [connected, result?.path, openFiles, activeFile]);
+
+  // an "editor" tab with no files renders nothing — fall back to chat
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (tab === "editor" && openFiles.length === 0) setTab("chat");
+  }, [tab, openFiles.length]);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -362,20 +387,19 @@ export default function Home() {
                             Re-authorize org
                           </button>
                         ) : result.org?.reason === "checking…" ? null : (
-                          <div className="flex gap-2">
+                          <div className="flex flex-col gap-1">
                             <button
                               onClick={() => authorizeOrg("https://test.salesforce.com")}
-                              className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                              title="Sandboxes log in via test.salesforce.com"
+                              className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                              title="Opens the sandbox login (test.salesforce.com)"
                             >
-                              Authorize sandbox
+                              Authorize org
                             </button>
                             <button
                               onClick={() => authorizeOrg("https://login.salesforce.com")}
-                              className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                              title="Production/Developer orgs log in via login.salesforce.com"
+                              className="text-left text-[10px] text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline"
                             >
-                              Authorize production
+                              production org instead?
                             </button>
                           </div>
                         )}
@@ -505,7 +529,11 @@ export default function Home() {
             {openFiles.map((f) => (
               <div key={f} className={`min-h-0 flex-1 ${activeFile === f ? "" : "hidden"}`}>
                 {f.startsWith("diff:") ? (
-                  <DiffPane root={result.path} file={f.slice(5)} />
+                  <DiffPane
+                    key={diffNonce[f.slice(5)] ?? 0}
+                    root={result.path}
+                    file={f.slice(5)}
+                  />
                 ) : (
                   <EditorPane root={result.path} file={f} />
                 )}
@@ -540,19 +568,25 @@ export default function Home() {
           </div>
         )}
 
-        {tab === "workflows" &&
-          (connected && result?.path ? (
+        {connected && result?.path ? (
+          <div className={`min-h-0 flex-1 flex-col ${tab === "workflows" ? "flex" : "hidden"}`}>
             <WorkflowsPane
               key={result.path}
               root={result.path}
               onOpenDiff={openDiff}
               jumpToRun={jumpToRun}
+              onJumpConsumed={() => setJumpToRun(null)}
             />
-          ) : (
-            <div className="flex flex-1 items-center justify-center px-8">
-              <p className="text-sm text-slate-500">Attach a Salesforce project to run workflows.</p>
-            </div>
-          ))}
+          </div>
+        ) : (
+          <div
+            className={`flex-1 items-center justify-center px-8 ${
+              tab === "workflows" ? "flex" : "hidden"
+            }`}
+          >
+            <p className="text-sm text-slate-500">Attach a Salesforce project to run workflows.</p>
+          </div>
+        )}
       </section>
     </div>
   );

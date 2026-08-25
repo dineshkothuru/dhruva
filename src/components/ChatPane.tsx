@@ -156,6 +156,13 @@ export default function ChatPane({
   /** Plain agent chat (streaming) — also the "just chat" path of a proposal. */
   async function runAgentChat(prompt: string, addUserMsg: boolean, attached: string[] = []) {
     if (running) return;
+    if (!status?.[agent]?.installed) {
+      setMessages((m) => [
+        ...m,
+        { role: "system", text: `${agent} is not installed: ${status?.[agent]?.installHint ?? ""}` },
+      ]);
+      return;
+    }
     setRunning(true);
     setMessages((m) => [
       ...m,
@@ -176,22 +183,30 @@ export default function ChatPane({
       });
       if (!res.ok || !res.body) {
         const err = await res.text();
-        setMessages((m) => [...m, { role: "system", text: err || `HTTP ${res.status}` }]);
+        // drop the empty agent bubble; show the error instead
+        setMessages((m) => [
+          ...m.filter((x, i) => !(i === m.length - 1 && x.role === "agent" && !x.text)),
+          { role: "system", text: err || `HTTP ${res.status}` },
+        ]);
         return;
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
+      const append = (chunk: string) => {
+        if (!chunk) return;
         setMessages((m) => {
           const next = [...m];
           const last = next[next.length - 1];
           if (last?.role === "agent") next[next.length - 1] = { ...last, text: last.text + chunk };
           return next;
         });
+      };
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        append(decoder.decode(value, { stream: true }));
       }
+      append(decoder.decode()); // flush a trailing multi-byte character
     } catch (e) {
       setMessages((m) => [...m, { role: "system", text: String(e) }]);
     } finally {
@@ -230,6 +245,8 @@ export default function ChatPane({
   async function startWorkflowFromProposal(msgIndex: number, workflowId: string) {
     const msg = messages[msgIndex];
     if (!msg?.proposal || msg.proposal.resolved) return;
+    // synchronous guard: a double-click must not start two real runs
+    markProposal(msgIndex, "starting…");
     const inputsMap: Record<string, Record<string, string | boolean>> = {
       "bug-fix": { description: msg.proposal.taskText, runTests: false, deploy: false },
       "feature-dev": { requirement: msg.proposal.taskText, runTests: true, deploy: false },
@@ -251,7 +268,7 @@ export default function ChatPane({
       });
       const data = await res.json();
       if (!res.ok) {
-        setMessages((m) => [...m, { role: "system", text: String(data.error ?? "could not start workflow") }]);
+        markProposal(msgIndex, `failed: ${String(data.error ?? "could not start workflow")}`);
         return;
       }
       markProposal(msgIndex, `started ${workflowId} run ${data.runId}`);

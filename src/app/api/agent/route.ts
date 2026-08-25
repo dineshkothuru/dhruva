@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { AGENTS, isAgentId, isSafeModelId } from "@/lib/agents";
 import { isAttachableRoot } from "@/lib/fsguard";
 import { takeSnapshot } from "@/lib/snapshot";
+import { hasActiveRun } from "@/lib/workflows/engine";
 
 export const maxDuration = 800;
 
@@ -66,8 +67,10 @@ export async function POST(req: Request) {
   }
 
   // Baseline snapshot so the review layer can show exactly what this run
-  // changed — deterministic, works for projects without git.
-  await takeSnapshot(root);
+  // changed — deterministic, works for projects without git. Skipped while a
+  // workflow run is active for this project: re-baselining mid-run (e.g. at a
+  // gate) would erase that run's pending diff.
+  if (!hasActiveRun(root)) await takeSnapshot(root);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -86,6 +89,8 @@ export async function POST(req: Request) {
         child.kill();
       }, RUN_TIMEOUT_MS);
 
+      // EPIPE (CLI exits before draining, e.g. expired login) must not crash
+      child.stdin.on("error", () => {});
       if (viaStdin) child.stdin.write(fullPrompt);
       child.stdin.end();
 

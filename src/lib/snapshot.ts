@@ -33,7 +33,9 @@ async function clearStaleLock(root: string) {
   const lock = path.join(shadowGitDir(root), "index.lock");
   try {
     const s = await fs.stat(lock);
-    if (Date.now() - s.mtimeMs > 60_000) await fs.unlink(lock);
+    // must exceed the git op timeout (300s) — a live add on a huge org tree
+    // can legitimately hold the lock for minutes
+    if (Date.now() - s.mtimeMs > 330_000) await fs.unlink(lock);
   } catch {
     /* no lock — fine */
   }
@@ -106,7 +108,9 @@ export async function changesSince(root: string): Promise<ChangedFile[] | null> 
   }
   await clearStaleLock(root);
   await runGit(root, ["add", "-A", "-N"]); // track new files without staging content
-  const res = await runGit(root, ["diff", "--name-status", "HEAD"]);
+  // --no-renames: a renamed file must surface as delete+add, or it would be
+  // invisible to verify/review/deploy (the parser reads A/M/D lines only)
+  const res = await runGit(root, ["diff", "--no-renames", "--name-status", "HEAD"]);
   if (!res.ok) return null;
   const out: ChangedFile[] = [];
   for (const line of res.stdout.split("\n")) {

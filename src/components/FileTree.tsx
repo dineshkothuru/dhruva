@@ -133,6 +133,7 @@ export default function FileTree({
   const [results, setResults] = useState<string[] | null>(null);
   const [searching, setSearching] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queryRef = useRef("");
 
   // Remounted per project (key={root}) — the effect only loads.
   useEffect(() => {
@@ -147,6 +148,7 @@ export default function FileTree({
 
   function onQueryChange(q: string) {
     setQuery(q);
+    queryRef.current = q;
     if (debounce.current) clearTimeout(debounce.current);
     if (q.trim().length < 2) {
       setResults(null);
@@ -162,14 +164,23 @@ export default function FileTree({
           body: JSON.stringify({ root, q }),
         });
         const data = await res.json();
+        // a slow response for an older query must not overwrite newer results
+        if (queryRef.current !== q) return;
         setResults(res.ok ? (data.results as string[]) : []);
       } catch {
-        setResults([]);
+        if (queryRef.current === q) setResults([]);
       } finally {
-        setSearching(false);
+        if (queryRef.current === q) setSearching(false);
       }
     }, 250);
   }
+
+  // clear any pending debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (debounce.current) clearTimeout(debounce.current);
+    };
+  }, []);
 
   const norm = (defaultDir ?? "force-app").replace(/\\/g, "/").replace(/\/+$/, "");
   const autoOpenPath = [norm, `${norm}/main`, `${norm}/main/default`];

@@ -163,11 +163,14 @@ export default function WorkflowsPane({
   root,
   onOpenDiff,
   jumpToRun,
+  onJumpConsumed,
 }: {
   root: string;
   onOpenDiff?: (rel: string) => void;
   /** Run id to open on arrival (a run started from the chat intake). */
   jumpToRun?: string | null;
+  /** Called once the jump target is opened, so it never re-fires. */
+  onJumpConsumed?: () => void;
 }) {
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
   const [selected, setSelected] = useState<CatalogItem | null>(null);
@@ -177,6 +180,12 @@ export default function WorkflowsPane({
   const [history, setHistory] = useState<RunState[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [gateNote, setGateNote] = useState("");
+  const [gating, setGating] = useState(false);
+  const [starting, setStarting] = useState(false);
+  // monotonically increasing sequence: stale state responses are dropped so a
+  // slow poll can never overwrite a fresher post-gate state
+  const stateSeq = useRef(0);
+
   const [tierCfg, setTierCfg] = useState<Record<string, TierConfig>>({});
   const [status, setStatus] = useState<Record<
     string,
@@ -206,6 +215,12 @@ export default function WorkflowsPane({
     return { ok: res.ok, data };
   }, []);
 
+  async function fetchRunState(runId: string) {
+    const seq = ++stateSeq.current;
+    const { ok, data } = await api({ action: "state", runId });
+    if (ok && seq === stateSeq.current) setRun(data as unknown as RunState);
+  }
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -226,17 +241,18 @@ export default function WorkflowsPane({
     };
   }, [api, root]);
 
-  // a run started from the chat intake opens directly
+  // a run started from the chat intake opens directly (consumed exactly once)
   useEffect(() => {
     if (!jumpToRun) return;
     let cancelled = false;
     (async () => {
-      const { ok, data } = await api({ action: "state", runId: jumpToRun });
-      if (!cancelled && ok) setRun(data as unknown as RunState);
+      if (!cancelled) await fetchRunState(jumpToRun);
+      onJumpConsumed?.();
     })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, jumpToRun]);
 
   // poll the active run
@@ -246,13 +262,14 @@ export default function WorkflowsPane({
       pollRef.current = null;
       return;
     }
-    pollRef.current = setInterval(async () => {
-      const { ok, data } = await api({ action: "state", runId: run.runId });
-      if (ok) setRun(data as unknown as RunState);
+    pollRef.current = setInterval(() => {
+      void fetchRunState(run.runId);
     }, 1500);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
+    // fetchRunState is stable in behavior (api is memoized; seq is a ref)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, run]);
 
   function pick(w: CatalogItem) {
@@ -266,31 +283,39 @@ export default function WorkflowsPane({
   }
 
   async function start() {
-    if (!selected) return;
+    if (!selected || starting) return;
+    setStarting(true);
     setError(null);
-    const { ok, data } = await api({
-      action: "start",
-      root,
-      workflow: selected.id,
-      inputs,
-      agent,
-      tiers: tiersFor(agent),
-    });
-    if (!ok) {
-      setError(String(data.error ?? "could not start"));
-      return;
+    try {
+      const { ok, data } = await api({
+        action: "start",
+        root,
+        workflow: selected.id,
+        inputs,
+        agent,
+        tiers: tiersFor(agent),
+      });
+      if (!ok) {
+        setError(String(data.error ?? "could not start"));
+        return;
+      }
+      await fetchRunState(String(data.runId));
+      setSelected(null);
+    } finally {
+      setStarting(false);
     }
-    const st = await api({ action: "state", runId: data.runId });
-    if (st.ok) setRun(st.data as unknown as RunState);
-    setSelected(null);
   }
 
   async function gate(decision: "approve" | "abort" | "revise", feedback?: string) {
-    if (!run) return;
-    await api({ action: "gate", runId: run.runId, decision, feedback });
-    setGateNote("");
-    const st = await api({ action: "state", runId: run.runId });
-    if (st.ok) setRun(st.data as unknown as RunState);
+    if (!run || gating) return;
+    setGating(true);
+    try {
+      await api({ action: "gate", runId: run.runId, decision, feedback });
+      setGateNote("");
+      await fetchRunState(run.runId);
+    } finally {
+      setGating(false);
+    }
   }
 
   // ---------- run view ----------
@@ -376,13 +401,14 @@ export default function WorkflowsPane({
                   <div className="mt-2 flex gap-2">
                     <button
                       onClick={() => gate("approve")}
-                      className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
+                      disabled={gating}
+                      className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-40"
                     >
-                      Approve & continue
+                      {gating ? "…" : "Approve & continue"}
                     </button>
                     <button
                       onClick={() => gate("revise", gateNote)}
-                      disabled={!gateNote.trim()}
+                      disabled={gating || !gateNote.trim()}
                       className="rounded-lg border border-amber-400 bg-white px-4 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-40"
                       title="Re-run the analysis with your instructions, then review again"
                     >
@@ -390,7 +416,8 @@ export default function WorkflowsPane({
                     </button>
                     <button
                       onClick={() => gate("abort")}
-                      className="rounded-lg border border-slate-300 bg-white px-4 py-1.5 text-xs font-medium hover:bg-slate-50"
+                      disabled={gating}
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
                     >
                       Abort run
                     </button>
@@ -641,9 +668,10 @@ export default function WorkflowsPane({
               </select>
               <button
                 onClick={start}
-                className="ml-auto rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                disabled={starting}
+                className="ml-auto rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40"
               >
-                Start run
+                {starting ? "Starting…" : "Start run"}
               </button>
             </div>
           </div>
