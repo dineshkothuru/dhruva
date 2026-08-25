@@ -20,10 +20,23 @@ function runGit(root: string, args: string[]): Promise<{ ok: boolean; stdout: st
     execFile(
       "git",
       fixed,
-      { cwd: root, timeout: 60_000, windowsHide: true, maxBuffer: 20_000_000 },
+      // Org retrieves can be 30k+ files: give add/commit real time.
+      { cwd: root, timeout: 300_000, windowsHide: true, maxBuffer: 50_000_000 },
       (err, stdout) => resolve({ ok: !err, stdout: stdout ?? "" }),
     );
   });
+}
+
+/** A killed git process (timeout, crash) leaves index.lock behind and blocks
+ * every later call. Single-user local tool: safe to clear a stale lock. */
+async function clearStaleLock(root: string) {
+  const lock = path.join(shadowGitDir(root), "index.lock");
+  try {
+    const s = await fs.stat(lock);
+    if (Date.now() - s.mtimeMs > 60_000) await fs.unlink(lock);
+  } catch {
+    /* no lock — fine */
+  }
 }
 
 async function ensureShadow(root: string): Promise<boolean> {
@@ -44,6 +57,12 @@ async function ensureShadow(root: string): Promise<boolean> {
     );
     await runGit(root, ["config", "user.email", "harness@local"]);
     await runGit(root, ["config", "user.name", "sf-delivery-harness"]);
+    // Salesforce org retrieves routinely exceed Windows' 260-char path limit
+    // (e.g. nested report folders) — long paths must be on or add fails.
+    await runGit(root, ["config", "core.longpaths", "true"]);
+    // Snapshots must be byte-faithful; no line-ending rewriting or warnings.
+    await runGit(root, ["config", "core.autocrlf", "false"]);
+    await runGit(root, ["config", "core.safecrlf", "false"]);
   }
   // keep the customer's git (when present) blind to the shadow store
   const realGitInfo = path.join(root, ".git", "info");
@@ -64,6 +83,7 @@ async function ensureShadow(root: string): Promise<boolean> {
  * is unavailable — callers degrade gracefully (no review, agent still runs). */
 export async function takeSnapshot(root: string): Promise<boolean> {
   if (!(await ensureShadow(root))) return false;
+  await clearStaleLock(root);
   await runGit(root, ["add", "-A"]);
   // --allow-empty keeps the baseline moving even when nothing changed
   const c = await runGit(root, ["commit", "-q", "--allow-empty", "-m", "baseline"]);
@@ -84,6 +104,7 @@ export async function changesSince(root: string): Promise<ChangedFile[] | null> 
   if (!head.ok) {
     return (await takeSnapshot(root)) ? [] : null;
   }
+  await clearStaleLock(root);
   await runGit(root, ["add", "-A", "-N"]); // track new files without staging content
   const res = await runGit(root, ["diff", "--name-status", "HEAD"]);
   if (!res.ok) return null;
