@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
 import { detectProject } from "@/lib/detect";
+import { sfOrgDisplay } from "@/lib/sfcli";
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -10,7 +11,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const p = (body as { path?: unknown })?.path;
+  const b = body as { path?: unknown; skipOrg?: unknown; orgOnly?: unknown };
+  const p = b?.path;
   if (typeof p !== "string" || p.length === 0 || p.length > 500) {
     return NextResponse.json({ error: "path (string) is required" }, { status: 400 });
   }
@@ -21,6 +23,11 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = await detectProject(p);
+  // Second phase of a two-phase connect: just the (slow) org badge.
+  if (b.orgOnly === true) {
+    return NextResponse.json({ org: await sfOrgDisplay(path.normalize(p.trim())) });
+  }
+
+  const result = await detectProject(p, { skipOrg: b.skipOrg === true });
   return NextResponse.json(result);
 }

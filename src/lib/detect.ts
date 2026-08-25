@@ -6,7 +6,10 @@ import { sfOrgDisplay } from "./sfcli";
 /** Validate a folder as a Salesforce (SFDX) project and gather its context.
  * Read-only: parses sfdx-project.json and probes the sf CLI; never executes
  * anything found inside the target folder. */
-export async function detectProject(rawPath: string): Promise<DetectionResult> {
+export async function detectProject(
+  rawPath: string,
+  opts?: { skipOrg?: boolean },
+): Promise<DetectionResult> {
   const p = path.normalize(rawPath.trim());
 
   let stat;
@@ -59,7 +62,11 @@ export async function detectProject(rawPath: string): Promise<DetectionResult> {
     .then((s) => s.isDirectory())
     .catch(() => false);
 
-  const org = await sfOrgDisplay(p);
+  // The sf CLI probe takes seconds — callers can skip it to render the
+  // repo-level result instantly and fetch the org badge separately.
+  const org = opts?.skipOrg
+    ? { connected: false, reason: "checking…" }
+    : await sfOrgDisplay(p);
 
   return {
     status: "connected",

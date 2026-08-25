@@ -21,6 +21,18 @@ interface AgentStatus {
 const AGENT_ORDER: AgentId[] = ["copilot", "claude", "codex"];
 const CUSTOM = "__custom__";
 
+function chatKey(root: string) {
+  return `sfdh.chat.${root.trim().replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase()}`;
+}
+
+/** Cap what we persist: last 60 messages, agent outputs trimmed. */
+function toPersistable(messages: Msg[]): Msg[] {
+  return messages.slice(-60).map((m) => ({
+    ...m,
+    text: m.text.length > 20_000 ? `${m.text.slice(0, 20_000)}\n…[truncated]` : m.text,
+  }));
+}
+
 export default function ChatPane({
   root,
   onOpenDiff,
@@ -34,7 +46,16 @@ export default function ChatPane({
   const [models, setModels] = useState<Partial<Record<AgentId, string>>>({});
   const [custom, setCustom] = useState<Partial<Record<AgentId, boolean>>>({});
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Msg[]>([]);
+  // ChatPane only mounts after a project connects (post-hydration), so a
+  // lazy localStorage read is safe here — transcripts persist per project.
+  const [messages, setMessages] = useState<Msg[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(chatKey(root)) ?? "null");
+      return Array.isArray(saved) ? (saved as Msg[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [running, setRunning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -56,7 +77,15 @@ export default function ChatPane({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages]);
+    // Persist the transcript (skip mid-stream churn: only when not running).
+    if (!running) {
+      try {
+        localStorage.setItem(chatKey(root), JSON.stringify(toPersistable(messages)));
+      } catch {
+        /* storage full — transcript persistence is best-effort */
+      }
+    }
+  }, [messages, running, root]);
 
   async function send() {
     const prompt = input.trim();

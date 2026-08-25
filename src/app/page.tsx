@@ -28,6 +28,11 @@ async function postJson(url: string, body: unknown) {
   return { ok: res.ok, data };
 }
 
+/** Normalize a path for equality/storage keys (case+separator-insensitive). */
+function norm(p: string) {
+  return p.trim().replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+}
+
 export default function Home() {
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(false);
@@ -115,22 +120,50 @@ export default function Home() {
   async function connect(pathOverride?: string) {
     const target = (typeof pathOverride === "string" ? pathOverride : path).trim();
     if (!target || loading) return;
+    // Only a DIFFERENT project resets the workspace — reconnecting or
+    // refreshing the same one must keep open tabs and chat context.
+    const switching = result?.path !== undefined && norm(result.path) !== norm(target);
     setLoading(true);
     setError(null);
     setLoginMsg(null);
-    setResult(null);
-    setOpenFiles([]);
-    setActiveFile(null);
-    setTab((t) => (t === "editor" ? "chat" : t));
+    if (switching) {
+      setResult(null);
+      setOpenFiles([]);
+      setActiveFile(null);
+      setTab((t) => (t === "editor" ? "chat" : t));
+    }
     try {
-      const { ok, data } = await postJson("/api/project", { path: target });
+      // Phase 1: instant repo-level result (no slow sf CLI probe).
+      const { ok, data } = await postJson("/api/project", { path: target, skipOrg: true });
       if (!ok) {
         setError(String(data.error ?? "Request failed"));
-      } else {
-        const det = data as unknown as DetectionResult;
-        setResult(det);
-        setDetailsOpen(!det.org?.connected); // keep authorize visible until an org is set
-        localStorage.setItem("sfdh.lastPath", target);
+        return;
+      }
+      const det = data as unknown as DetectionResult;
+      setResult(det);
+      localStorage.setItem("sfdh.lastPath", target);
+      setLoading(false);
+      if (det.status !== "connected") return;
+
+      // Restore this project's workspace (tabs) from a previous session.
+      if (!openFiles.length || switching) {
+        try {
+          const ws = JSON.parse(localStorage.getItem(`sfdh.ws.${norm(target)}`) ?? "null");
+          if (ws && Array.isArray(ws.openFiles)) {
+            setOpenFiles(ws.openFiles.slice(0, 20));
+            setActiveFile(typeof ws.activeFile === "string" ? ws.activeFile : null);
+          }
+        } catch {
+          /* corrupt workspace entry — start clean */
+        }
+      }
+
+      // Phase 2: fill the org badge in the background.
+      const orgRes = await postJson("/api/project", { path: target, orgOnly: true });
+      if (orgRes.ok && orgRes.data.org) {
+        const org = orgRes.data.org as DetectionResult["org"];
+        setResult((r) => (r && norm(r.path) === norm(target) ? { ...r, org } : r));
+        setDetailsOpen(!org?.connected); // keep authorize visible until an org is set
       }
     } catch (e) {
       setError(String(e));
@@ -140,6 +173,15 @@ export default function Home() {
   }
 
   const connected = result?.status === "connected";
+
+  // Persist the workspace (open tabs) per project so refreshes restore it.
+  useEffect(() => {
+    if (!connected || !result?.path) return;
+    localStorage.setItem(
+      `sfdh.ws.${norm(result.path)}`,
+      JSON.stringify({ openFiles, activeFile }),
+    );
+  }, [connected, result?.path, openFiles, activeFile]);
 
   return (
     <div className="flex h-screen overflow-hidden">
