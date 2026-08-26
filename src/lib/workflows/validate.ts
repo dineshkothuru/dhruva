@@ -20,10 +20,17 @@ export function checkWorkflowSemantics(def: WorkflowDef): string[] {
     if (s.args) texts.push(...s.args);
     const joined = texts.join("\n");
 
-    // {inputs.X} must be a declared input
+    // {inputs.X} must be a declared input — including inside {opt:} / {flag:}
     for (const m of joined.matchAll(/\{inputs\.([\w-]+)\}/g)) {
       if (!inputKeys.has(m[1])) {
         problems.push(`step "${s.id}": references {inputs.${m[1]}} but no such input is declared`);
+      }
+    }
+    for (const m of joined.matchAll(/\{(?:opt|flag):[\w-]+:inputs\.([\w-]+)\}/g)) {
+      if (!inputKeys.has(m[1])) {
+        problems.push(
+          `step "${s.id}": opt/flag placeholder references input "${m[1]}" which is not declared`,
+        );
       }
     }
     // {steps.Y.output} must reference an EARLIER step
