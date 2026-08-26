@@ -1,63 +1,157 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { isAttachableRoot } from "@/lib/fsguard";
 
-/** Launch Salesforce Local Dev for the attached project: opens the org in
- * the browser with LOCAL LWC files rendered live against REAL org data
- * (no deploy). Runs `sf lightning dev app` in a visible console window the
- * user can watch and close — it is a long-lived dev server, not a step.
- * Note: only UI components are virtualized; Apex still runs org-side. */
+/** Local Dev preview manager — no raw console windows. The UI picks the
+ * app/site in a Dhruva modal, the dev server runs hidden here, and its
+ * output streams into the panel. One preview per project at a time.
+ *
+ * POST {path, action:"apps"}                 → {apps:[{name,label}]}
+ * POST {path, action:"sites"}                → {sites:[names]}
+ * POST {path, action:"start", kind, name}    → {started}
+ * POST {path, action:"status"}               → {running, kind, name, logs}
+ * POST {path, action:"stop"}                 → {stopped}
+ * POST {path, action:"open"}                 → opens the default org */
+
+interface Preview {
+  child: ChildProcess;
+  kind: string;
+  name: string;
+  logs: string[];
+}
+const previews = new Map<string, Preview>(); // key: normalized root
+
+const SAFE_NAME = /^[A-Za-z0-9 _.-]{1,80}$/;
+
+function sfJson(root: string, args: string[]): Promise<{ ok: boolean; out: unknown }> {
+  return new Promise((resolve) => {
+    execFile(
+      "sf",
+      args,
+      {
+        cwd: root,
+        timeout: 60_000,
+        shell: true,
+        windowsHide: true,
+        maxBuffer: 20_000_000,
+        env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
+      },
+      (err, stdout) => {
+        try {
+          const start = String(stdout).indexOf("{");
+          resolve({ ok: !err, out: JSON.parse(String(stdout).slice(start)) });
+        } catch {
+          resolve({ ok: false, out: null });
+        }
+      },
+    );
+  });
+}
+
 export async function POST(req: Request) {
-  let body: { path?: unknown; kind?: unknown };
+  let b: { path?: unknown; action?: unknown; kind?: unknown; name?: unknown };
   try {
-    body = await req.json();
+    b = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const root = typeof body.path === "string" ? path.normalize(body.path.trim()) : "";
-  // "app" = Lightning app preview; "site" = LWR site preview;
-  // "open" = just open the default org (incl. a default scratch org) logged in
-  const kind = body.kind === "site" ? "site" : body.kind === "open" ? "open" : "app";
+  const root = typeof b.path === "string" ? path.normalize(b.path.trim()) : "";
   if (!root || !(await isAttachableRoot(root))) {
     return NextResponse.json({ error: "not an attached Salesforce project" }, { status: 400 });
   }
+  const key = root.toLowerCase();
 
-  if (kind === "open") {
-    // no console needed — sf org open just launches the browser and exits
-    try {
-      const child = spawn("sf org open", {
-        cwd: root,
-        detached: true,
-        stdio: "ignore",
-        windowsHide: true,
-        shell: true,
-      });
-      child.unref();
-    } catch (e) {
-      return NextResponse.json({ error: `could not open the org: ${String(e)}` }, { status: 500 });
-    }
-    return NextResponse.json({ started: true, message: "Opening the default org in your browser…" });
-  }
-
-  try {
-    // visible console so the user sees the dev-server status/prompts and can
-    // stop it; detached so this request returns immediately
-    // single shell string: node's arg-quoting breaks `start`'s title parsing
-    const child = spawn(`start "DhruvaLocalDev" cmd /k "sf lightning dev ${kind}"`, {
+  if (b.action === "open") {
+    const child = spawn("sf org open", {
       cwd: root,
       detached: true,
       stdio: "ignore",
-      windowsHide: false,
+      windowsHide: true,
       shell: true,
     });
     child.unref();
-  } catch (e) {
-    return NextResponse.json({ error: `could not start Local Dev: ${String(e)}` }, { status: 500 });
+    return NextResponse.json({ started: true, message: "Opening the default org in your browser…" });
   }
 
-  return NextResponse.json({
-    started: true,
-    message: `Local Dev console opened — pick the ${kind === "site" ? "site" : "app"} there; the browser then shows your local files against live org data.`,
-  });
+  if (b.action === "apps") {
+    const res = await sfJson(root, [
+      "data", "query", "-q",
+      `"SELECT DeveloperName, Label FROM AppDefinition WHERE UiType='Lightning' ORDER BY Label"`,
+      "--json",
+    ]);
+    const records =
+      ((res.out as { result?: { records?: { DeveloperName: string; Label: string }[] } })?.result
+        ?.records ?? []) as { DeveloperName: string; Label: string }[];
+    return NextResponse.json({
+      apps: records
+        .filter((r) => r.DeveloperName)
+        .map((r) => ({ name: r.DeveloperName, label: r.Label || r.DeveloperName })),
+    });
+  }
+
+  if (b.action === "sites") {
+    const res = await sfJson(root, [
+      "data", "query", "-q", `"SELECT Name FROM Network ORDER BY Name"`, "--json",
+    ]);
+    const records =
+      ((res.out as { result?: { records?: { Name: string }[] } })?.result?.records ?? []) as {
+        Name: string;
+      }[];
+    return NextResponse.json({ sites: records.map((r) => r.Name).filter(Boolean) });
+  }
+
+  if (b.action === "status") {
+    const p = previews.get(key);
+    return NextResponse.json({
+      running: !!p && p.child.exitCode === null,
+      kind: p?.kind ?? null,
+      name: p?.name ?? null,
+      logs: (p?.logs ?? []).slice(-30).join(""),
+    });
+  }
+
+  if (b.action === "stop") {
+    const p = previews.get(key);
+    if (p?.child.pid) {
+      spawn("taskkill", ["/pid", String(p.child.pid), "/T", "/F"], { shell: false });
+    }
+    previews.delete(key);
+    return NextResponse.json({ stopped: true });
+  }
+
+  if (b.action === "start") {
+    const kind = b.kind === "site" ? "site" : "app";
+    const name = typeof b.name === "string" ? b.name.trim() : "";
+    if (!SAFE_NAME.test(name)) {
+      return NextResponse.json({ error: "invalid app/site name" }, { status: 400 });
+    }
+    // one preview per project
+    const existing = previews.get(key);
+    if (existing?.child.pid) {
+      spawn("taskkill", ["/pid", String(existing.child.pid), "/T", "/F"], { shell: false });
+      previews.delete(key);
+    }
+    const child = spawn(`sf lightning dev ${kind} --name "${name}"`, {
+      cwd: root,
+      shell: true,
+      windowsHide: true,
+      env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
+    });
+    const p: Preview = { child, kind, name, logs: [] };
+    const push = (c: Buffer) => {
+      p.logs.push(c.toString("utf8").replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
+      if (p.logs.length > 200) p.logs.splice(0, p.logs.length - 200);
+    };
+    child.stdout?.on("data", push);
+    child.stderr?.on("data", push);
+    child.stdin?.on("error", () => {});
+    child.on("close", () => {
+      /* keep logs for status; entry removed on stop/new start */
+    });
+    previews.set(key, p);
+    return NextResponse.json({ started: true });
+  }
+
+  return NextResponse.json({ error: "unknown action" }, { status: 400 });
 }

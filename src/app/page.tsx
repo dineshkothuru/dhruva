@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DetectionResult } from "@/lib/types";
 import FileTree from "@/components/FileTree";
 import FolderPicker from "@/components/FolderPicker";
+import PreviewPanel from "@/components/PreviewPanel";
 import EditorPane from "@/components/EditorPane";
 import ChatPane from "@/components/ChatPane";
 import DiffPane from "@/components/DiffPane";
@@ -468,49 +469,7 @@ export default function Home() {
                             </button>
                           </div>
                         )}
-                        {result.org?.connected && (
-                          <div className="flex gap-1.5">
-                            <button
-                              onClick={async () => {
-                                const { data } = await postJson("/api/preview-org", {
-                                  path: result.path,
-                                  kind: "app",
-                                });
-                                setLoginMsg(String(data.message ?? data.error ?? "started"));
-                              }}
-                              className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                              title="Local Dev for a Lightning APP: local UI files rendered against real org data (no deploy). Apex is not previewed."
-                            >
-                              🖥 Preview app
-                            </button>
-                            <button
-                              onClick={async () => {
-                                const { data } = await postJson("/api/preview-org", {
-                                  path: result.path,
-                                  kind: "site",
-                                });
-                                setLoginMsg(String(data.message ?? data.error ?? "started"));
-                              }}
-                              className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                              title="Local Dev for an LWR Experience Cloud SITE (Aura sites are not supported by the platform). The console prompts you to pick the site."
-                            >
-                              🌐 Preview LWR site
-                            </button>
-                            <button
-                              onClick={async () => {
-                                const { data } = await postJson("/api/preview-org", {
-                                  path: result.path,
-                                  kind: "open",
-                                });
-                                setLoginMsg(String(data.message ?? data.error ?? "started"));
-                              }}
-                              className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                              title="Open the default org (incl. a default scratch org) in the browser, logged in"
-                            >
-                              ↗ Open org
-                            </button>
-                          </div>
-                        )}
+                        {result.org?.connected && <PreviewPanel root={result.path} />}
                       </>
                     )}
                   </div>
