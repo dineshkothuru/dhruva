@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import pkg from "../../package.json";
 import type { DetectionResult } from "@/lib/types";
 import FileTree from "@/components/FileTree";
 import FolderPicker from "@/components/FolderPicker";
@@ -524,6 +525,18 @@ export default function Home() {
               )}
             </div>
           )}
+        </div>
+        {/* attribution footer — version + author, pinned to the panel bottom */}
+        <div className="border-t border-slate-100 px-5 py-2.5 text-[10px] text-slate-400">
+          Dhruva v{pkg.version} · built by{" "}
+          <a
+            href="https://www.linkedin.com/in/dinesh-kumar-kothuru/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-slate-500 hover:text-slate-700 hover:underline"
+          >
+            Dinesh Kumar Kothuru
+          </a>
         </div>
       </aside>
 

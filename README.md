@@ -144,4 +144,4 @@ Never commit or push from inside an attached customer project; Dhruva's own
 
 ---
 
-Built by **Dinesh Kumar Kothuru** ([GitHub](https://github.com/dineshkothuru)) - MIT licensed.
+Built by **Dinesh Kumar Kothuru** ([LinkedIn](https://www.linkedin.com/in/dinesh-kumar-kothuru/) · [GitHub](https://github.com/dineshkothuru)) - MIT licensed.
