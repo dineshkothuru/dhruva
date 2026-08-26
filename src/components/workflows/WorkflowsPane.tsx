@@ -243,6 +243,27 @@ export default function WorkflowsPane({
     { tiers?: Record<string, string> }
   > | null>(null);
   const [designing, setDesigning] = useState(false);
+  const [runFilter, setRunFilter] = useState("");
+
+  /** Filter runs by anything a human would search on: title, status, agent,
+   * model, run id, date text, and the run's input content. */
+  function matchesFilter(r: RunState): boolean {
+    const q = runFilter.trim().toLowerCase();
+    if (!q) return true;
+    const hay = [
+      r.workflowTitle,
+      r.status,
+      r.agent,
+      r.model ?? "",
+      r.runId,
+      new Date(r.createdAt).toLocaleString(),
+      new Date(r.createdAt).toISOString().slice(0, 10),
+      ...Object.values(r.inputs ?? {}).map(String),
+    ]
+      .join(" ")
+      .toLowerCase();
+    return q.split(/\s+/).every((term) => hay.includes(term));
+  }
   // files attached in the start modal — ride into the run's text inputs so
   // agent steps read them (the engine's full-read rule applies)
   const [attachments, setAttachments] = useState<{ rel: string; name: string }[]>([]);
@@ -660,7 +681,17 @@ export default function WorkflowsPane({
             </span>
           </summary>
           <div className="space-y-1 border-t border-slate-100 p-3">
-            {history.map((r) => (
+            <input
+              value={runFilter}
+              onChange={(e) => setRunFilter(e.target.value)}
+              placeholder="Filter runs — text, status, agent, date (e.g. 2026-08-26), or words from the request…"
+              spellCheck={false}
+              className="mb-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs outline-none focus:border-slate-400"
+            />
+            {history.filter(matchesFilter).length === 0 && (
+              <p className="px-2 py-1 text-xs text-slate-400">no runs match</p>
+            )}
+            {history.filter(matchesFilter).map((r) => (
               <button
                 key={r.runId}
                 onClick={() => setRun(r)}

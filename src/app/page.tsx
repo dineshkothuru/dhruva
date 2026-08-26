@@ -148,7 +148,7 @@ export default function Home() {
         const org = probe.ok ? (probe.data.org as DetectionResult["org"]) : undefined;
         if (org?.connected) {
           setResult((r) => (r && norm(r.path) === target ? { ...r, org } : r));
-          setDetailsOpen(false);
+          // stay expanded — the user collapses when done reviewing
           setLoginMsg(`Org authorized: ${org.username}`);
           return;
         }
