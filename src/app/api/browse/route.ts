@@ -14,7 +14,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const dir = typeof body.dir === "string" ? path.normalize(body.dir.trim()) : "";
+  // NOTE: path.normalize("") returns "." — empty must stay empty (drive list)
+  const rawDir = typeof body.dir === "string" ? body.dir.trim() : "";
+  const dir = rawDir ? path.normalize(rawDir) : "";
 
   if (!dir) {
     // drive roots (Windows) or filesystem root (posix)

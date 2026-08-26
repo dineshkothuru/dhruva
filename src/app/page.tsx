@@ -310,21 +310,21 @@ export default function Home() {
             Project folder
           </label>
           <div className="mt-2 flex flex-col gap-2">
-            <div className="flex gap-1.5">
+            <div className="relative">
               <input
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && connect()}
                 placeholder="D:\my-salesforce-project"
                 spellCheck={false}
-                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm outline-none focus:border-slate-500"
+                className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-9 font-mono text-xs shadow-sm outline-none focus:border-slate-500"
               />
               <button
                 onClick={() => setPicking(true)}
-                className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium hover:bg-slate-50"
-                title="Browse folders on this machine"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1 py-0.5 text-sm hover:bg-slate-100"
+                title="Pick a folder on this machine"
               >
-                📁 Browse
+                📁
               </button>
             </div>
             <button
