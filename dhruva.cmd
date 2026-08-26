@@ -4,6 +4,13 @@ REM installs what it safely can, and tells you exactly what remains.
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+REM subcommands (update, version) go to the CLI launcher - the bare
+REM command falls through to setup+start below
+if not "%~1"=="" (
+  node "%~dp0bin\dhruva.js" %*
+  exit /b %errorlevel%
+)
+
 echo [dhruva] checking prerequisites...
 
 where node >nul 2>nul || (

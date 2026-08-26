@@ -1,6 +1,6 @@
 {
   "name": "dhruva",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Dhruva - deterministic Salesforce delivery harness. Gated, auditable delivery workflows driven by swappable coding agents, on your machine with your logins.",
   "bin": {
     "dhruva": "bin/dhruva.js"
@@ -79,7 +79,7 @@
     "start": "next start -p 3005",
     "lint": "eslint src",
     "app": "electron .",
-    "app:dist": "next build && electron-builder --win"
+    "app:dist": "set DHRUVA_STANDALONE=1&& next build && electron-builder --win"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
