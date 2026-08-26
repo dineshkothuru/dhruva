@@ -32,6 +32,12 @@ export const SOLUTION_DESIGN: WorkflowDef = {
         "is invalid.\n\n" +
         "Study the existing codebase first: objects, automation, apex services, LWCs that this " +
         "requirement touches. Then propose the design as a structured summary:\n" +
+        "0. GAP ANALYSIS — extract every distinct requirement item from the text and the attached " +
+        "documents, and for EACH one classify against the existing codebase with evidence:\n" +
+        "   ALREADY IMPLEMENTED (name the existing component and where) | PARTIAL (what exists, " +
+        "what is missing) | NEW. Be strict: claim ALREADY IMPLEMENTED only with a concrete " +
+        "component as evidence. The rest of the design covers ONLY the PARTIAL and NEW items — " +
+        "never redesign what already exists.\n" +
         "1. Solution overview and approach (declarative vs code, and why)\n" +
         "2. Data model: new/changed objects and fields, relationships\n" +
         "3. Components: apex classes, triggers, LWCs, flows to create or modify (name existing ones to reuse)\n" +
@@ -56,7 +62,9 @@ export const SOLUTION_DESIGN: WorkflowDef = {
         "Write the APPROVED solution design as TWO Markdown documents (create folders if needed). " +
         "These two files are the only ones you may create or modify in this step:\n\n" +
         "1. docs/designs/{inputs.docName}-hld.md — HIGH-LEVEL DESIGN, written for stakeholders and " +
-        "review boards: requirement summary, business context, solution overview and approach " +
+        "review boards: requirement summary, business context, a GAP ANALYSIS table (each " +
+        "requirement item: Already implemented / Partial / New, with the existing component named " +
+        "as evidence), solution overview and approach " +
         "(declarative vs code and why), architecture at component-group level, data model section " +
         "with a Mermaid er-diagram code block (```mermaid / erDiagram) of new and impacted objects " +
         "with relationships and key fields, integration touchpoints, security model overview, " +
