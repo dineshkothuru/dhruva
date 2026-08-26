@@ -16,10 +16,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
   const root = typeof body.path === "string" ? path.normalize(body.path.trim()) : "";
-  // "app" = Lightning app preview; "site" = LWR Experience Cloud site preview
-  const kind = body.kind === "site" ? "site" : "app";
+  // "app" = Lightning app preview; "site" = LWR site preview;
+  // "open" = just open the default org (incl. a default scratch org) logged in
+  const kind = body.kind === "site" ? "site" : body.kind === "open" ? "open" : "app";
   if (!root || !(await isAttachableRoot(root))) {
     return NextResponse.json({ error: "not an attached Salesforce project" }, { status: 400 });
+  }
+
+  if (kind === "open") {
+    // no console needed — sf org open just launches the browser and exits
+    try {
+      const child = spawn("sf org open", {
+        cwd: root,
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        shell: true,
+      });
+      child.unref();
+    } catch (e) {
+      return NextResponse.json({ error: `could not open the org: ${String(e)}` }, { status: 500 });
+    }
+    return NextResponse.json({ started: true, message: "Opening the default org in your browser…" });
   }
 
   try {
@@ -40,7 +58,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     started: true,
-    message:
-      "Local Dev is starting in a console window. Pick the Lightning app when prompted — the org opens in your browser with your LOCAL component files rendered against REAL org data (hot reload on save). Apex changes are not previewed (server-side) — use a scratch org or deploy for those. First time: enable Local Dev in Setup → Local Dev, and `sf plugins install @salesforce/plugin-lightning-dev`.",
+    message: `Local Dev console opened — pick the ${kind === "site" ? "site" : "app"} there; the browser then shows your local files against live org data.`,
   });
 }

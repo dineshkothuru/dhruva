@@ -496,6 +496,19 @@ export default function Home() {
                             >
                               🌐 Preview LWR site
                             </button>
+                            <button
+                              onClick={async () => {
+                                const { data } = await postJson("/api/preview-org", {
+                                  path: result.path,
+                                  kind: "open",
+                                });
+                                setLoginMsg(String(data.message ?? data.error ?? "started"));
+                              }}
+                              className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                              title="Open the default org (incl. a default scratch org) in the browser, logged in"
+                            >
+                              ↗ Open org
+                            </button>
                           </div>
                         )}
                       </>

@@ -49,7 +49,6 @@ export default function FolderPicker({
 
   useEffect(() => {
     // async load on mount — state set only after the fetch resolves
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load(initialDir ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
