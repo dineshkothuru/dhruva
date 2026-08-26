@@ -334,6 +334,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         args,
         viaStdin ? prompt : undefined,
         streamJson ? makeClaudeTraceTransform(step) : undefined,
+        (def.timeoutMinutes ?? 15) * 60_000,
       );
       harvestAffectedFiles(run, step.output);
       if (!step.usage) step.usage = estimateUsage(run.agent, stepModel, prompt, step.output);
@@ -411,7 +412,15 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
           return false;
         }
       }
-      return spawnToStep(run, step, def.bin, args.map(winQuote));
+      return spawnToStep(
+        run,
+        step,
+        def.bin,
+        args.map(winQuote),
+        undefined,
+        undefined,
+        (def.timeoutMinutes ?? 15) * 60_000,
+      );
     }
   }
 }
@@ -535,6 +544,7 @@ function spawnToStep(
   args: string[],
   stdin?: string,
   transform?: (chunk: string) => string,
+  timeoutMs: number = STEP_TIMEOUT_MS,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const child = spawn(bin, args, {
@@ -549,7 +559,7 @@ function spawnToStep(
       // CLI survives as an orphan still editing the project
       if (child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: false });
       child.kill();
-    }, STEP_TIMEOUT_MS);
+    }, timeoutMs);
     // EPIPE when the CLI exits before draining (e.g. expired login) must not
     // crash the server process
     child.stdin.on("error", () => {});

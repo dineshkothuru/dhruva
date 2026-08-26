@@ -26,6 +26,9 @@ export interface StepDef {
   /** agent: enforce read-only at the CLI level (claude plan mode, codex
    * read-only sandbox, copilot tool denies) for investigate/review steps. */
   readOnly?: boolean;
+  /** Step timeout in minutes (default 15). BRD-scale analysis and large
+   * implementations legitimately need more. */
+  timeoutMinutes?: number;
   /** agent: model tier for this step ("best" = architecture/review judgment,
    * "light" = cheap mechanical work). Unset = the run's selected model.
    * Resolved from the agent's tiers map — also gives cross-model review

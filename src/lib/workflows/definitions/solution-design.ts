@@ -23,6 +23,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       modelTier: "best",
       readOnly: true,
       persona: "salesforce-architect",
+      timeoutMinutes: 45,
       prompt:
         "A requirement needs a solution design for THIS org's codebase. DO NOT modify any files in this step.\n" +
         "Requirement:\n{inputs.requirement}\n\n" +
@@ -63,6 +64,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       id: "write-doc",
       title: "Write HLD + TDD documents (with ERD)",
       type: "agent",
+      timeoutMinutes: 30,
       prompt:
         "Write the APPROVED solution design as TWO Markdown documents (create folders if needed). " +
         "These two files are the only ones you may create or modify in this step:\n\n" +
@@ -101,6 +103,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       id: "coverage-check",
       title: "Verify the documents cover every requirement (agent, read-only)",
       type: "agent",
+      timeoutMinutes: 30,
       readOnly: true,
       modelTier: "best",
       prompt:
