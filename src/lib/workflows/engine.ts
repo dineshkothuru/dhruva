@@ -93,39 +93,6 @@ export function abortRun(runId: string): boolean {
   return true;
 }
 
-/** Token/cost consumption grouped by model across every recorded run of this
- * project — the audit files are the source, so it survives restarts. The
- * vendors expose no remaining-quota API locally; this is the consumption side. */
-export async function usageByModel(
-  root: string,
-): Promise<{ model: string; calls: number; inTokens: number; outTokens: number; costUsd: number }[]> {
-  const agg = new Map<string, { model: string; calls: number; inTokens: number; outTokens: number; costUsd: number }>();
-  const dir = path.join(root, ".sfharness", "runs");
-  try {
-    for (const f of await fs.readdir(dir)) {
-      if (!f.endsWith(".json")) continue;
-      try {
-        const r = JSON.parse(await fs.readFile(path.join(dir, f), "utf8")) as RunState;
-        for (const s of r.steps ?? []) {
-          if (!s.usage) continue;
-          const model = s.model && s.model !== "default" ? s.model : "(cli default)";
-          const a = agg.get(model) ?? { model, calls: 0, inTokens: 0, outTokens: 0, costUsd: 0 };
-          a.calls++;
-          a.inTokens += s.usage.inTokens;
-          a.outTokens += s.usage.outTokens;
-          a.costUsd += s.usage.costUsd;
-          agg.set(model, a);
-        }
-      } catch {
-        /* corrupt audit file — skip */
-      }
-    }
-  } catch {
-    /* no runs yet */
-  }
-  return [...agg.values()].sort((a, b) => b.costUsd - a.costUsd);
-}
-
 export function resolveGate(runId: string, decision: GateDecision): boolean {
   const waiter = gateWaiters.get(runId);
   if (!waiter) return false;
