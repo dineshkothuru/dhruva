@@ -93,14 +93,31 @@ export async function POST(req: Request) {
   }
 
   if (b.action === "sites") {
-    const res = await sfJson(root, [
-      "data", "query", "-q", `"SELECT Name FROM Network ORDER BY Name"`, "--json",
+    const [nets, sitesRes] = await Promise.all([
+      sfJson(root, ["data", "query", "-q", `"SELECT Name FROM Network ORDER BY Name"`, "--json"]),
+      // SiteType marks the framework: ChatterNetworkPicasso = LWR, ChatterNetwork = Aura
+      sfJson(root, ["data", "query", "-q", `"SELECT Name, SiteType FROM Site"`, "--json"]),
     ]);
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const typeByName = new Map<string, string>();
+    for (const s of ((sitesRes.out as { result?: { records?: { Name: string; SiteType: string }[] } })
+      ?.result?.records ?? []) as { Name: string; SiteType: string }[]) {
+      if (s.Name) typeByName.set(norm(s.Name), s.SiteType);
+    }
     const records =
-      ((res.out as { result?: { records?: { Name: string }[] } })?.result?.records ?? []) as {
+      ((nets.out as { result?: { records?: { Name: string }[] } })?.result?.records ?? []) as {
         Name: string;
       }[];
-    return NextResponse.json({ sites: records.map((r) => r.Name).filter(Boolean) });
+    // LWR only: Aura sites open a preview shell that silently serves the
+    // DEPLOYED site (local files are not rendered) — misleading, so excluded.
+    const all = records.filter((r) => r.Name);
+    const lwrSites = all.filter(
+      (r) => typeByName.get(norm(r.Name)) === "ChatterNetworkPicasso",
+    );
+    return NextResponse.json({
+      sites: lwrSites.map((r) => ({ name: r.Name, lwr: true })),
+      auraCount: all.length - lwrSites.length,
+    });
   }
 
   if (b.action === "status") {

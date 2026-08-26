@@ -21,7 +21,10 @@ async function api(body: Record<string, unknown>) {
 }
 
 export default function PreviewPanel({ root }: { root: string }) {
-  const [choices, setChoices] = useState<{ kind: "app" | "site"; items: { name: string; label: string }[] } | null>(null);
+  const [choices, setChoices] = useState<{
+    kind: "app" | "site";
+    items: { name: string; label: string; lwr?: boolean | null }[];
+  } | null>(null);
   const [loadingChoices, setLoadingChoices] = useState<"app" | "site" | null>(null);
   const [status, setStatus] = useState<{
     running: boolean;
@@ -58,9 +61,20 @@ export default function PreviewPanel({ root }: { root: string }) {
       const items =
         kind === "app"
           ? ((data.apps ?? []) as { name: string; label: string }[])
-          : ((data.sites ?? []) as string[]).map((s) => ({ name: s, label: s }));
+          : ((data.sites ?? []) as { name: string; lwr: boolean | null }[]).map((s) => ({
+              name: s.name,
+              label: s.name,
+              lwr: s.lwr,
+            }));
       if (items.length === 0) {
-        setError(kind === "site" ? "no Experience Cloud sites found in the org" : "no Lightning apps found");
+        const auraCount = Number(data.auraCount ?? 0);
+        setError(
+          kind === "site"
+            ? auraCount > 0
+              ? `no LWR sites in this org — its ${auraCount} Aura site(s) cannot be previewed locally (platform limit); test them by deploying to the sandbox`
+              : "no Experience Cloud sites found in the org"
+            : "no Lightning apps found",
+        );
         return;
       }
       setChoices({ kind, items });
@@ -187,18 +201,40 @@ export default function PreviewPanel({ root }: { root: string }) {
               </p>
             )}
             <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-100">
-              {choices.items.map((i) => (
-                <button
-                  key={i.name}
-                  onClick={() => start(choices.kind, i.name)}
-                  className="flex w-full flex-col px-3 py-1.5 text-left hover:bg-slate-50"
-                >
-                  <span className="text-xs font-medium">{i.label}</span>
-                  {i.label !== i.name && (
-                    <span className="font-mono text-[10px] text-slate-400">{i.name}</span>
-                  )}
-                </button>
-              ))}
+              {choices.items.map((i) => {
+                const aura = choices.kind === "site" && i.lwr === false;
+                return (
+                  <button
+                    key={i.name}
+                    onClick={() => !aura && start(choices.kind, i.name)}
+                    disabled={aura}
+                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
+                      aura ? "cursor-not-allowed opacity-50" : "hover:bg-slate-50"
+                    }`}
+                    title={aura ? "Aura sites cannot be previewed locally (platform limit)" : undefined}
+                  >
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate text-xs font-medium">{i.label}</span>
+                      {i.label !== i.name && (
+                        <span className="truncate font-mono text-[10px] text-slate-400">{i.name}</span>
+                      )}
+                    </span>
+                    {choices.kind === "site" && (
+                      <span
+                        className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          i.lwr === true
+                            ? "bg-emerald-50 text-emerald-600"
+                            : i.lwr === false
+                              ? "bg-slate-100 text-slate-400"
+                              : "bg-amber-50 text-amber-600"
+                        }`}
+                      >
+                        {i.lwr === true ? "LWR" : i.lwr === false ? "Aura" : "unknown"}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
