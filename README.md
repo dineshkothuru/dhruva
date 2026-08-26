@@ -28,6 +28,21 @@ never sees or stores any credential.
 
 ## Install & run
 
+**As a command (Claude Code-style — recommended):**
+
+```
+npm install -g github:dineshkothuru/dhruva
+dhruva
+```
+
+The `dhruva` command checks prerequisites (installs the Salesforce CLI if
+missing), builds once on first run, starts the app, and opens
+http://localhost:3005. Everything runs on YOUR machine with YOUR logins —
+no credentials ship with the package. (Private repo: authenticate git/npm to
+GitHub first, e.g. `gh auth login`.)
+
+**Or from a clone:**
+
 ```
 git clone https://github.com/dineshkothuru/dhruva.git
 cd dhruva
