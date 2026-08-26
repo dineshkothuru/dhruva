@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DetectionResult } from "@/lib/types";
 import FileTree from "@/components/FileTree";
+import FolderPicker from "@/components/FolderPicker";
 import EditorPane from "@/components/EditorPane";
 import ChatPane from "@/components/ChatPane";
 import DiffPane from "@/components/DiffPane";
@@ -81,6 +82,7 @@ export default function Home() {
   // Re-opening a diff bumps its nonce so the pane remounts and refetches —
   // a second agent run on the same file must never show the previous diff.
   const [diffNonce, setDiffNonce] = useState<Record<string, number>>({});
+  const [picking, setPicking] = useState(false);
   function openDiff(rel: string) {
     setDiffNonce((n) => ({ ...n, [rel]: (n[rel] ?? 0) + 1 }));
     openFile(`diff:${rel}`);
@@ -307,14 +309,23 @@ export default function Home() {
             Project folder
           </label>
           <div className="mt-2 flex flex-col gap-2">
-            <input
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && connect()}
-              placeholder="D:\my-salesforce-project"
-              spellCheck={false}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm outline-none focus:border-slate-500"
-            />
+            <div className="flex gap-1.5">
+              <input
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && connect()}
+                placeholder="D:\my-salesforce-project"
+                spellCheck={false}
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm outline-none focus:border-slate-500"
+              />
+              <button
+                onClick={() => setPicking(true)}
+                className="shrink-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-medium hover:bg-slate-50"
+                title="Browse folders on this machine"
+              >
+                📁 Browse
+              </button>
+            </div>
             <button
               onClick={() => connect()}
               disabled={loading || !path.trim()}
@@ -523,6 +534,18 @@ export default function Home() {
           )}
         </div>
       </aside>
+
+      {picking && (
+        <FolderPicker
+          initialDir={path.trim() || undefined}
+          onCancel={() => setPicking(false)}
+          onPick={(dir) => {
+            setPicking(false);
+            setPath(dir);
+            void connect(dir);
+          }}
+        />
+      )}
 
       {/* drag handle — the border line itself resizes the panel */}
       <div
