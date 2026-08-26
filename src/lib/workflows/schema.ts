@@ -58,6 +58,9 @@ export interface WorkflowDef {
     kind: "text" | "boolean" | "select";
     options?: string[];
     default?: string | boolean;
+    /** Attachment references are appended to THIS input (must be free-text,
+     * never a path/list field). Fallback: the first text input. */
+    attachTo?: boolean;
   }[];
   steps: StepDef[];
 }

@@ -8,8 +8,9 @@ export const SOLUTION_DESIGN: WorkflowDef = {
   inputs: [
     {
       key: "requirement",
-      label: "Requirement (paste the text; attach documents via chat intake)",
+      label: "Requirement (paste the text and/or attach documents below)",
       kind: "text",
+      attachTo: true,
     },
     { key: "docName", label: "Design document name (file-safe)", kind: "text", default: "solution-design" },
   ],

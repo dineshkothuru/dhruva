@@ -12,7 +12,7 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       kind: "text",
       default: "docs/designs/solution-design-tdd.md",
     },
-    { key: "scope", label: "Scope note (optional — e.g. only components 1-3)", kind: "text", default: "" },
+    { key: "scope", label: "Scope note (optional — e.g. only components 1-3)", kind: "text", default: "", attachTo: true },
     { key: "runTests", label: "Run local Apex tests during validation", kind: "boolean", default: true },
     { key: "deploy", label: "Deploy to the connected sandbox at the end", kind: "boolean", default: true },
     {

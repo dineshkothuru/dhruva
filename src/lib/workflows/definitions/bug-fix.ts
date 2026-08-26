@@ -6,7 +6,7 @@ export const BUG_FIX: WorkflowDef = {
   description:
     "Locate the root cause, gate on the fix plan, implement, review the diff, validate and deploy the changed files.",
   inputs: [
-    { key: "description", label: "Bug description", kind: "text" },
+    { key: "description", label: "Bug description", kind: "text", attachTo: true },
     { key: "runTests", label: "Run local Apex tests during validation", kind: "boolean", default: false },
     { key: "deploy", label: "Deploy to the default org at the end", kind: "boolean", default: true },
     {

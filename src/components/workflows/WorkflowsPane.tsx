@@ -18,6 +18,7 @@ interface CatalogItem {
     kind: "text" | "boolean" | "select";
     options?: string[];
     default?: string | boolean;
+    attachTo?: boolean;
   }[];
 }
 
@@ -356,18 +357,29 @@ export default function WorkflowsPane({
     setInputs(init);
   }
 
+  /** The input the attach button lives on (and where file refs are appended). */
+  function isAttachTarget(i: { key: string; kind: string; attachTo?: boolean }): boolean {
+    if (!selected) return false;
+    const target =
+      selected.inputs.find((x) => x.attachTo) ?? selected.inputs.find((x) => x.kind === "text");
+    return target?.key === i.key;
+  }
+
   async function start() {
     if (!selected || starting) return;
     setStarting(true);
     setError(null);
     try {
-      // append attached files to the primary text input so agent steps see them
+      // append attached files to the workflow's designated free-text input
+      // (attachTo), never to path/list fields; fallback: first text input
       const startInputs = { ...inputs };
       if (attachments.length > 0) {
-        const firstText = selected.inputs.find((i) => i.kind === "text");
-        if (firstText) {
-          startInputs[firstText.key] =
-            `${String(startInputs[firstText.key] ?? "")}\n\nAttached files (read them from the project root): ${attachments.map((a) => a.rel).join(", ")}`;
+        const target =
+          selected.inputs.find((i) => i.attachTo) ??
+          selected.inputs.find((i) => i.kind === "text");
+        if (target) {
+          startInputs[target.key] =
+            `${String(startInputs[target.key] ?? "")}\n\nAttached files (read them from the project root): ${attachments.map((a) => a.rel).join(", ")}`;
         }
       }
       const { ok, data } = await api({
@@ -805,56 +817,61 @@ export default function WorkflowsPane({
               ) : (
                 <div key={i.key}>
                   <label className="text-xs font-medium text-slate-500">{i.label}</label>
-                  <textarea
-                    value={String(inputs[i.key] ?? "")}
-                    onChange={(e) => setInputs((v) => ({ ...v, [i.key]: e.target.value }))}
-                    rows={3}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                  />
+                  <div className="relative mt-1">
+                    <textarea
+                      value={String(inputs[i.key] ?? "")}
+                      onChange={(e) => setInputs((v) => ({ ...v, [i.key]: e.target.value }))}
+                      rows={3}
+                      className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 ${
+                        isAttachTarget(i) ? "pr-10" : ""
+                      }`}
+                    />
+                    {isAttachTarget(i) && (
+                      <button
+                        onClick={() => fileRef.current?.click()}
+                        disabled={uploading || starting}
+                        className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40"
+                        title="Attach requirement documents, screenshots, or logs — the AI reads them in full"
+                      >
+                        {uploading ? (
+                          <span className="text-xs">…</span>
+                        ) : (
+                          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                            <path d="M8 3v10M3 8h10" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  {isAttachTarget(i) && attachments.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {attachments.map((a) => (
+                        <span
+                          key={a.rel}
+                          className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
+                        >
+                          {a.name}
+                          <button
+                            onClick={() => setAttachments((x) => x.filter((y) => y.rel !== a.rel))}
+                            className="text-slate-400 hover:text-slate-700"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ),
             )}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <input
-                ref={fileRef}
-                type="file"
-                multiple
-                accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.doc,.txt,.log,.csv,.md"
-                className="hidden"
-                onChange={(e) => uploadFiles(e.target.files)}
-              />
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading || starting}
-                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40"
-                title="Attach requirement documents, screenshots, or logs — the AI reads them in full"
-              >
-                {uploading ? (
-                  <span className="text-xs">…</span>
-                ) : (
-                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                    <path d="M8 3v10M3 8h10" />
-                  </svg>
-                )}
-              </button>
-              {attachments.length === 0 && (
-                <span className="text-[11px] text-slate-400">attach documents (optional)</span>
-              )}
-              {attachments.map((a) => (
-                <span
-                  key={a.rel}
-                  className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
-                >
-                  {a.name}
-                  <button
-                    onClick={() => setAttachments((x) => x.filter((y) => y.rel !== a.rel))}
-                    className="text-slate-400 hover:text-slate-700"
-                  >
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.doc,.txt,.log,.csv,.md"
+              className="hidden"
+              onChange={(e) => uploadFiles(e.target.files)}
+            />
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-slate-500">Agent:</label>
               <select

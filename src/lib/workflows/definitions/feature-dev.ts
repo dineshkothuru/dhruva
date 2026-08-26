@@ -6,7 +6,7 @@ export const FEATURE_DEV: WorkflowDef = {
   description:
     "Turn a requirement into a technical spec (gated), implement with tests, review the diff, validate and deploy.",
   inputs: [
-    { key: "requirement", label: "Requirement / user story", kind: "text" },
+    { key: "requirement", label: "Requirement / user story", kind: "text", attachTo: true },
     { key: "runTests", label: "Run local Apex tests during validation", kind: "boolean", default: true },
     { key: "deploy", label: "Deploy to the default org at the end", kind: "boolean", default: false },
     {
