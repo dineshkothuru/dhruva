@@ -395,6 +395,8 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
           : run.model
             ? "run model"
             : "CLI default";
+      // the model is part of the step's log too, so the trace reads standalone
+      step.output += `[engine] model requested: ${stepModel || "(CLI default)"} — ${step.modelFrom}\n`;
       step.model = stepModel || "default";
       // claude: stream-json gives a LIVE trace (tool uses + text as produced)
       // and exact token usage in the final event; others stream plain text.
@@ -686,7 +688,12 @@ function makeClaudeTraceTransform(step: StepState): (chunk: string) => string {
       if (!t.startsWith("{")) continue;
       try {
         const ev = JSON.parse(t);
-        if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
+        // the init event carries the model the CLI ACTUALLY runs — exact even
+        // when we requested nothing (CLI default); overwrite the requested id
+        if (ev.type === "system" && ev.subtype === "init" && typeof ev.model === "string") {
+          step.model = ev.model;
+          out += `[agent] model in use: ${ev.model}\n`;
+        } else if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
           for (const block of ev.message.content) {
             if (block.type === "text" && block.text) out += block.text + "\n";
             else if (block.type === "tool_use") {
