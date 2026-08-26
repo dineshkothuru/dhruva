@@ -77,6 +77,17 @@ const CHECKS: Check[] = [
     detail: "'without sharing' used — requires a stated justification comment and reviewer attention.",
   },
   {
+    rule: "explicit-sharing-declaration",
+    severity: "warning",
+    files: /\.cls$/i,
+    // top-level class declaration (column 0) with no sharing keyword between
+    // the access modifier and `class` — heuristic; indented inner classes and
+    // test classes are intentionally not matched/exempt
+    pattern: /^(?:public|global)\s+(?:virtual\s+|abstract\s+)?class\s+\w+/m,
+    detail:
+      "Top-level class declares no sharing mode — the standard requires explicit 'with sharing', 'inherited sharing', or a justified 'without sharing' (test classes exempt).",
+  },
+  {
     rule: "no-soql-in-loop",
     severity: "warning",
     files: /\.(cls|trigger)$/i,
