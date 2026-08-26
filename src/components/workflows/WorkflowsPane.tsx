@@ -6,6 +6,7 @@ import type { RunState } from "@/lib/workflows/schema";
 import CliResult from "@/components/workflows/CliResult";
 import { loadTiers, saveTiers, tiersFor, type TierConfig } from "@/lib/tierStore";
 import WorkflowBuilder from "@/components/workflows/WorkflowBuilder";
+import RequirementCards, { parseRequirements } from "@/components/workflows/RequirementCards";
 
 interface CatalogItem {
   id: string;
@@ -525,6 +526,26 @@ export default function WorkflowsPane({
               {s.status === "waiting_gate" ? (
                 <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
                   <p className="whitespace-pre-wrap text-sm text-amber-800">{s.output}</p>
+                  {(() => {
+                    // itemized review: if the step this gate reviews produced
+                    // REQ blocks, render per-requirement cards (fallback: the
+                    // plain textarea flow below stays untouched)
+                    const gateIdx = run.steps.findIndex((x) => x.id === s.id);
+                    const source = [...run.steps.slice(0, gateIdx)]
+                      .reverse()
+                      .find((x) => x.type === "agent" && x.output.includes("### REQ-"));
+                    if (!source) return null;
+                    const items = parseRequirements(source.output);
+                    if (items.length === 0) return null;
+                    return (
+                      <RequirementCards
+                        items={items}
+                        disabled={gating}
+                        onApproveAll={() => gate("approve")}
+                        onSubmit={(instruction) => gate("revise", instruction)}
+                      />
+                    );
+                  })()}
                   <textarea
                     value={gateNote}
                     onChange={(e) => setGateNote(e.target.value)}

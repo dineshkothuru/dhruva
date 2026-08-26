@@ -31,28 +31,33 @@ export const SOLUTION_DESIGN: WorkflowDef = {
         "of each file — before designing anything. A design based on a partially read requirement " +
         "is invalid.\n\n" +
         "Study the existing codebase first: objects, automation, apex services, LWCs that this " +
-        "requirement touches. Then propose the design as a structured summary:\n" +
-        "0. GAP ANALYSIS — extract every distinct requirement item from the text and the attached " +
-        "documents, and for EACH one classify against the existing codebase with evidence:\n" +
-        "   ALREADY IMPLEMENTED (name the existing component and where) | PARTIAL (what exists, " +
-        "what is missing) | NEW. Be strict: claim ALREADY IMPLEMENTED only with a concrete " +
-        "component as evidence. The rest of the design covers ONLY the PARTIAL and NEW items — " +
-        "never redesign what already exists.\n" +
-        "1. Solution overview and approach (declarative vs code, and why)\n" +
-        "2. Data model: new/changed objects and fields, relationships\n" +
-        "3. Components: apex classes, triggers, LWCs, flows to create or modify (name existing ones to reuse)\n" +
-        "4. Security: sharing, profiles/permission sets, FLS\n" +
-        "5. Impact analysis: existing behavior at risk\n" +
-        "6. Risks, assumptions, and open questions\n" +
-        "7. Rough effort estimate per component\n" +
-        "Keep it reviewable — this summary is what the architect approves before the document is written.",
+        "requirement touches.\n\n" +
+        "Then output in EXACTLY this structure (it is machine-parsed into review cards):\n\n" +
+        "First a short OVERVIEW paragraph (overall approach, phasing, key risks).\n\n" +
+        "Then ONE BLOCK PER REQUIREMENT, in the BRD's sequence, each formatted exactly:\n" +
+        "### REQ-001: <short title>\n" +
+        "BRD-REF: <section/page in the source document>\n" +
+        "STATUS: ALREADY IMPLEMENTED | PARTIAL | NEW\n" +
+        "EVIDENCE: <for implemented/partial: the exact existing components, backticked API names>\n" +
+        "ALREADY-PRESENT: <what exists today; '-' for NEW>\n" +
+        "PENDING: <what is missing; '-' if nothing>\n" +
+        "DESIGN: <the solution for exactly this item's PENDING work — components to create/modify " +
+        "with API names, declarative vs code and why, security notes. For ALREADY IMPLEMENTED " +
+        "items write 'No work required' plus any caveat.>\n" +
+        "EFFORT: <rough estimate, e.g. 2d>\n" +
+        "DEPENDS-ON: <REQ-ids or '-'>\n\n" +
+        "Rules: number sequentially REQ-001, REQ-002…; extract EVERY distinct requirement from the " +
+        "text and ALL attached documents — do not merge unrelated asks into one block; be strict on " +
+        "STATUS (ALREADY IMPLEMENTED only with concrete component evidence); design ONLY the " +
+        "pending work — never redesign what exists; follow the team standards in this prompt.",
     },
     {
       id: "approve-design",
-      title: "Approve the proposed design",
+      title: "Review each requirement's design",
       type: "gate",
+      reviseTarget: "analyse",
       message:
-        "Review the proposed solution design above. On approval the full design document (including the ERD) is written into docs/designs/ in the project.",
+        "Review each requirement card above (status, evidence, design). Reject/comment per item and Revise — only rejected items are reworked. Approve when every requirement's design is right; the HLD and TDD are then written.",
     },
     {
       id: "write-doc",
@@ -93,11 +98,31 @@ export const SOLUTION_DESIGN: WorkflowDef = {
     },
     { id: "changes", title: "Collect created documents", type: "changes" },
     {
+      id: "coverage-check",
+      title: "Verify the documents cover every requirement (agent, read-only)",
+      type: "agent",
+      readOnly: true,
+      modelTier: "best",
+      prompt:
+        "Design coverage verification. Do not modify any files.\n" +
+        "Read IN FULL: (1) the original requirement text below and every attached document it " +
+        "references, (2) docs/designs/{inputs.docName}-hld.md, (3) docs/designs/{inputs.docName}-tdd.md.\n" +
+        "Requirement:\n{inputs.requirement}\n\n" +
+        "Approved per-requirement design:\n{steps.analyse.output}\n\n" +
+        "For EVERY REQ item, report one line:\n" +
+        "  REQ-xxx — COVERED (HLD section N / TDD section M) | MISSING FROM DOCS | DIVERGES " +
+        "(the docs say something different from the approved design — quote it)\n" +
+        "Also flag anything in the docs that has no approved requirement behind it (scope creep).\n" +
+        "Be strict: no section reference = not covered. End with the verdict line: " +
+        "COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE — items <REQ-ids>.",
+    },
+    {
       id: "approve-doc",
-      title: "Accept the design document",
+      title: "Accept the design documents",
       type: "gate",
+      reviseTarget: "write-doc",
       message:
-        "HLD and TDD are written (open them from the changed-files list or the file tree under docs/designs/). Accept to complete the run.",
+        "Review the coverage verdict above and the documents themselves (docs/designs/). If items are MISSING or DIVERGE, type e.g. 'cover REQ-007 and fix REQ-012' and Revise — the documents are rewritten and re-verified. Accept to complete the run.",
     },
   ],
 };
