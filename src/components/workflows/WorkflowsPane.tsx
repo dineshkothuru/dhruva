@@ -460,6 +460,23 @@ export default function WorkflowsPane({
           )}
         </p>
 
+        {Object.keys(run.inputs ?? {}).length > 0 && (
+          <details className="mb-3 rounded-xl border border-slate-200 bg-white">
+            <summary className="cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-400 hover:text-slate-700">
+              Run inputs — what this run was asked to do
+            </summary>
+            <dl className="space-y-1.5 border-t border-slate-100 px-4 py-2">
+              {Object.entries(run.inputs).map(([k, v]) => (
+                <div key={k}>
+                  <dt className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{k}</dt>
+                  <dd className="whitespace-pre-wrap break-words text-xs text-slate-700">
+                    {typeof v === "boolean" ? (v ? "yes" : "no") : String(v).slice(0, 2000)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        )}
         <div className="space-y-2">
           {run.steps.map((s) => (
             <details
