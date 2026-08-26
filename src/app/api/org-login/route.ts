@@ -38,14 +38,17 @@ export async function POST(req: Request) {
   const args = ["org", "login", "web", "--set-default", "--instance-url", instanceUrl];
 
   try {
+    // NOT detached: on Windows a detached child gets its own console that
+    // ignores windowsHide — attached+hidden means the user sees only the
+    // browser tab the CLI opens. The command exits by itself after login.
     const child = spawn("sf", args, {
       cwd: projectPath,
       shell: true,
       windowsHide: true,
-      detached: true,
       stdio: "ignore",
       env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
     });
+    child.on("error", () => {});
     child.unref();
   } catch (e) {
     return NextResponse.json({ error: `could not start sf CLI: ${String(e)}` }, { status: 500 });
@@ -53,6 +56,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     started: true,
-    message: "Salesforce login opened in your browser. Finish logging in there, then click Refresh.",
+    message: "Salesforce login opened in your browser — this panel updates automatically when you finish.",
   });
 }
