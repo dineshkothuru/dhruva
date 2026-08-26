@@ -30,8 +30,10 @@ function startServer() {
       ELECTRON_RUN_AS_NODE: "1",
       PORT,
       HOSTNAME: "127.0.0.1",
-      // standards/ is resolved from cwd by the app — point it at the bundle
+      // standards/ and workflows/ are resolved from cwd by the app — point
+      // them at the bundle
       DHRUVA_STANDARDS_DIR: path.join(root, "standards"),
+      DHRUVA_WORKFLOWS_DIR: path.join(root, "workflows"),
     },
     stdio: "ignore",
     windowsHide: true,

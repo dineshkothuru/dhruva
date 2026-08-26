@@ -3,7 +3,7 @@ import path from "node:path";
 import { isAttachableRoot } from "@/lib/fsguard";
 import { isAgentId } from "@/lib/agents";
 import { isSafeModelId } from "@/lib/agents";
-import { WORKFLOWS } from "@/lib/workflows/builtins";
+import { builtinWorkflows } from "@/lib/workflows/builtins";
 import { STEP_ROLES, type StepRole } from "@/lib/workflows/schema";
 import {
   deleteCustomWorkflow,
@@ -38,21 +38,30 @@ export async function POST(req: Request) {
     const listRoot = typeof b.root === "string" ? path.normalize(b.root.trim()) : "";
     const customs =
       listRoot && (await isAttachableRoot(listRoot)) ? await listCustomWorkflows(listRoot) : [];
+    let builtins;
+    try {
+      builtins = await builtinWorkflows();
+    } catch (e) {
+      return NextResponse.json({ error: String((e as Error).message) }, { status: 500 });
+    }
     return NextResponse.json({
       workflows: [
-        ...Object.values(WORKFLOWS).map((w) => ({
+        ...Object.values(builtins).map((w) => ({
           id: w.id,
           title: w.title,
           description: w.description,
           inputs: w.inputs,
+          steps: w.steps,
           custom: false,
         })),
-        ...customs.map((w) => ({
+        ...customs.map(({ def: w, scope }) => ({
           id: w.id,
           title: w.title,
           description: w.description,
           inputs: w.inputs,
+          steps: w.steps,
           custom: true,
+          scope,
         })),
       ],
     });
@@ -107,8 +116,9 @@ export async function POST(req: Request) {
 
   if (b.action === "save-custom") {
     try {
-      const def = await saveCustomWorkflow(root, b.def);
-      return NextResponse.json({ saved: def.id });
+      const scope = b.scope === "project" ? "project" : "central";
+      const def = await saveCustomWorkflow(root, b.def, scope);
+      return NextResponse.json({ saved: def.id, scope });
     } catch (e) {
       return NextResponse.json({ error: String((e as Error).message) }, { status: 400 });
     }

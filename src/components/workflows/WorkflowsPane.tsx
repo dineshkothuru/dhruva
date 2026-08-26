@@ -8,7 +8,7 @@ import { tiersFor } from "@/lib/tierStore";
 import { loadRoles, saveRoles, rolesFor, type RoleConfig } from "@/lib/roleStore";
 import { STEP_ROLES, ROLE_LABEL, ROLE_TIER } from "@/lib/workflows/schema";
 import { loadDefaultAgent, saveDefaultAgent } from "@/lib/agentStore";
-import WorkflowBuilder from "@/components/workflows/WorkflowBuilder";
+import WorkflowBuilder, { type BuilderSeed } from "@/components/workflows/WorkflowBuilder";
 import RequirementCards, { parseRequirements } from "@/components/workflows/RequirementCards";
 
 interface CatalogItem {
@@ -16,6 +16,10 @@ interface CatalogItem {
   title: string;
   description: string;
   custom?: boolean;
+  /** custom workflows: where they live — central (all projects) or project. */
+  scope?: "central" | "project";
+  /** full step list — powers duplicate-to-customize. */
+  steps?: Record<string, unknown>[];
   inputs: {
     key: string;
     label: string;
@@ -250,6 +254,8 @@ export default function WorkflowsPane({
     { tiers?: Record<string, string> }
   > | null>(null);
   const [designing, setDesigning] = useState(false);
+  // duplicate-to-customize: the workflow the builder is seeded from
+  const [seed, setSeed] = useState<CatalogItem | null>(null);
   const [runFilter, setRunFilter] = useState("");
 
   /** Filter runs by anything a human would search on: title, status, agent,
@@ -845,30 +851,45 @@ export default function WorkflowsPane({
                       {w.title}
                       {w.custom && (
                         <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-600">
-                          custom
+                          {w.scope === "project" ? "custom · this project" : "custom · all projects"}
                         </span>
                       )}
                     </div>
                     <p className="mt-1 line-clamp-3 text-xs text-slate-500">{w.description}</p>
                   </button>
-                  {w.custom && (
+                  <span className="absolute right-2 top-2 flex gap-0.5">
                     <button
-                      onClick={async () => {
-                        await api({ action: "delete-custom", root, workflow: w.id });
-                        if (selected?.id === w.id) setSelected(null);
-                        refreshCatalog();
+                      onClick={() => {
+                        setSeed(w);
+                        setDesigning(true);
                       }}
-                      className="absolute right-2 top-2 rounded px-1.5 text-xs text-slate-300 hover:bg-red-50 hover:text-red-500"
-                      title="Delete this custom workflow"
+                      className="rounded px-1.5 text-xs text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100"
+                      title="Duplicate to customize — copy this workflow and add/remove steps on top"
                     >
-                      ✕
+                      ⧉
                     </button>
-                  )}
+                    {w.custom && (
+                      <button
+                        onClick={async () => {
+                          await api({ action: "delete-custom", root, workflow: w.id });
+                          if (selected?.id === w.id) setSelected(null);
+                          refreshCatalog();
+                        }}
+                        className="rounded px-1.5 text-xs text-slate-300 hover:bg-red-50 hover:text-red-500"
+                        title="Delete this custom workflow"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </span>
                 </div>
               ))}
               {label === "Custom" && (
                 <button
-                  onClick={() => setDesigning(true)}
+                  onClick={() => {
+                    setSeed(null);
+                    setDesigning(true);
+                  }}
                   className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-left text-slate-400 transition-all hover:-translate-y-0.5 hover:border-slate-500 hover:text-slate-600 hover:shadow-md"
                 >
                   <div className="text-sm font-semibold">+ Design a workflow</div>
@@ -891,6 +912,7 @@ export default function WorkflowsPane({
           <div className="w-full max-w-3xl">
             <WorkflowBuilder
               root={root}
+              seed={seed as unknown as BuilderSeed | null}
               onCancel={() => setDesigning(false)}
               onSaved={() => {
                 setDesigning(false);

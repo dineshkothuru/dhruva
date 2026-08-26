@@ -1,39 +1,42 @@
-/** Built-in workflow library — one definition per file under definitions/.
- * Ships with the harness so every team member runs the same standard paths. */
-
+import path from "node:path";
+import { promises as fs } from "node:fs";
 import type { WorkflowDef } from "./schema";
-import { checkWorkflowSemantics } from "./validate";
-import { BUG_FIX } from "./definitions/bug-fix";
-import { FEATURE_DEV } from "./definitions/feature-dev";
-import { SOLUTION_DESIGN } from "./definitions/solution-design";
-import { IMPLEMENT_TDD } from "./definitions/implement-tdd";
-import { TEST_GEN } from "./definitions/test-gen";
-import { RETRIEVE_SYNC } from "./definitions/retrieve-sync";
-import { DEPLOY_PREVIEW } from "./definitions/deploy-preview";
-import { VALIDATE_DEPLOY } from "./definitions/validate-deploy";
-import { RUN_TESTS } from "./definitions/run-tests";
-import { SCRATCH_ORG } from "./definitions/scratch-org";
+import { validateWorkflowDef } from "./validate";
 
-export const WORKFLOWS: Record<string, WorkflowDef> = {
-  [BUG_FIX.id]: BUG_FIX,
-  [FEATURE_DEV.id]: FEATURE_DEV,
-  [SOLUTION_DESIGN.id]: SOLUTION_DESIGN,
-  [IMPLEMENT_TDD.id]: IMPLEMENT_TDD,
-  [TEST_GEN.id]: TEST_GEN,
-  [RETRIEVE_SYNC.id]: RETRIEVE_SYNC,
-  [DEPLOY_PREVIEW.id]: DEPLOY_PREVIEW,
-  [VALIDATE_DEPLOY.id]: VALIDATE_DEPLOY,
-  [RUN_TESTS.id]: RUN_TESTS,
-  [SCRATCH_ORG.id]: SCRATCH_ORG,
-};
+/** Built-in workflow library — shipped as workflows/*.json (same pattern as
+ * the standards/ folder) and validated by the SAME contract as customs, so
+ * the shipped set and the custom validator can never drift apart. Read-only
+ * in the product: customize by duplicating into the custom store, never by
+ * editing shipped files — same id must mean same audited behavior everywhere. */
 
-// Built-ins are held to the same deterministic semantic checks as customs.
-// Loud in dev so a broken definition can never ship silently.
-if (process.env.NODE_ENV !== "production") {
-  for (const def of Object.values(WORKFLOWS)) {
-    const problems = checkWorkflowSemantics(def);
-    if (problems.length > 0) {
-      throw new Error(`built-in workflow "${def.id}" is invalid: ${problems.join("; ")}`);
-    }
+function builtinsDir(): string {
+  // packaged desktop app sets this (resources path); dev/CLI use the repo dir
+  return process.env.DHRUVA_WORKFLOWS_DIR ?? path.join(process.cwd(), "workflows");
+}
+
+let cache: Record<string, WorkflowDef> | null = null;
+
+export async function builtinWorkflows(): Promise<Record<string, WorkflowDef>> {
+  // cache in production; re-read in dev so workflow-file edits hot-reload
+  if (cache && process.env.NODE_ENV === "production") return cache;
+  const out: Record<string, WorkflowDef> = {};
+  let files: string[] = [];
+  try {
+    files = (await fs.readdir(builtinsDir())).filter((f) => f.endsWith(".json"));
+  } catch {
+    throw new Error(
+      `built-in workflows folder not found at ${builtinsDir()} — broken install (set DHRUVA_WORKFLOWS_DIR or run from the repo root)`,
+    );
   }
+  for (const f of files.sort()) {
+    const raw = JSON.parse(await fs.readFile(path.join(builtinsDir(), f), "utf8"));
+    // a broken shipped file must fail LOUDLY, never be served silently
+    const def = validateWorkflowDef(raw);
+    out[def.id] = def;
+  }
+  if (Object.keys(out).length === 0) {
+    throw new Error(`no built-in workflows found in ${builtinsDir()}`);
+  }
+  cache = out;
+  return out;
 }

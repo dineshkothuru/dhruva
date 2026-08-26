@@ -1,0 +1,51 @@
+{
+  "id": "validate-deploy",
+  "title": "Validate deploy",
+  "description": "Gate, then check-only deploy of a source path with the chosen test level. Works on any org (no source tracking required) — nothing is ever saved to the org.",
+  "inputs": [
+    {
+      "key": "target",
+      "label": "Source path to validate",
+      "kind": "text",
+      "default": "force-app"
+    },
+    {
+      "key": "testLevel",
+      "label": "Test level",
+      "kind": "select",
+      "options": [
+        "NoTestRun",
+        "RunLocalTests",
+        "RunAllTestsInOrg"
+      ],
+      "default": "RunLocalTests"
+    }
+  ],
+  "steps": [
+    {
+      "id": "approve",
+      "title": "Approve validation",
+      "type": "gate",
+      "message": "Run a check-only deploy of {inputs.target} against the default org (compiles + runs the chosen tests; nothing is saved)?"
+    },
+    {
+      "id": "validate",
+      "title": "Check-only deploy",
+      "type": "cli",
+      "bin": "sf",
+      "args": [
+        "project",
+        "deploy",
+        "start",
+        "--dry-run",
+        "--source-dir",
+        "{inputs.target}",
+        "--test-level",
+        "{inputs.testLevel}",
+        "--json",
+        "--wait",
+        "60"
+      ]
+    }
+  ]
+}

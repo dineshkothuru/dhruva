@@ -9,7 +9,7 @@ import { useState } from "react";
 interface StepDraft {
   id: string;
   title: string;
-  type: "snapshot" | "agent" | "cli" | "gate" | "changes" | "verify";
+  type: "snapshot" | "agent" | "cli" | "gate" | "changes" | "verify" | "tasks-check";
   prompt?: string;
   readOnly?: boolean;
   role?: "" | "read" | "design" | "implement" | "review" | "trace";
@@ -18,12 +18,57 @@ interface StepDraft {
   message?: string;
   reviseTarget?: string;
   onlyIf?: string;
+  /** Fields this simple builder doesn't edit (persona, autoRevise, tasksFile,
+   * timeouts…) — carried through untouched so duplicating a built-in loses
+   * NOTHING. Spread first on save; edited fields override. */
+  extra?: Record<string, unknown>;
 }
 
 interface InputDraft {
   key: string;
   label: string;
   kind: "text" | "boolean";
+  extra?: Record<string, unknown>; // select options, defaults, attachTo — passthrough
+}
+
+/** Any workflow definition (built-in or custom) prefills the builder for
+ * duplicate-and-customize. */
+export interface BuilderSeed {
+  id: string;
+  title: string;
+  description: string;
+  inputs: Record<string, unknown>[];
+  steps: Record<string, unknown>[];
+}
+
+const DRAFT_STEP_KEYS = new Set([
+  "id", "title", "type", "prompt", "readOnly", "role", "bin", "args", "message", "reviseTarget", "onlyIf",
+]);
+const DRAFT_INPUT_KEYS = new Set(["key", "label", "kind"]);
+
+function seedToDrafts(seed: BuilderSeed): { inputs: InputDraft[]; steps: StepDraft[] } {
+  return {
+    inputs: seed.inputs.map((i) => ({
+      key: String(i.key ?? ""),
+      label: String(i.label ?? i.key ?? ""),
+      kind: i.kind === "boolean" ? "boolean" : "text",
+      extra: Object.fromEntries(Object.entries(i).filter(([k]) => !DRAFT_INPUT_KEYS.has(k))),
+    })),
+    steps: seed.steps.map((s) => ({
+      id: String(s.id ?? ""),
+      title: String(s.title ?? s.id ?? ""),
+      type: (s.type as StepDraft["type"]) ?? "agent",
+      prompt: typeof s.prompt === "string" ? s.prompt : undefined,
+      readOnly: s.readOnly === true || undefined,
+      role: (s.role as StepDraft["role"]) ?? "",
+      bin: (s.bin as StepDraft["bin"]) ?? undefined,
+      argsText: Array.isArray(s.args) ? (s.args as string[]).join("\n") : undefined,
+      message: typeof s.message === "string" ? s.message : undefined,
+      reviseTarget: typeof s.reviseTarget === "string" ? s.reviseTarget : undefined,
+      onlyIf: typeof s.onlyIf === "string" ? s.onlyIf : undefined,
+      extra: Object.fromEntries(Object.entries(s).filter(([k]) => !DRAFT_STEP_KEYS.has(k))),
+    })),
+  };
 }
 
 const STEP_HINTS: Record<StepDraft["type"], string> = {
@@ -33,24 +78,30 @@ const STEP_HINTS: Record<StepDraft["type"], string> = {
   gate: "Pauses for human Approve / Revise / Abort.",
   changes: "Deterministic: collects files changed since the last snapshot.",
   verify: "Deterministic: standards checks over the changed files.",
+  "tasks-check": "Deterministic: validates the build-plan tasks file (ids, dependencies, no cycles).",
 };
 
 export default function WorkflowBuilder({
   root,
+  seed,
   onSaved,
   onCancel,
 }: {
   root: string;
+  /** Duplicate-to-customize: prefill from an existing workflow. */
+  seed?: BuilderSeed | null;
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [id, setId] = useState("");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [inputs, setInputs] = useState<InputDraft[]>([]);
-  const [steps, setSteps] = useState<StepDraft[]>([
-    { id: "snapshot", title: "Snapshot baseline", type: "snapshot" },
-  ]);
+  const seeded = seed ? seedToDrafts(seed) : null;
+  const [id, setId] = useState(seed ? `${seed.id}-copy` : "");
+  const [title, setTitle] = useState(seed ? `${seed.title} (copy)` : "");
+  const [description, setDescription] = useState(seed?.description ?? "");
+  const [inputs, setInputs] = useState<InputDraft[]>(seeded?.inputs ?? []);
+  const [steps, setSteps] = useState<StepDraft[]>(
+    seeded?.steps ?? [{ id: "snapshot", title: "Snapshot baseline", type: "snapshot" }],
+  );
+  const [scope, setScope] = useState<"central" | "project">("central");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -75,8 +126,14 @@ export default function WorkflowBuilder({
         id: id.trim(),
         title: title.trim(),
         description: description.trim(),
-        inputs: inputs.map((i) => ({ key: i.key.trim(), label: i.label.trim() || i.key, kind: i.kind })),
+        inputs: inputs.map((i) => ({
+          ...i.extra,
+          key: i.key.trim(),
+          label: i.label.trim() || i.key,
+          kind: i.kind,
+        })),
         steps: steps.map((s) => ({
+          ...s.extra, // passthrough: persona, autoRevise, tasksFile, timeouts…
           id: s.id.trim(),
           title: s.title.trim() || s.id,
           type: s.type,
@@ -102,7 +159,7 @@ export default function WorkflowBuilder({
       const res = await fetch("/api/workflow", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save-custom", root, def }),
+        body: JSON.stringify({ action: "save-custom", root, def, scope }),
       });
       const data = await res.json();
       if (!res.ok) setError(String(data.error ?? "could not save"));
@@ -233,7 +290,18 @@ export default function WorkflowBuilder({
         </div>
       </div>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
+        <span className="font-medium">Save to:</span>
+        <label className="flex items-center gap-1.5">
+          <input type="radio" checked={scope === "central"} onChange={() => setScope("central")} />
+          All my projects (this machine)
+        </label>
+        <label className="flex items-center gap-1.5">
+          <input type="radio" checked={scope === "project"} onChange={() => setScope("project")} />
+          This project only (travels with the repo)
+        </label>
+      </div>
+      <div className="mt-3 flex gap-2">
         <button onClick={save} disabled={saving || !id.trim() || !title.trim() || steps.length === 0} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40">
           {saving ? "Saving…" : "Save workflow"}
         </button>

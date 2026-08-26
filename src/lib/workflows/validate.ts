@@ -1,4 +1,135 @@
-import type { WorkflowDef } from "./schema";
+import type { StepDef, WorkflowDef } from "./schema";
+
+const STEP_TYPES = new Set([
+  "snapshot",
+  "agent",
+  "cli",
+  "gate",
+  "changes",
+  "verify",
+  "tasks-check",
+]);
+const TIERS = new Set(["best", "default", "light"]);
+const ROLES = new Set(["read", "design", "implement", "review", "trace"]);
+const SLUG = /^[a-z0-9][a-z0-9-]{1,40}$/;
+const KEY = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/;
+
+/** Validate an untrusted definition into a clean WorkflowDef (or throw).
+ * ONE validator for every source — shipped JSON files and user customs go
+ * through the same contract, so the two can never drift apart.
+ * reservedIds: ids the definition may not use (built-ins, for customs). */
+export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): WorkflowDef {
+  const d = raw as Partial<WorkflowDef>;
+  if (!d || typeof d !== "object") throw new Error("definition must be an object");
+  if (typeof d.id !== "string" || !SLUG.test(d.id)) {
+    throw new Error("id must be a lowercase slug (a-z, 0-9, dashes)");
+  }
+  if (reservedIds?.has(d.id)) throw new Error(`id "${d.id}" collides with a built-in workflow`);
+  if (typeof d.title !== "string" || !d.title.trim() || d.title.length > 80) {
+    throw new Error("title required (max 80 chars)");
+  }
+  const description = typeof d.description === "string" ? d.description.slice(0, 300) : "";
+
+  const inputs = (Array.isArray(d.inputs) ? d.inputs : []).slice(0, 10).map((i) => {
+    if (!i || typeof i.key !== "string" || !KEY.test(i.key)) throw new Error("bad input key");
+    const kind: "text" | "boolean" | "select" =
+      i.kind === "boolean" || i.kind === "select" ? i.kind : "text";
+    return {
+      key: i.key,
+      label: typeof i.label === "string" ? i.label.slice(0, 200) : i.key,
+      kind,
+      options:
+        kind === "select" && Array.isArray(i.options)
+          ? i.options.filter((o) => typeof o === "string").slice(0, 12)
+          : undefined,
+      default:
+        typeof i.default === "boolean" || typeof i.default === "string" ? i.default : undefined,
+      attachTo: i.attachTo === true && kind === "text" ? true : undefined,
+    };
+  });
+
+  if (!Array.isArray(d.steps) || d.steps.length === 0 || d.steps.length > 30) {
+    throw new Error("1–30 steps required");
+  }
+  const seen = new Set<string>();
+  const steps: StepDef[] = d.steps.map((s) => {
+    if (!s || typeof s.id !== "string" || !SLUG.test(s.id)) throw new Error("bad step id");
+    if (seen.has(s.id)) throw new Error(`duplicate step id "${s.id}"`);
+    seen.add(s.id);
+    if (typeof s.type !== "string" || !STEP_TYPES.has(s.type)) {
+      throw new Error(`bad step type on "${s.id}"`);
+    }
+    const step: StepDef = {
+      id: s.id,
+      title: typeof s.title === "string" && s.title.trim() ? s.title.slice(0, 160) : s.id,
+      type: s.type as StepDef["type"],
+    };
+    if (s.type === "agent") {
+      if (typeof s.prompt !== "string" || !s.prompt.trim()) {
+        throw new Error(`agent step "${s.id}" needs a prompt`);
+      }
+      step.prompt = s.prompt.slice(0, 8000);
+      if (s.readOnly === true) step.readOnly = true;
+      if (typeof s.persona === "string" && SLUG.test(s.persona)) step.persona = s.persona;
+      if (typeof s.modelTier === "string" && TIERS.has(s.modelTier)) {
+        step.modelTier = s.modelTier as StepDef["modelTier"];
+      }
+      if (typeof s.role === "string" && ROLES.has(s.role)) {
+        step.role = s.role as StepDef["role"];
+      }
+      if (s.autoRevise && typeof s.autoRevise === "object") {
+        const a = s.autoRevise as { target?: unknown; trigger?: unknown; maxRounds?: unknown };
+        if (
+          typeof a.target === "string" &&
+          SLUG.test(a.target) &&
+          typeof a.trigger === "string" &&
+          a.trigger.length <= 200
+        ) {
+          step.autoRevise = {
+            target: a.target,
+            trigger: a.trigger,
+            maxRounds:
+              typeof a.maxRounds === "number" ? Math.min(Math.max(a.maxRounds, 1), 3) : undefined,
+          };
+        }
+      }
+      if (s.taskLoop === true) step.taskLoop = true;
+    }
+    if (s.type === "cli") {
+      if (s.bin !== "sf" && s.bin !== "git") throw new Error(`cli step "${s.id}": bin must be sf or git`);
+      if (!Array.isArray(s.args) || s.args.length === 0 || s.args.length > 40) {
+        throw new Error(`cli step "${s.id}" needs 1–40 args`);
+      }
+      step.bin = s.bin;
+      step.args = s.args.map((a) => {
+        if (typeof a !== "string" || a.length > 300) throw new Error("bad cli arg");
+        return a;
+      });
+      if (s.optional === true) step.optional = true;
+      if (s.detached === true) step.detached = true;
+    }
+    if (s.type === "gate") {
+      step.message =
+        typeof s.message === "string" && s.message.trim() ? s.message.slice(0, 1000) : "Proceed?";
+      if (typeof s.reviseTarget === "string" && SLUG.test(s.reviseTarget)) {
+        step.reviseTarget = s.reviseTarget;
+      }
+    }
+    if (typeof s.onlyIf === "string" && KEY.test(s.onlyIf)) step.onlyIf = s.onlyIf;
+    if (typeof s.timeoutMinutes === "number") {
+      step.timeoutMinutes = Math.min(Math.max(Math.round(s.timeoutMinutes), 1), 120);
+    }
+    if (typeof s.tasksFile === "string" && s.tasksFile.length <= 200 && !s.tasksFile.includes("..")) {
+      step.tasksFile = s.tasksFile;
+    }
+    return step;
+  });
+
+  const def: WorkflowDef = { id: d.id, title: d.title.trim(), description, inputs, steps };
+  const problems = checkWorkflowSemantics(def);
+  if (problems.length > 0) throw new Error(problems.join("; "));
+  return def;
+}
 
 /** Deterministic semantic validation of a workflow definition — beyond shape:
  * every reference must resolve, every step must have what it depends on, and

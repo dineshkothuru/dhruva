@@ -1,0 +1,83 @@
+{
+  "id": "scratch-org",
+  "title": "Scratch org from this folder",
+  "description": "Create a scratch org (needs an authorized Dev Hub), push this folder's source into it, and open it in the browser.",
+  "inputs": [
+    {
+      "key": "alias",
+      "label": "Scratch org alias",
+      "kind": "text",
+      "default": "scratch1"
+    },
+    {
+      "key": "days",
+      "label": "Duration (days)",
+      "kind": "select",
+      "options": [
+        "1",
+        "7",
+        "14",
+        "30"
+      ],
+      "default": "7"
+    }
+  ],
+  "steps": [
+    {
+      "id": "confirm",
+      "title": "Confirm scratch org creation",
+      "type": "gate",
+      "message": "This creates a scratch org from config/project-scratch-def.json (consumes one of your Dev Hub's daily scratch orgs) and pushes force-app into it. Proceed?"
+    },
+    {
+      "id": "create",
+      "title": "Create scratch org",
+      "type": "cli",
+      "bin": "sf",
+      "args": [
+        "org",
+        "create",
+        "scratch",
+        "--definition-file",
+        "config/project-scratch-def.json",
+        "--alias",
+        "{inputs.alias}",
+        "--duration-days",
+        "{inputs.days}",
+        "--json",
+        "--wait",
+        "20"
+      ]
+    },
+    {
+      "id": "push",
+      "title": "Push local source into the scratch org",
+      "type": "cli",
+      "bin": "sf",
+      "args": [
+        "project",
+        "deploy",
+        "start",
+        "--source-dir",
+        "force-app",
+        "--target-org",
+        "{inputs.alias}",
+        "--json",
+        "--wait",
+        "60"
+      ]
+    },
+    {
+      "id": "open",
+      "title": "Open the scratch org in the browser",
+      "type": "cli",
+      "bin": "sf",
+      "args": [
+        "org",
+        "open",
+        "--target-org",
+        "{inputs.alias}"
+      ]
+    }
+  ]
+}
