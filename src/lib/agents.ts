@@ -2,7 +2,7 @@
  * coding-agent CLI inside the attached project. The user's own machine login
  * (GitHub / Claude / ChatGPT) is used; no keys pass through this app. */
 
-export type AgentId = "copilot" | "claude" | "codex";
+export type AgentId = "copilot" | "claude" | "codex" | "cursor";
 
 export interface AgentDef {
   id: AgentId;
@@ -134,8 +134,32 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     }),
     installHint: "npm i -g @openai/codex, then run `codex` once to log in",
   },
+  cursor: {
+    id: "cursor",
+    label: "Cursor",
+    bin: "cursor-agent",
+    // model ids vary by Cursor version — "" lets the CLI pick; type exact ids
+    // (they autocomplete once used) in Models-by-role.
+    tiers: { best: "", default: "", light: "" },
+    models: [{ id: "", label: "Default (Cursor picks)" }],
+    // -p print mode reads the prompt from stdin; --force approves file edits
+    // in non-interactive mode. readOnly = omit --force (edits stay blocked)
+    // plus the persona instruction — best-effort like copilot.
+    build: (_prompt, model, readOnly) => ({
+      args: [
+        "-p",
+        "--output-format",
+        "text",
+        ...(readOnly ? [] : ["--force"]),
+        ...(model ? ["--model", model] : []),
+      ],
+      viaStdin: true,
+    }),
+    installHint:
+      "install the Cursor CLI (cursor.com/cli — or from the Cursor app), then run `cursor-agent login`",
+  },
 };
 
 export function isAgentId(v: unknown): v is AgentId {
-  return v === "copilot" || v === "claude" || v === "codex";
+  return v === "copilot" || v === "claude" || v === "codex" || v === "cursor";
 }

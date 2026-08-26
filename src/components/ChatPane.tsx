@@ -25,7 +25,7 @@ interface AgentStatus {
   models: { id: string; label: string }[];
 }
 
-const AGENT_ORDER: AgentId[] = ["copilot", "claude", "codex"];
+const AGENT_ORDER: AgentId[] = ["copilot", "claude", "codex", "cursor"];
 const CUSTOM = "__custom__";
 
 function chatKey(root: string) {
@@ -324,7 +324,7 @@ export default function ChatPane({
             <button
               key={id}
               onClick={() => setAgent(id)}
-              disabled={running}
+              disabled={running || s?.installed === false}
               className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium ${
                 agent === id
                   ? "border-slate-900 bg-slate-900 text-white"

@@ -7,6 +7,7 @@ import CliResult from "@/components/workflows/CliResult";
 import { loadRoles, saveRoles, rolesFor, type RoleConfig } from "@/lib/roleStore";
 import { STEP_ROLES, ROLE_LABEL, ROLE_TIER } from "@/lib/workflows/schema";
 import { loadDefaultAgent, saveDefaultAgent } from "@/lib/agentStore";
+import { loadCustomModels, addCustomModel } from "@/lib/modelStore";
 import WorkflowBuilder, { type BuilderSeed } from "@/components/workflows/WorkflowBuilder";
 import RequirementCards, { parseRequirements } from "@/components/workflows/RequirementCards";
 
@@ -31,7 +32,7 @@ interface CatalogItem {
 
 /** Catalog grouping — anything unlisted lands in the first group. */
 const CATEGORIES: [string, string[]][] = [
-  ["Development", ["bug-fix", "feature-dev", "solution-design", "implement-tdd"]],
+  ["Development", ["bug-fix", "feature-dev", "solution-design", "ux-design", "implement-tdd"]],
   ["Testing", ["test-gen", "run-tests"]],
   ["Org & deployment", ["retrieve-sync", "deploy-preview", "validate-deploy", "scratch-org"]],
   ["Custom", []],
@@ -41,6 +42,7 @@ const AGENT_OPTIONS: { id: AgentId; label: string }[] = [
   { id: "copilot", label: "GitHub Copilot" },
   { id: "claude", label: "Claude Code" },
   { id: "codex", label: "OpenAI Codex" },
+  { id: "cursor", label: "Cursor" },
 ];
 
 const STATUS_ICON: Record<string, string> = {
@@ -250,7 +252,7 @@ export default function WorkflowsPane({
   const [roleCfg, setRoleCfg] = useState<Record<string, RoleConfig>>({});
   const [status, setStatus] = useState<Record<
     string,
-    { tiers?: Record<string, string> }
+    { installed?: boolean; tiers?: Record<string, string>; models?: { id: string; label: string }[] }
   > | null>(null);
   const [designing, setDesigning] = useState(false);
   // duplicate-to-customize: the workflow the builder is seeded from
@@ -732,6 +734,14 @@ export default function WorkflowsPane({
             const cfg = roleCfg[roleTab] ?? {};
             return (
               <div>
+                <datalist id={`models-${roleTab}`}>
+                  {[
+                    ...(s?.models ?? []).map((m) => m.id).filter(Boolean),
+                    ...loadCustomModels(roleTab),
+                  ].map((id) => (
+                    <option key={id} value={id} />
+                  ))}
+                </datalist>
                 <label className="flex w-fit cursor-pointer items-center gap-1.5 text-[11px] text-slate-500">
                   <input
                     type="checkbox"
@@ -753,11 +763,19 @@ export default function WorkflowsPane({
                         <span className="text-[11px] font-medium text-slate-500">{ROLE_LABEL[role]}</span>
                         <input
                           value={cfg[role] ?? ""}
+                          list={`models-${roleTab}`}
                           onChange={(e) => {
                             const all = loadRoles();
                             all[roleTab] = { ...all[roleTab], [role]: e.target.value.trim() };
                             saveRoles(all);
                             setRoleCfg(all);
+                          }}
+                          onBlur={(e) => {
+                            // a completed custom id becomes a suggestion everywhere
+                            const v = e.target.value.trim();
+                            if (v && !(s?.models ?? []).some((m) => m.id === v)) {
+                              addCustomModel(roleTab, v);
+                            }
                           }}
                           placeholder={s?.tiers?.[ROLE_TIER[role]] || "cli default"}
                           spellCheck={false}
@@ -1052,9 +1070,10 @@ export default function WorkflowsPane({
                 className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
               >
                 {AGENT_OPTIONS.map((a) => (
-                  <option key={a.id} value={a.id}>
+                  <option key={a.id} value={a.id} disabled={status?.[a.id]?.installed === false}>
                     {a.label}
                     {defaultAgent === a.id ? " ★ (default)" : ""}
+                    {status?.[a.id]?.installed === false ? " — not installed" : ""}
                   </option>
                 ))}
               </select>

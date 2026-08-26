@@ -6,7 +6,7 @@ import type { AgentId } from "@/lib/agents";
  * highlighted in the Models-by-role panel. One choice, applies everywhere. */
 
 const KEY = "sfdh.defaultAgent";
-const VALID = new Set(["copilot", "claude", "codex"]);
+const VALID = new Set(["copilot", "claude", "codex", "cursor"]);
 
 export function loadDefaultAgent(): AgentId | null {
   try {
