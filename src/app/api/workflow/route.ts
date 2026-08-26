@@ -18,6 +18,7 @@ import {
   pendingGateCount,
   resolveGate,
   startRun,
+  usageByModel,
 } from "@/lib/workflows/engine";
 
 /** Workflow control plane.
@@ -108,6 +109,10 @@ export async function POST(req: Request) {
 
   if (b.action === "runs") {
     return NextResponse.json({ runs: await listRuns(root) });
+  }
+
+  if (b.action === "usage") {
+    return NextResponse.json({ usage: await usageByModel(root) });
   }
 
   if (b.action === "pending") {

@@ -10,6 +10,14 @@ import { loadDefaultAgent, saveDefaultAgent } from "@/lib/agentStore";
 import WorkflowBuilder, { type BuilderSeed } from "@/components/workflows/WorkflowBuilder";
 import RequirementCards, { parseRequirements } from "@/components/workflows/RequirementCards";
 
+interface UsageRow {
+  model: string;
+  calls: number;
+  inTokens: number;
+  outTokens: number;
+  costUsd: number;
+}
+
 interface CatalogItem {
   id: string;
   title: string;
@@ -255,6 +263,7 @@ export default function WorkflowsPane({
   const [designing, setDesigning] = useState(false);
   // duplicate-to-customize: the workflow the builder is seeded from
   const [seed, setSeed] = useState<CatalogItem | null>(null);
+  const [usage, setUsage] = useState<UsageRow[] | null>(null);
   const [runFilter, setRunFilter] = useState("");
 
   /** Filter runs by anything a human would search on: title, status, agent,
@@ -343,6 +352,8 @@ export default function WorkflowsPane({
       if (!cancelled && ok) setCatalog(data.workflows as CatalogItem[]);
       const runsRes = await api({ action: "runs", root });
       if (!cancelled && runsRes.ok) setHistory((runsRes.data.runs as RunState[]) ?? []);
+      const usageRes = await api({ action: "usage", root });
+      if (!cancelled && usageRes.ok) setUsage((usageRes.data.usage as UsageRow[]) ?? []);
     })();
     return () => {
       cancelled = true;
@@ -699,6 +710,36 @@ export default function WorkflowsPane({
         </div>
       )}
 
+      {usage && usage.length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+              Usage by model
+            </h3>
+            <span className="text-[10px] text-slate-400">this project · all recorded runs</span>
+          </div>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {usage.map((u) => (
+              <div key={u.model} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                <div className="truncate font-mono text-xs font-semibold text-slate-700">{u.model}</div>
+                <div className="mt-0.5 text-[11px] text-slate-500">
+                  {u.calls} agent call{u.calls === 1 ? "" : "s"} ·{" "}
+                  {u.inTokens.toLocaleString()} in / {u.outTokens.toLocaleString()} out
+                </div>
+                <div className="text-[11px] font-medium text-slate-600">
+                  {u.costUsd < 0.01 ? `$${u.costUsd.toFixed(4)}` : `$${u.costUsd.toFixed(2)}`} at API rates
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-slate-400">
+            Runs on your subscriptions — not billed per token; $ shown is the equivalent API price.
+            Remaining quota isn&apos;t exposed by the agent CLIs; for Copilot, one agent call ≈ one
+            premium request.
+          </p>
+        </div>
+      )}
+
       <details className="mt-4 rounded-xl border border-slate-200 bg-white">
         <summary className="cursor-pointer px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
           Models by role — which model plays each role, per agent
@@ -745,24 +786,38 @@ export default function WorkflowsPane({
                   />
                   Default agent — preselected for chat and every new run
                 </label>
-                <div className="mt-2.5 flex flex-wrap gap-2">
-                  {STEP_ROLES.map((role) => (
-                    <label key={role} className="text-[11px] text-slate-400">
-                      {ROLE_LABEL[role]}
-                      <input
-                        value={cfg[role] ?? ""}
-                        onChange={(e) => {
-                          const all = loadRoles();
-                          all[roleTab] = { ...all[roleTab], [role]: e.target.value.trim() };
-                          saveRoles(all);
-                          setRoleCfg(all);
-                        }}
-                        placeholder={s?.tiers?.[ROLE_TIER[role]] || "cli default"}
-                        spellCheck={false}
-                        className="mt-0.5 block w-36 rounded-lg border border-slate-200 px-2 py-1 font-mono text-[11px] outline-none focus:border-slate-400"
-                      />
-                    </label>
-                  ))}
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  {STEP_ROLES.map((role) => {
+                    const set = !!cfg[role]?.trim();
+                    return (
+                      <label key={role} className="block">
+                        <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                          {ROLE_LABEL[role]}
+                          <span
+                            className={`rounded-full px-1.5 py-px text-[9px] font-semibold uppercase ${
+                              set ? "bg-sky-50 text-sky-600" : "bg-emerald-50 text-emerald-600"
+                            }`}
+                          >
+                            {set ? "yours" : "auto"}
+                          </span>
+                        </span>
+                        <input
+                          value={cfg[role] ?? ""}
+                          onChange={(e) => {
+                            const all = loadRoles();
+                            all[roleTab] = { ...all[roleTab], [role]: e.target.value.trim() };
+                            saveRoles(all);
+                            setRoleCfg(all);
+                          }}
+                          placeholder={s?.tiers?.[ROLE_TIER[role]] || "cli default"}
+                          spellCheck={false}
+                          className={`mt-1 block w-full rounded-lg border px-2.5 py-1.5 font-mono text-[11px] outline-none focus:border-slate-400 ${
+                            set ? "border-sky-200 bg-sky-50/40" : "border-slate-200"
+                          }`}
+                        />
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             );
