@@ -18,6 +18,7 @@ import {
   listRuns,
   pendingGateCount,
   resolveGate,
+  resumeRun,
   startRun,
 } from "@/lib/workflows/engine";
 
@@ -109,6 +110,20 @@ export async function POST(req: Request) {
 
   if (b.action === "runs") {
     return NextResponse.json({ runs: await listRuns(root) });
+  }
+
+  if (b.action === "resume") {
+    if (typeof b.runId !== "string") {
+      return NextResponse.json({ error: "runId required" }, { status: 400 });
+    }
+    const run = await resumeRun(root, b.runId);
+    if (!run) {
+      return NextResponse.json(
+        { error: "cannot resume — run is live/finished/unknown, or the workflow definition changed since (start a fresh run)" },
+        { status: 400 },
+      );
+    }
+    return NextResponse.json({ runId: run.runId });
   }
 
   if (b.action === "pending") {

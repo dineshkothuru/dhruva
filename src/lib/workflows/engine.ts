@@ -156,16 +156,68 @@ export function startRun(
 
 const MAX_REVISIONS_PER_GATE = 5;
 
-async function execute(run: RunState, def: WorkflowDef) {
-  await executeSteps(run, def);
+/** Resume a failed/aborted run from its first incomplete step. Completed
+ * steps keep their outputs (later prompts template from them) and approved
+ * gates stay approved; everything from the failure point re-runs. Returns
+ * null when the run is live, unknown, finished, or the workflow definition
+ * has changed since (then a fresh start is the only honest option). */
+export async function resumeRun(root: string, runId: string): Promise<RunState | null> {
+  let run = runs.get(runId);
+  if (!run) {
+    try {
+      run = JSON.parse(
+        await fs.readFile(path.join(root, ".sfharness", "runs", `${runId}.json`), "utf8"),
+      ) as RunState;
+    } catch {
+      return null;
+    }
+  }
+  if (!run || run.root !== root) return null;
+  if (run.status === "running" || run.status === "waiting_gate" || run.status === "done") {
+    return null;
+  }
+  const { loadWorkflow } = await import("./custom");
+  const def = await loadWorkflow(root, run.workflowId);
+  if (!def) return null;
+  // the definition must still match the recorded steps — resuming into a
+  // changed workflow would execute steps the approvals never covered
+  if (
+    def.steps.length !== run.steps.length ||
+    def.steps.some((s, i) => s.id !== run.steps[i].id)
+  ) {
+    return null;
+  }
+  const start = run.steps.findIndex((s) => s.status !== "done" && s.status !== "skipped");
+  if (start === -1) return null;
+  for (let k = start; k < run.steps.length; k++) {
+    const s = run.steps[k];
+    s.status = "pending";
+    s.output = "";
+    s.usage = undefined;
+    s.startedAt = undefined;
+    s.endedAt = undefined;
+    s.model = undefined;
+    s.modelFrom = undefined;
+  }
+  run.steps[start].output = "[engine] resumed — re-running from this step\n";
+  run.status = "running";
+  run.endCommit = undefined;
+  runs.set(run.runId, run);
+  await persist(run);
+  void execute(run, def, start);
+  return run;
+}
+
+async function execute(run: RunState, def: WorkflowDef, startIndex = 0) {
+  await executeSteps(run, def, startIndex);
   // Pin the end state (without moving HEAD) so this run stays diffable after
   // later runs re-baseline — done for every terminal status incl. aborted.
   run.endCommit = (await commitRunResult(run.root, run.runId)) ?? undefined;
   await persist(run);
 }
 
-async function executeSteps(run: RunState, def: WorkflowDef) {
-  for (let i = 0; i < def.steps.length; i++) {
+async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
+  for (let i = startIndex; i < def.steps.length; i++) {
     const stepDef = def.steps[i];
     const step = run.steps.find((s) => s.id === stepDef.id)!;
     if ((run.status as string) === "aborted") {

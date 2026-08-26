@@ -519,6 +519,19 @@ export default function WorkflowsPane({
               ■ Stop run
             </button>
           )}
+          {(run.status === "failed" || run.status === "aborted") && (
+            <button
+              onClick={async () => {
+                const { ok, data } = await api({ action: "resume", root, runId: run.runId });
+                if (!ok) alert(String(data.error ?? "cannot resume"));
+                else await fetchRunState(run.runId);
+              }}
+              className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
+              title="Re-run from the first incomplete step — completed steps and approved gates are kept"
+            >
+              ⟳ Resume run
+            </button>
+          )}
         </div>
         <p className="mb-3 text-[11px] text-slate-500">
           <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 font-medium">
