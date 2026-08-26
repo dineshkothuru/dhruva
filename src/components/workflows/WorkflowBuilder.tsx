@@ -12,7 +12,7 @@ interface StepDraft {
   type: "snapshot" | "agent" | "cli" | "gate" | "changes" | "verify";
   prompt?: string;
   readOnly?: boolean;
-  modelTier?: "" | "best" | "default" | "light";
+  role?: "" | "read" | "design" | "implement" | "review" | "trace";
   bin?: "sf" | "git";
   argsText?: string; // one arg per line
   message?: string;
@@ -84,7 +84,7 @@ export default function WorkflowBuilder({
             ? {
                 prompt: s.prompt ?? "",
                 readOnly: s.readOnly || undefined,
-                modelTier: s.modelTier || undefined,
+                role: s.role || undefined,
               }
             : {}),
           ...(s.type === "cli"
@@ -200,11 +200,14 @@ export default function WorkflowBuilder({
                       read-only (analysis/review)
                     </label>
                     <label className="flex items-center gap-1">
-                      model tier
-                      <select value={s.modelTier ?? ""} onChange={(e) => updStep(i, { modelTier: e.target.value as StepDraft["modelTier"] })} className={inputCls}>
+                      role
+                      <select value={s.role ?? ""} onChange={(e) => updStep(i, { role: e.target.value as StepDraft["role"] })} className={inputCls} title="Which model plays this step — resolved from your Models-by-role settings">
                         <option value="">run default</option>
-                        <option value="best">best</option>
-                        <option value="light">light</option>
+                        <option value="read">read / investigate</option>
+                        <option value="design">design / author</option>
+                        <option value="implement">implement</option>
+                        <option value="review">review (critic)</option>
+                        <option value="trace">trace / coverage</option>
                       </select>
                     </label>
                   </div>
