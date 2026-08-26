@@ -44,6 +44,7 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
       default:
         typeof i.default === "boolean" || typeof i.default === "string" ? i.default : undefined,
       attachTo: i.attachTo === true && kind === "text" ? true : undefined,
+      hidden: i.hidden === true ? true : undefined,
     };
   });
 

@@ -104,6 +104,9 @@ export interface WorkflowDef {
     /** Attachment references are appended to THIS input (must be free-text,
      * never a path/list field). Fallback: the first text input. */
     attachTo?: boolean;
+    /** Not shown in the start form — filled by the server from project
+     * settings at run start (still recorded in the run's audited inputs). */
+    hidden?: boolean;
   }[];
   steps: StepDef[];
 }

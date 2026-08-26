@@ -5,6 +5,7 @@ import { isAgentId } from "@/lib/agents";
 import { isSafeModelId } from "@/lib/agents";
 import { builtinWorkflows } from "@/lib/workflows/builtins";
 import { STEP_ROLES, type StepRole } from "@/lib/workflows/schema";
+import { readProjectSettings } from "@/lib/projectSettings";
 import {
   deleteCustomWorkflow,
   listCustomWorkflows,
@@ -144,6 +145,15 @@ export async function POST(req: Request) {
     for (const [k, v] of Object.entries(inputs)) {
       if (typeof v !== "string" && typeof v !== "boolean") delete inputs[k];
       if (typeof v === "string" && v.length > 8000) inputs[k] = v.slice(0, 8000);
+    }
+    // Project-settings injection: when the workflow declares the UX inputs,
+    // fill them from .sfharness/settings.json — server-side, so it's
+    // deterministic and lands in the run's audited inputs.
+    if (def.inputs.some((i) => i.key === "uxEnabled")) {
+      const s = await readProjectSettings(root);
+      inputs.uxEnabled = s.ux?.enabled === true;
+      inputs.uxRules = s.ux?.rules ?? "";
+      inputs.designDir = s.ux?.designDir || "docs/design";
     }
     const model = isSafeModelId(b.model) ? b.model : undefined;
     // per-role model choices — the model setting (role ids fixed)
