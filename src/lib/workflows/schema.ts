@@ -101,6 +101,10 @@ export interface RunState {
   steps: StepState[];
   /** Changed files as of the last "changes" step. */
   changes?: { file: string; status: string }[];
+  /** Shadow-git commits pinning this run's before/after states — historical
+   * runs stay diffable after later runs re-baseline HEAD. */
+  baseCommit?: string;
+  endCommit?: string;
   /** Files the investigation step named (parsed from its FILES: line) —
    * used to retrieve fresh copies from the org before implementing. */
   affected?: string[];

@@ -19,7 +19,18 @@ const LANG_BY_EXT: Record<string, string> = {
   md: "markdown",
 };
 
-export default function DiffPane({ root, file }: { root: string; file: string }) {
+export default function DiffPane({
+  root,
+  file,
+  base,
+  end,
+}: {
+  root: string;
+  file: string;
+  /** Pinned shadow-git commits of a historical run; unset = HEAD → current. */
+  base?: string;
+  end?: string;
+}) {
   const [data, setData] = useState<{ before: string | null; after: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +41,7 @@ export default function DiffPane({ root, file }: { root: string; file: string })
         const res = await fetch("/api/changes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ root, file }),
+          body: JSON.stringify({ root, file, base, end }),
         });
         const d = await res.json();
         if (cancelled) return;
@@ -43,7 +54,7 @@ export default function DiffPane({ root, file }: { root: string; file: string })
     return () => {
       cancelled = true;
     };
-  }, [root, file]);
+  }, [root, file, base, end]);
 
   const ext = file.split(".").pop()?.toLowerCase() ?? "";
   const lang = LANG_BY_EXT[ext] ?? "plaintext";
@@ -56,7 +67,9 @@ export default function DiffPane({ root, file }: { root: string; file: string })
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
         <span className="truncate font-mono text-xs text-slate-600">{file}</span>
         <span className="ml-auto text-[11px] text-slate-400">
-          before (last snapshot) → after (current)
+          {base
+            ? `run baseline → ${end ? "run result" : "current"}`
+            : "before (last snapshot) → after (current)"}
         </span>
       </div>
       <div className="min-h-0 flex-1">

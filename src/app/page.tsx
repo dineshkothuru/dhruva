@@ -83,8 +83,12 @@ export default function Home() {
   // Re-opening a diff bumps its nonce so the pane remounts and refetches —
   // a second agent run on the same file must never show the previous diff.
   const [diffNonce, setDiffNonce] = useState<Record<string, number>>({});
+  // Pinned commits per diff tab: set = a historical run's baseline→result;
+  // unset = the live HEAD→current diff.
+  const [diffPins, setDiffPins] = useState<Record<string, { base?: string; end?: string }>>({});
   const [picking, setPicking] = useState(false);
-  function openDiff(rel: string) {
+  function openDiff(rel: string, pin?: { base?: string; end?: string }) {
+    setDiffPins((p) => ({ ...p, [rel]: pin ?? {} }));
     setDiffNonce((n) => ({ ...n, [rel]: (n[rel] ?? 0) + 1 }));
     openFile(`diff:${rel}`);
   }
@@ -605,6 +609,8 @@ export default function Home() {
                     key={diffNonce[f.slice(5)] ?? 0}
                     root={result.path}
                     file={f.slice(5)}
+                    base={diffPins[f.slice(5)]?.base}
+                    end={diffPins[f.slice(5)]?.end}
                   />
                 ) : (
                   <EditorPane root={result.path} file={f} />

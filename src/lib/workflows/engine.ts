@@ -4,7 +4,7 @@ import { promises as fs } from "node:fs";
 import { spawn } from "node:child_process";
 import type { AgentId } from "@/lib/agents";
 import { AGENTS } from "@/lib/agents";
-import { takeSnapshot, changesSince } from "@/lib/snapshot";
+import { takeSnapshot, changesSince, headCommit, commitRunResult } from "@/lib/snapshot";
 import { STANDARDS_PROMPT, checkStandards } from "@/lib/standards";
 import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
@@ -134,6 +134,14 @@ export function startRun(
 const MAX_REVISIONS_PER_GATE = 5;
 
 async function execute(run: RunState, def: WorkflowDef) {
+  await executeSteps(run, def);
+  // Pin the end state (without moving HEAD) so this run stays diffable after
+  // later runs re-baseline — done for every terminal status incl. aborted.
+  run.endCommit = (await commitRunResult(run.root, run.runId)) ?? undefined;
+  await persist(run);
+}
+
+async function executeSteps(run: RunState, def: WorkflowDef) {
   for (let i = 0; i < def.steps.length; i++) {
     const stepDef = def.steps[i];
     const step = run.steps.find((s) => s.id === stepDef.id)!;
@@ -262,6 +270,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
   switch (def.type) {
     case "snapshot": {
       const ok = await takeSnapshot(run.root);
+      if (ok) run.baseCommit = (await headCommit(run.root)) ?? undefined;
       step.output = ok ? "baseline snapshot taken" : "snapshot unavailable (git missing?)";
       return ok;
     }

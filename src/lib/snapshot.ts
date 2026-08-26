@@ -129,3 +129,42 @@ export async function baselineContent(root: string, rel: string): Promise<string
   const res = await runGit(root, ["show", `HEAD:${rel.replace(/\\/g, "/")}`]);
   return res.ok ? res.stdout : null;
 }
+
+const COMMIT_RE = /^[0-9a-f]{7,40}$/;
+export function isCommitHash(v: unknown): v is string {
+  return typeof v === "string" && COMMIT_RE.test(v);
+}
+
+/** The current baseline commit hash (null before the first snapshot). */
+export async function headCommit(root: string): Promise<string | null> {
+  const r = await runGit(root, ["rev-parse", "HEAD"]);
+  const h = r.stdout.trim().toLowerCase();
+  return r.ok && COMMIT_RE.test(h) ? h : null;
+}
+
+/** Commit the current work-tree state WITHOUT moving HEAD (write-tree +
+ * commit-tree) and pin it under refs/runs/<runId> so a later run's baseline
+ * never erases this run's result — historical diffs stay reproducible. */
+export async function commitRunResult(root: string, runId: string): Promise<string | null> {
+  if (!/^[\w-]{1,64}$/.test(runId)) return null;
+  if (!(await ensureShadow(root))) return null;
+  await clearStaleLock(root);
+  await runGit(root, ["add", "-A"]);
+  const tree = await runGit(root, ["write-tree"]);
+  if (!tree.ok) return null;
+  const head = await headCommit(root);
+  const args = ["commit-tree", tree.stdout.trim(), "-m", `run ${runId} result`];
+  if (head) args.push("-p", head);
+  const c = await runGit(root, args);
+  const hash = c.stdout.trim().toLowerCase();
+  if (!c.ok || !COMMIT_RE.test(hash)) return null;
+  await runGit(root, ["update-ref", `refs/runs/${runId}`, hash]);
+  return hash;
+}
+
+/** One file's content at a specific pinned commit; null when it didn't exist. */
+export async function contentAt(root: string, commit: string, rel: string): Promise<string | null> {
+  if (!COMMIT_RE.test(commit)) return null;
+  const res = await runGit(root, ["show", `${commit}:${rel.replace(/\\/g, "/")}`]);
+  return res.ok ? res.stdout : null;
+}

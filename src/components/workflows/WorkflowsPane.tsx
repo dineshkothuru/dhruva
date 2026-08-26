@@ -176,7 +176,7 @@ export default function WorkflowsPane({
   onJumpConsumed,
 }: {
   root: string;
-  onOpenDiff?: (rel: string) => void;
+  onOpenDiff?: (rel: string, pin?: { base?: string; end?: string }) => void;
   /** Run id to open on arrival (a run started from the chat intake). */
   jumpToRun?: string | null;
   /** Called once the jump target is opened, so it never re-fires. */
@@ -631,7 +631,14 @@ export default function WorkflowsPane({
                   {run.changes.map((c) => (
                     <button
                       key={c.file}
-                      onClick={() => onOpenDiff?.(c.file)}
+                      onClick={() =>
+                        onOpenDiff?.(
+                          c.file,
+                          run.baseCommit
+                            ? { base: run.baseCommit, end: run.endCommit }
+                            : undefined,
+                        )
+                      }
                       className="block w-full truncate rounded px-2 py-1 text-left font-mono text-xs hover:bg-slate-100"
                       title="Open diff"
                     >
