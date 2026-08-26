@@ -69,19 +69,42 @@ export const SOLUTION_DESIGN: WorkflowDef = {
         "Write the APPROVED solution design as TWO Markdown documents (create folders if needed). " +
         "These two files are the only ones you may create or modify in this step:\n\n" +
         "1. docs/designs/{inputs.docName}-hld.md — HIGH-LEVEL DESIGN, written for stakeholders and " +
-        "review boards: requirement summary, business context, a GAP ANALYSIS table (each " +
-        "requirement item: Already implemented / Partial / New, with the existing component named " +
-        "as evidence), solution overview and approach " +
-        "(declarative vs code and why), architecture at component-group level, data model section " +
-        "with a Mermaid er-diagram code block (```mermaid / erDiagram) of new and impacted objects " +
-        "with relationships and key fields, integration touchpoints, security model overview, " +
-        "impact analysis, risks/assumptions/open questions, effort estimate table.\n\n" +
+        "review boards, with EXACTLY these numbered sections:\n" +
+        "  1. Context — problem space, constraints, existing system boundaries (only what the " +
+        "design needs to stand on its own).\n" +
+        "  2. Goals / Non-Goals — what this design achieves, and what it explicitly does NOT do.\n" +
+        "  3. Gap Analysis — table of every REQ-xxx: Already implemented / Partial / New, with the " +
+        "existing component named as evidence.\n" +
+        "  4. Approaches Considered — at least two named approaches with brief description, pros, " +
+        "cons; then a Selected Approach subsection stating the choice, its complexity (XS/S/M/L/XL), " +
+        "and WHY, referencing the constraints that ruled out the alternatives (declarative vs code " +
+        "belongs here).\n" +
+        "  5. High-Level Design — architecture overview (how component groups interact) and the key " +
+        "abstractions/patterns introduced.\n" +
+        "  6. Data Model — Mermaid er-diagram code block (```mermaid / erDiagram) of new and " +
+        "impacted objects with relationships and key fields.\n" +
+        "  7. Integration Touchpoints and Security Model overview.\n" +
+        "  8. Constraints and Trade-offs — what was sacrificed and why that is acceptable.\n" +
+        "  9. Acceptance Criteria — 'AC-n: Given <precondition>, when <action>, then <outcome>. " +
+        "[traces: REQ-xxx]' — every REQ id with pending work must be traced by at least one AC.\n" +
+        "  10. Impact analysis, risks/assumptions, Open Questions, effort estimate table.\n\n" +
         "2. docs/designs/{inputs.docName}-tdd.md — TECHNICAL DESIGN DOCUMENT, written for the " +
-        "developers who will build it: per component (each apex class, trigger, LWC, flow, object/" +
-        "field) — exact API names, purpose, reuse-vs-new decision, method-level design or flow " +
-        "outline, key logic/pseudocode where non-trivial, error handling, governor-limit " +
-        "considerations, sharing/FLS specifics, deployment order and dependencies, and a test " +
-        "strategy section with the test classes/scenarios to write (positive/negative/bulk).\n\n" +
+        "developers who will build it, with EXACTLY these numbered sections:\n" +
+        "  1. Components — per component (each apex class, trigger, LWC, flow, object/field): " +
+        "exact API names, purpose/responsibility, inputs/outputs, dependencies, reuse-vs-new " +
+        "decision, method-level design or flow outline, key logic/pseudocode where non-trivial.\n" +
+        "  2. Data Flow — how data moves through the components end to end.\n" +
+        "  3. State Management — what state exists, where it lives, how it changes.\n" +
+        "  4. Error Handling — what can fail and how each failure is handled/surfaced.\n" +
+        "  5. Governor Limits and Sharing/FLS specifics.\n" +
+        "  6. Deployment Order and dependencies.\n" +
+        "  7. Test Strategy — the test classes/scenarios to write (positive/negative/bulk). Note: " +
+        "Apex tests run in the org, so tests are written WITH the implementation and proven via a " +
+        "check-only deploy with RunLocalTests — never promise a run-failing-tests-first cycle.\n" +
+        "  8. Build Plan — ordered task table: T-n | title | depends_on | files (project-relative " +
+        "paths) | test scenarios | traces (REQ/AC ids). Implementation follows this order.\n" +
+        "  9. Decisions — one line each: Decision -> Rationale -> Consequence.\n" +
+        "  10. Open Questions that may affect implementation.\n\n" +
         "Approved design from the analysis step:\n{steps.analyse.output}\n\n" +
         "Incorporate every detail from the approved design; expand where precision is needed but " +
         "do not contradict what was approved. Cross-link the two documents at the top of each.\n\n" +
@@ -115,7 +138,9 @@ export const SOLUTION_DESIGN: WorkflowDef = {
         "For EVERY REQ item, report one line:\n" +
         "  REQ-xxx — COVERED (HLD section N / TDD section M) | MISSING FROM DOCS | DIVERGES " +
         "(the docs say something different from the approved design — quote it)\n" +
-        "Also flag anything in the docs that has no approved requirement behind it (scope creep).\n" +
+        "Also flag anything in the docs that has no approved requirement behind it (scope creep), " +
+        "any REQ with pending work that no Acceptance Criterion traces ([traces: REQ-xxx]), and any " +
+        "Build Plan task in the TDD that traces to nothing.\n" +
         "Be strict: no section reference = not covered. End with the verdict line: " +
         "COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE — items <REQ-ids>.",
     },

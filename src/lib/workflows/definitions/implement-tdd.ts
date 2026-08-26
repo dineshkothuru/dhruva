@@ -35,8 +35,10 @@ export const IMPLEMENT_TDD: WorkflowDef = {
         "DO NOT modify any files in this step.\n" +
         "Scope note from the requester (may narrow the work): {inputs.scope}\n" +
         "Cross-check the TDD against the current codebase (components it references, reuse it " +
-        "assumes). Produce the implementation checklist in dependency order: each component to " +
-        "create or modify, and flag anything in the TDD that no longer matches the codebase.\n" +
+        "assumes). If the TDD has a Build Plan section (task table T-1, T-2… with depends_on), " +
+        "use ITS order as the checklist; otherwise produce the implementation checklist in " +
+        "dependency order yourself. Either way: each component to create or modify, and flag " +
+        "anything in the TDD that no longer matches the codebase.\n" +
         "End with one line listing every EXISTING file you will modify as project-relative paths:\n" +
         "FILES: force-app/main/default/classes/Example.cls",
     },
