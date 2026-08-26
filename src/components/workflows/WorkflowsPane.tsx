@@ -539,12 +539,22 @@ export default function WorkflowsPane({
                 <span className={s.status === "skipped" ? "text-slate-400" : "font-medium"}>
                   {s.title}
                 </span>
-                <span
-                  className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                    TYPE_CHIP[s.type] ?? "bg-slate-100 text-slate-500"
-                  }`}
-                >
-                  {s.type}
+                <span className="ml-auto flex items-center gap-1.5">
+                  {s.type === "agent" && s.model && s.model !== "default" && (
+                    <span
+                      className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] text-slate-500"
+                      title={s.modelFrom ? `model source: ${s.modelFrom}` : undefined}
+                    >
+                      {s.model}
+                    </span>
+                  )}
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                      TYPE_CHIP[s.type] ?? "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {s.type}
+                  </span>
                 </span>
               </summary>
               {s.status === "waiting_gate" ? (
