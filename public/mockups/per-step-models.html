@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Per-step models — mockup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; background: #f1f5f9; color: #0f172a; padding: 28px; }
+  h1 { font-size: 16px; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: #64748b; margin-bottom: 24px; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  .col { flex: 1; min-width: 380px; max-width: 470px; }
+  .stage { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #475569; margin-bottom: 10px; }
+  .modal { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; box-shadow: 0 10px 30px rgba(15,23,42,.08); }
+  .mtitle { font-size: 14px; font-weight: 700; }
+  .mdesc { font-size: 11px; color: #64748b; margin: 4px 0 14px; }
+  label { display: block; font-size: 11px; font-weight: 600; color: #475569; margin: 12px 0 4px; }
+  .input, select { width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 7px 10px; font-size: 12px; background: #fff; color: #0f172a; }
+  .hint { font-size: 10px; color: #94a3b8; margin-top: 3px; }
+  .agents { display: flex; gap: 6px; }
+  .agent { border: 1px solid #cbd5e1; border-radius: 10px; padding: 6px 12px; font-size: 12px; color: #64748b; background: #fff; }
+  .agent.sel { border-color: #0f172a; background: #0f172a; color: #fff; font-weight: 600; }
+  .prefilled { position: relative; }
+  .autochip { position: absolute; right: 34px; top: 50%; transform: translateY(-50%); font-size: 9px; font-weight: 700; color: #059669; background: #ecfdf5; border-radius: 99px; padding: 2px 7px; }
+  details { margin-top: 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
+  summary { cursor: pointer; padding: 9px 12px; font-size: 11px; font-weight: 600; color: #475569; list-style: none; }
+  summary::before { content: "▸ "; color: #94a3b8; }
+  details[open] summary::before { content: "▾ "; }
+  .steps { padding: 4px 12px 12px; }
+  .steprow { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px dashed #e2e8f0; }
+  .steprow:first-child { border-top: 0; }
+  .sname { flex: 1; font-size: 12px; }
+  .sname .sid { font-family: ui-monospace, monospace; font-size: 10px; color: #94a3b8; display: block; }
+  .tier { font-size: 9px; font-weight: 700; text-transform: uppercase; border-radius: 99px; padding: 2px 7px; }
+  .tier.best { background: #ede9fe; color: #7c3aed; }
+  .tier.default { background: #e0f2fe; color: #0284c7; }
+  .steprow select { width: 150px; }
+  .steprow.changed select { border-color: #f59e0b; background: #fffbeb; }
+  .changedtag { font-size: 9px; color: #b45309; font-weight: 600; }
+  .startbtn { margin-top: 16px; width: 100%; background: #0f172a; color: #fff; border: 0; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 600; }
+  .note { margin-top: 10px; font-size: 11px; color: #475569; background: #fefce8; border: 1px solid #fde68a; border-radius: 10px; padding: 8px 10px; }
+  .callout { font-size: 11px; color: #334155; background: #fff; border-left: 3px solid #0ea5e9; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<h1>Start-modal redesign — "the system fills everything, you only override"</h1>
+<p class="sub">Two states of the SAME modal (Implement from TDD, agent = Claude Code). Left: what you normally see — zero model input needed. Right: the advanced section expanded, one step overridden.</p>
+
+<div class="row">
+  <div class="col">
+    <div class="stage">State 1 — normal start (nothing to fill)</div>
+    <div class="callout">The model box is <b>already filled</b> from your saved settings — the green chip shows it came from defaults. You just press Start.</div>
+    <div class="modal">
+      <div class="mtitle">Implement from TDD</div>
+      <div class="mdesc">Build what an approved Technical Design Document specifies…</div>
+
+      <label>Agent</label>
+      <div class="agents">
+        <span class="agent">GitHub Copilot</span>
+        <span class="agent sel">Claude Code</span>
+        <span class="agent">OpenAI Codex</span>
+      </div>
+
+      <label>Model</label>
+      <div class="prefilled">
+        <select><option>Claude Sonnet 5</option></select>
+        <span class="autochip">AUTO · your default</span>
+      </div>
+      <div class="hint">pre-filled from your saved defaults — change it and the change is remembered for this workflow</div>
+
+      <label>TDD path in the project</label>
+      <input class="input" value="docs/designs/solution-design-tdd.md">
+
+      <label>Build-plan tasks file</label>
+      <input class="input" value="docs/designs/solution-design-tasks.json">
+
+      <details>
+        <summary>Per-step models (advanced) — all resolved automatically</summary>
+      </details>
+
+      <button class="startbtn">Start workflow ▶</button>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="stage">State 2 — advanced expanded, one step overridden</div>
+    <div class="callout">Every agent step is listed with the model the <b>tier already resolved</b> — visible, not hidden. Change one dropdown → only that step changes, highlighted amber, and it's <b>saved for next time</b> (per workflow, per agent).</div>
+    <div class="modal">
+      <div class="mtitle">Implement from TDD</div>
+      <div class="mdesc">Build what an approved Technical Design Document specifies…</div>
+
+      <label>Model</label>
+      <div class="prefilled">
+        <select><option>Claude Sonnet 5</option></select>
+        <span class="autochip">AUTO</span>
+      </div>
+
+      <details open>
+        <summary>Per-step models (advanced)</summary>
+        <div class="steps">
+          <div class="steprow">
+            <span class="sname">Read the TDD and plan the build<span class="sid">plan</span></span>
+            <span class="tier best">best</span>
+            <select><option>Claude Opus 5</option></select>
+          </div>
+          <div class="steprow changed">
+            <span class="sname">Implement per TDD (task loop)<span class="sid">implement</span></span>
+            <span class="tier default">default</span>
+            <select><option>Claude Opus 5 ✏</option></select>
+          </div>
+          <div class="steprow">
+            <span class="sname">Code review against the TDD<span class="sid">review</span></span>
+            <span class="tier best">best</span>
+            <select><option>Claude Opus 5</option></select>
+          </div>
+          <div class="steprow">
+            <span class="sname">Traceability matrix<span class="sid">traceability</span></span>
+            <span class="tier best">best</span>
+            <select><option>Claude Opus 5</option></select>
+          </div>
+          <div style="padding-top:6px"><span class="changedtag">1 override — remembered for “Implement from TDD” with Claude Code &nbsp;·&nbsp; <u>reset to defaults</u></span></div>
+        </div>
+      </details>
+
+      <div class="note"><b>Where the defaults come from:</b> step's tier (best/default/light) → your tier settings for the selected agent (best = Opus 5, default = Sonnet 5) → this dropdown. New model ships? Update the tier once — every workflow follows. Overrides only stick where YOU changed something.</div>
+
+      <button class="startbtn">Start workflow ▶</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

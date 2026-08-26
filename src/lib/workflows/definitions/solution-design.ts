@@ -58,7 +58,10 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       type: "agent",
       modelTier: "best",
       readOnly: true,
-      persona: "salesforce-review",
+      // architect persona, NOT the code-review one: this judges architecture
+      // decisions (object model, boundaries, security design), not diffs —
+      // the adversarial stance comes from the step prompt itself
+      persona: "salesforce-architect",
       autoRevise: { target: "analyse", trigger: "VERDICT:\\s*BLOCKED", maxRounds: 1 },
       prompt:
         "You are the DESIGN REVIEWER — adversarially critique the solution design below before a " +
