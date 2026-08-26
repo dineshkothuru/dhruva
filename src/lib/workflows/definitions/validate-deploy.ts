@@ -3,7 +3,8 @@ import type { WorkflowDef } from "../schema";
 export const VALIDATE_DEPLOY: WorkflowDef = {
   id: "validate-deploy",
   title: "Validate deploy",
-  description: "Preview, gate, then check-only deploy of a source path with the chosen test level.",
+  description:
+    "Gate, then check-only deploy of a source path with the chosen test level. Works on any org (no source tracking required) — nothing is ever saved to the org.",
   inputs: [
     { key: "target", label: "Source path to validate", kind: "text", default: "force-app" },
     {
@@ -16,17 +17,11 @@ export const VALIDATE_DEPLOY: WorkflowDef = {
   ],
   steps: [
     {
-      id: "preview",
-      title: "Preview what would change",
-      type: "cli",
-      bin: "sf",
-      args: ["project", "deploy", "preview", "--source-dir", "{inputs.target}", "--json"],
-    },
-    {
       id: "approve",
       title: "Approve validation",
       type: "gate",
-      message: "Review the preview above. Run the check-only deploy (nothing is saved to the org)?",
+      message:
+        "Run a check-only deploy of {inputs.target} against the default org (compiles + runs the chosen tests; nothing is saved)?",
     },
     {
       id: "validate",
