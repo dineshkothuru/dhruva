@@ -132,7 +132,9 @@ export async function POST(req: Request) {
       spawn("taskkill", ["/pid", String(existing.child.pid), "/T", "/F"], { shell: false });
       previews.delete(key);
     }
-    const child = spawn(`sf lightning dev ${kind} --name "${name}"`, {
+    // pre-answer every interactive prompt — the process runs hidden
+    const extra = kind === "app" ? " --device-type desktop" : "";
+    const child = spawn(`sf lightning dev ${kind} --name "${name}"${extra}`, {
       cwd: root,
       shell: true,
       windowsHide: true,
@@ -140,7 +142,19 @@ export async function POST(req: Request) {
     });
     const p: Preview = { child, kind, name, logs: [] };
     const push = (c: Buffer) => {
-      p.logs.push(c.toString("utf8").replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
+      const text = c
+        .toString("utf8")
+        .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
+        // drop the CLI's harmless dev-plugin probe noise from the panel log
+        .split("\n")
+        .filter(
+          (l) =>
+            !/Error Plugin: @salesforce\/cli|could not find package\.json|^\s*(name|root|type|module|plugin):|See more details with DEBUG|trace-warnings|^\s*}\s*$|^\s*{\s*$/.test(
+              l,
+            ),
+        )
+        .join("\n");
+      if (text.trim()) p.logs.push(text);
       if (p.logs.length > 200) p.logs.splice(0, p.logs.length - 200);
     };
     child.stdout?.on("data", push);
