@@ -55,14 +55,22 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     id: "copilot",
     label: "GitHub Copilot",
     bin: "copilot",
-    tiers: { best: "claude-opus-5", default: "claude-sonnet-5", light: "gpt-5.4-mini" },
+    tiers: { best: "claude-opus-5", default: "claude-sonnet-5", light: "gemini-3.6-flash" },
+    // Slug convention: the picker's display name, lowercased, spaces → hyphens
+    // ("GPT-5.6 Sol" → gpt-5.6-sol — verified against the CLI). An id the CLI
+    // doesn't know fails instantly at step start with a visible error.
     models: [
       { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
       { id: "claude-opus-5", label: "Claude Opus 5" },
-      { id: "auto", label: "Auto (Copilot picks)" },
-      { id: "gpt-5.4", label: "GPT-5.4" },
-      { id: "gpt-5.4-mini", label: "GPT-5.4 mini" },
-      { id: "gemini-3.0-pro", label: "Gemini 3.0 Pro" },
+      { id: "auto", label: "Auto (Copilot picks, 10% discount)" },
+      { id: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
+      { id: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+      { id: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+      { id: "gpt-5.5", label: "GPT-5.5" },
+      { id: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+      { id: "gemini-3.1-pro", label: "Gemini 3.1 Pro" },
+      { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
+      { id: "mai-code-1-flash", label: "MAI-Code-1 Flash" },
     ],
     // --allow-all-tools: the agent may edit files and run commands inside the
     // attached project; the harness user asked it to do the task.
