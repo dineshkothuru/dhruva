@@ -242,6 +242,30 @@ export default function WorkflowsPane({
     { tiers?: Record<string, string> }
   > | null>(null);
   const [designing, setDesigning] = useState(false);
+  // files attached in the start modal — ride into the run's text inputs so
+  // agent steps read them (the engine's full-read rule applies)
+  const [attachments, setAttachments] = useState<{ rel: string; name: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function uploadFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      for (const f of Array.from(files).slice(0, 8)) {
+        const fd = new FormData();
+        fd.append("root", root);
+        fd.append("file", f);
+        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        const data = await res.json();
+        if (res.ok) setAttachments((a) => [...a, { rel: String(data.rel), name: String(data.name) }]);
+        else setError(String(data.error ?? "upload failed"));
+      }
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
 
   async function refreshCatalog() {
     const { ok, data } = await api({ action: "list", root });
@@ -337,11 +361,20 @@ export default function WorkflowsPane({
     setStarting(true);
     setError(null);
     try {
+      // append attached files to the primary text input so agent steps see them
+      const startInputs = { ...inputs };
+      if (attachments.length > 0) {
+        const firstText = selected.inputs.find((i) => i.kind === "text");
+        if (firstText) {
+          startInputs[firstText.key] =
+            `${String(startInputs[firstText.key] ?? "")}\n\nAttached files (read them from the project root): ${attachments.map((a) => a.rel).join(", ")}`;
+        }
+      }
       const { ok, data } = await api({
         action: "start",
         root,
         workflow: selected.id,
-        inputs,
+        inputs: startInputs,
         agent,
         tiers: tiersFor(agent),
       });
@@ -351,6 +384,7 @@ export default function WorkflowsPane({
       }
       await fetchRunState(String(data.runId));
       setSelected(null);
+      setAttachments([]);
     } finally {
       setStarting(false);
     }
@@ -780,6 +814,47 @@ export default function WorkflowsPane({
                 </div>
               ),
             )}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.doc,.txt,.log,.csv,.md"
+                className="hidden"
+                onChange={(e) => uploadFiles(e.target.files)}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading || starting}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40"
+                title="Attach requirement documents, screenshots, or logs — the AI reads them in full"
+              >
+                {uploading ? (
+                  <span className="text-xs">…</span>
+                ) : (
+                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                    <path d="M8 3v10M3 8h10" />
+                  </svg>
+                )}
+              </button>
+              {attachments.length === 0 && (
+                <span className="text-[11px] text-slate-400">attach documents (optional)</span>
+              )}
+              {attachments.map((a) => (
+                <span
+                  key={a.rel}
+                  className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
+                >
+                  {a.name}
+                  <button
+                    onClick={() => setAttachments((x) => x.filter((y) => y.rel !== a.rel))}
+                    className="text-slate-400 hover:text-slate-700"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-slate-500">Agent:</label>
               <select
