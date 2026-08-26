@@ -28,6 +28,12 @@ export default function FolderPicker({
       });
       const data = await res.json();
       if (!res.ok) {
+        // an unusable start path must never strand the picker — fall back to
+        // the drive list, like a native Open dialog
+        if (target !== "") {
+          await load("");
+          return;
+        }
         setError(String(data.error ?? "cannot open"));
         return;
       }

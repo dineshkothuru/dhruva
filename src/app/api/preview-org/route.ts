@@ -9,13 +9,15 @@ import { isAttachableRoot } from "@/lib/fsguard";
  * user can watch and close — it is a long-lived dev server, not a step.
  * Note: only UI components are virtualized; Apex still runs org-side. */
 export async function POST(req: Request) {
-  let body: { path?: unknown };
+  let body: { path?: unknown; kind?: unknown };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
   const root = typeof body.path === "string" ? path.normalize(body.path.trim()) : "";
+  // "app" = Lightning app preview; "site" = LWR Experience Cloud site preview
+  const kind = body.kind === "site" ? "site" : "app";
   if (!root || !(await isAttachableRoot(root))) {
     return NextResponse.json({ error: "not an attached Salesforce project" }, { status: 400 });
   }
@@ -24,7 +26,7 @@ export async function POST(req: Request) {
     // visible console so the user sees the dev-server status/prompts and can
     // stop it; detached so this request returns immediately
     // single shell string: node's arg-quoting breaks `start`'s title parsing
-    const child = spawn('start "DhruvaLocalDev" cmd /k "sf lightning dev app"', {
+    const child = spawn(`start "DhruvaLocalDev" cmd /k "sf lightning dev ${kind}"`, {
       cwd: root,
       detached: true,
       stdio: "ignore",

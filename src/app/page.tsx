@@ -469,18 +469,34 @@ export default function Home() {
                           </div>
                         )}
                         {result.org?.connected && (
-                          <button
-                            onClick={async () => {
-                              const { data } = await postJson("/api/preview-org", {
-                                path: result.path,
-                              });
-                              setLoginMsg(String(data.message ?? data.error ?? "started"));
-                            }}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
-                            title="Salesforce Local Dev: the org opens in your browser with your LOCAL UI files rendered against real org data (no deploy). Apex is not previewed."
-                          >
-                            🖥 Visual preview (local files + live data)
-                          </button>
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={async () => {
+                                const { data } = await postJson("/api/preview-org", {
+                                  path: result.path,
+                                  kind: "app",
+                                });
+                                setLoginMsg(String(data.message ?? data.error ?? "started"));
+                              }}
+                              className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                              title="Local Dev for a Lightning APP: local UI files rendered against real org data (no deploy). Apex is not previewed."
+                            >
+                              🖥 Preview app
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const { data } = await postJson("/api/preview-org", {
+                                  path: result.path,
+                                  kind: "site",
+                                });
+                                setLoginMsg(String(data.message ?? data.error ?? "started"));
+                              }}
+                              className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+                              title="Local Dev for an LWR Experience Cloud SITE (Aura sites are not supported by the platform). The console prompts you to pick the site."
+                            >
+                              🌐 Preview LWR site
+                            </button>
+                          </div>
                         )}
                       </>
                     )}
