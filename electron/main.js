@@ -73,11 +73,36 @@ async function createWindow() {
   await win.loadURL(`http://127.0.0.1:${PORT}`);
 }
 
+function setupAutoUpdate() {
+  // packaged builds check the public GitHub releases, download in the
+  // background, and offer a restart — no manual installer downloads.
+  if (!app.isPackaged) return;
+  try {
+    const { autoUpdater } = require("electron-updater");
+    const { dialog } = require("electron");
+    autoUpdater.autoDownload = true;
+    autoUpdater.on("update-downloaded", (info) => {
+      const choice = dialog.showMessageBoxSync(win, {
+        type: "info",
+        title: "Dhruva update",
+        message: `Dhruva ${info.version} is downloaded. Restart to apply?`,
+        buttons: ["Restart now", "Later (applies on next quit)"],
+        defaultId: 0,
+      });
+      if (choice === 0) autoUpdater.quitAndInstall();
+    });
+    autoUpdater.checkForUpdates().catch(() => {/* offline — try next launch */});
+  } catch {
+    /* updater unavailable — manual installer still works */
+  }
+}
+
 app.whenReady().then(async () => {
   try {
     startServer();
     await waitForServer();
     await createWindow();
+    setupAutoUpdate();
   } catch (e) {
     const { dialog } = require("electron");
     dialog.showErrorBox("Dhruva", String(e));
