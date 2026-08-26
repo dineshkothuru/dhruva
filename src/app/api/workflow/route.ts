@@ -11,6 +11,7 @@ import {
   saveCustomWorkflow,
 } from "@/lib/workflows/custom";
 import {
+  abortRun,
   getRun,
   listRuns,
   pendingGateCount,
@@ -60,6 +61,13 @@ export async function POST(req: Request) {
     const run = typeof b.runId === "string" ? getRun(b.runId) : undefined;
     if (!run) return NextResponse.json({ error: "run not found" }, { status: 404 });
     return NextResponse.json(run);
+  }
+
+  if (b.action === "stop") {
+    if (typeof b.runId !== "string") {
+      return NextResponse.json({ error: "runId required" }, { status: 400 });
+    }
+    return NextResponse.json({ stopped: abortRun(b.runId) });
   }
 
   if (b.action === "gate") {

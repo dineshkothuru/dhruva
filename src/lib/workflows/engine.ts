@@ -16,6 +16,8 @@ import type { GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./
 
 const runs = new Map<string, RunState>();
 const gateWaiters = new Map<string, (decision: GateDecision) => void>(); // key: runId
+// the live child process of each run's current step — so an abort can kill it
+const activeChildren = new Map<string, ReturnType<typeof spawn>>();
 const STEP_OUTPUT_CAP = 60_000;
 const STEP_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -67,6 +69,26 @@ export async function listRuns(root: string): Promise<RunState[]> {
     if (r.root === root) byId.set(r.runId, r); // live state wins over disk
   }
   return [...byId.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
+}
+
+/** User-requested stop of a live run: resolves a waiting gate as an abort,
+ * or kills the running step's process tree. The executor loop sees the
+ * aborted status and skips every remaining step. */
+export function abortRun(runId: string): boolean {
+  const run = runs.get(runId);
+  if (!run || (run.status !== "running" && run.status !== "waiting_gate")) return false;
+  run.status = "aborted";
+  if (resolveGate(runId, { action: "abort" })) return true; // parked at a gate
+  const step = run.steps.find((s) => s.status === "running");
+  if (step) step.output += "\n[engine] aborted by user";
+  const child = activeChildren.get(runId);
+  if (child?.pid) {
+    // shell:true means the child is cmd.exe — kill the whole tree
+    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: false });
+    child.kill();
+  }
+  void persist(run);
+  return true;
 }
 
 export function resolveGate(runId: string, decision: GateDecision): boolean {
@@ -189,7 +211,7 @@ async function execute(run: RunState, def: WorkflowDef) {
           replayStep.endedAt = Date.now();
           if (!ok) {
             if (replayStep.status === "running") replayStep.status = "failed";
-            run.status = "failed";
+            if ((run.status as string) !== "aborted") run.status = "failed";
             await persist(run);
             return;
           }
@@ -224,7 +246,7 @@ async function execute(run: RunState, def: WorkflowDef) {
     }
     await persist(run);
   }
-  run.status = "done";
+  if ((run.status as string) !== "aborted") run.status = "done";
   await persist(run);
 }
 
@@ -553,6 +575,7 @@ function spawnToStep(
       windowsHide: true,
       env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", CI: "true" },
     });
+    activeChildren.set(run.runId, child);
     const timer = setTimeout(() => {
       step.output += "\n[engine] step timed out";
       // shell:true means child is cmd.exe — kill the whole tree or the real
@@ -577,11 +600,13 @@ function spawnToStep(
     child.stderr.on("data", push);
     child.on("error", (e) => {
       clearTimeout(timer);
+      activeChildren.delete(run.runId);
       step.output += `\n[engine] could not start ${bin}: ${e.message}`;
       resolve(false);
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      activeChildren.delete(run.runId);
       step.output += `\n[exit ${code}]`;
       resolve(code === 0);
     });

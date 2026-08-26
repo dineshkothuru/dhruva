@@ -467,6 +467,19 @@ export default function WorkflowsPane({
             {run.status.replace("_", " ")}
           </span>
           <span className="ml-auto font-mono text-[10px] text-slate-400">run {run.runId}</span>
+          {(run.status === "running" || run.status === "waiting_gate") && (
+            <button
+              onClick={async () => {
+                if (!confirm("Stop this run? The current step is killed and remaining steps are skipped.")) return;
+                await api({ action: "stop", runId: run.runId });
+                await fetchRunState(run.runId);
+              }}
+              className="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-600 hover:bg-red-100"
+              title="Abort the run — kills the running step's process"
+            >
+              ■ Stop run
+            </button>
+          )}
         </div>
         <p className="mb-3 text-[11px] text-slate-500">
           <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 font-medium">
