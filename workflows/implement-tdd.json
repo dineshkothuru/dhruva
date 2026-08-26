@@ -135,7 +135,7 @@
       "title": "Approve code changes",
       "type": "gate",
       "reviseTarget": "implement",
-      "message": "Review the diff, the reviewer's verdict, and the traceability matrix above. If items are PARTIAL/MISSING, type e.g. 'implement items 4 and 7' and Revise \u2014 the build re-runs and the matrix regenerates. Approve to validate against the org."
+      "message": "HUMAN GATE \u2014 you are shown the diff, the code reviewer's verdict with its findings (reopened tasks already carry the reviewer's work orders), and the traceability matrix. Revise to rework, approve to validate against the org."
     },
     {
       "id": "validate",

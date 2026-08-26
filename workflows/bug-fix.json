@@ -110,7 +110,7 @@
       "title": "Approve code changes",
       "type": "gate",
       "reviseTarget": "implement",
-      "message": "The files listed above were changed. Open the diffs from the run view; type instructions and Revise to have the fix reworked. Approve to validate against the org."
+      "message": "HUMAN GATE \u2014 you are shown the diff and the code reviewer's verdict with its findings. Revise to rework, approve to validate and deploy the fix."
     },
     {
       "id": "validate",

@@ -42,12 +42,15 @@ export default function RequirementCards({
   onSubmit,
   onApproveAll,
   disabled,
+  critique,
 }: {
   items: ReqItem[];
   /** Called with the compiled revise instruction when any item is rejected. */
   onSubmit: (reviseInstruction: string) => void;
   onApproveAll: () => void;
   disabled?: boolean;
+  /** Reviewer objections per REQ id — WHY the critic blocked, shown on the card. */
+  critique?: Record<string, string[]>;
 }) {
   const [decisions, setDecisions] = useState<Record<string, "approve" | "reject">>({});
   const [comments, setComments] = useState<Record<string, string>>({});
@@ -124,6 +127,18 @@ export default function RequirementCards({
                 </button>
               </span>
             </div>
+            {(critique?.[i.id]?.length ?? 0) > 0 && (
+              <div className="mt-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600">
+                  reviewer objects
+                </p>
+                {critique![i.id].map((c, n) => (
+                  <p key={n} className="mt-0.5 whitespace-pre-wrap text-[11px] text-red-800">
+                    {c}
+                  </p>
+                ))}
+              </div>
+            )}
             <details className="mt-1.5">
               <summary className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">
                 design details

@@ -78,7 +78,7 @@
       "title": "Review each requirement's design",
       "type": "gate",
       "reviseTarget": "analyse",
-      "message": "Review each requirement card above (status, evidence, design). Reject/comment per item and Revise \u2014 only rejected items are reworked. Approve when every requirement's design is right; the HLD and TDD are then written."
+      "message": "HUMAN GATE \u2014 you are shown: (1) the per-requirement design cards, (2) the design critique's unresolved findings (red panel, with each affected card flagged 'reviewer objects'). Decide: approve as-is, reject/comment individual cards, use 'Revise with ALL findings' to adopt the critique wholesale, or type your own instructions. Only after your approval are the HLD/TDD documents written."
     },
     {
       "id": "ux-design",
@@ -110,7 +110,7 @@
       "type": "gate",
       "onlyIf": "uxEnabled",
       "reviseTarget": "ux-design",
-      "message": "Review each UX-n block and the critique above. Revise with instructions to rework specific blocks, or approve - the documents then cover the UX design too."
+      "message": "HUMAN GATE \u2014 you are shown the UX-n design blocks and the UX critique's unresolved findings. Revise with instructions to rework specific blocks, or approve \u2014 the documents then cover the UX design too."
     },
     {
       "id": "write-doc",
@@ -150,7 +150,7 @@
       "title": "Accept the design documents",
       "type": "gate",
       "reviseTarget": "write-doc",
-      "message": "Review the coverage verdict above and the documents themselves (docs/designs/). If items are MISSING or DIVERGE, type e.g. 'cover REQ-007 and fix REQ-012' and Revise \u2014 the documents are rewritten and re-verified. Accept to complete the run."
+      "message": "HUMAN GATE \u2014 you are shown the coverage verdict and any unresolved findings; the documents are in docs/designs/. If items are MISSING or DIVERGE, revise; accept to complete the run."
     }
   ]
 }

@@ -607,6 +607,42 @@ export default function WorkflowsPane({
                 <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
                   <p className="whitespace-pre-wrap text-sm text-amber-800">{s.output}</p>
                   {(() => {
+                    // the reviewer's UNRESOLVED objections belong AT the gate —
+                    // the human decides against them, so show them here, not
+                    // buried in a collapsed step card above
+                    const gateIdx = run.steps.findIndex((x) => x.id === s.id);
+                    const reviewer = [...run.steps.slice(0, gateIdx)]
+                      .reverse()
+                      .find((x) => x.type === "agent" && /VERDICT:\s*BLOCKED/i.test(x.output));
+                    if (!reviewer) return null;
+                    const fm = reviewer.output.match(/\*{0,2}F\d+:/);
+                    const findings = fm
+                      ? reviewer.output.slice(fm.index)
+                      : reviewer.output.slice(-3000);
+                    return (
+                      <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
+                          Reviewer findings — still BLOCKED after the auto-fix round
+                        </p>
+                        <pre className="mt-1.5 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded bg-white/60 p-2 text-xs text-slate-700">
+                          {findings}
+                        </pre>
+                        <button
+                          onClick={() =>
+                            gate(
+                              "revise",
+                              `Address EVERY blocking finding from the design reviewer, exactly as each Fix line specifies. Do not re-argue a finding — implement its fix or state explicitly why it is impossible:\n\n${findings.slice(0, 3700)}`,
+                            )
+                          }
+                          disabled={gating}
+                          className="mt-2 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40"
+                        >
+                          ⟳ Revise with ALL findings
+                        </button>
+                      </div>
+                    );
+                  })()}
+                  {(() => {
                     // itemized review: if the step this gate reviews produced
                     // REQ blocks, render per-requirement cards (fallback: the
                     // plain textarea flow below stays untouched)
@@ -617,9 +653,29 @@ export default function WorkflowsPane({
                     if (!source) return null;
                     const items = parseRequirements(source.output);
                     if (items.length === 0) return null;
+                    // map reviewer findings to the REQ ids they mention, so
+                    // each card shows WHY the critic objected to it
+                    const reviewer = [...run.steps.slice(0, gateIdx)]
+                      .reverse()
+                      .find((x) => x.type === "agent" && /VERDICT:\s*BLOCKED/i.test(x.output));
+                    const critique: Record<string, string[]> = {};
+                    if (reviewer) {
+                      const parts = reviewer.output.split(/(?=\*{0,2}F\d+:)/);
+                      for (const p of parts) {
+                        const head = p.match(/^\*{0,2}(F\d+):\s*(.{0,300}?)\s*\((critical|important|nit)\)/s);
+                        if (!head) continue;
+                        const text = `${head[1]} (${head[3]}): ${head[2].replace(/\*+/g, "")} — ${
+                          p.match(/Problem:\s*([\s\S]{0,300}?)(?:\n\s*Fix:|$)/)?.[1]?.trim() ?? ""
+                        }`;
+                        for (const reqId of new Set(p.match(/REQ-\d+/g) ?? [])) {
+                          (critique[reqId] ??= []).push(text);
+                        }
+                      }
+                    }
                     return (
                       <RequirementCards
                         items={items}
+                        critique={critique}
                         disabled={gating}
                         onApproveAll={() => gate("approve")}
                         onSubmit={(instruction) => gate("revise", instruction)}
