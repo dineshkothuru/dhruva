@@ -19,6 +19,8 @@ interface Preview {
   kind: string;
   name: string;
   logs: string[];
+  /** An interactive yes/no question the CLI is waiting on (bridged to the UI). */
+  prompt: string | null;
 }
 const previews = new Map<string, Preview>(); // key: normalized root
 
@@ -107,8 +109,25 @@ export async function POST(req: Request) {
       running: !!p && p.child.exitCode === null,
       kind: p?.kind ?? null,
       name: p?.name ?? null,
+      prompt: p?.prompt ?? null,
       logs: (p?.logs ?? []).slice(-30).join(""),
     });
+  }
+
+  if (b.action === "answer") {
+    const p = previews.get(key);
+    if (!p || p.child.exitCode !== null || !p.prompt) {
+      return NextResponse.json({ error: "no pending question" }, { status: 400 });
+    }
+    const yes = b.name === "yes"; // reuse the name field as the answer carrier
+    try {
+      p.child.stdin?.write(yes ? "y\n" : "n\n");
+      p.logs.push(`\n[you answered: ${yes ? "yes" : "no"}]\n`);
+      p.prompt = null;
+      return NextResponse.json({ answered: true });
+    } catch (e) {
+      return NextResponse.json({ error: String(e) }, { status: 500 });
+    }
   }
 
   if (b.action === "stop") {
@@ -140,8 +159,12 @@ export async function POST(req: Request) {
       windowsHide: true,
       env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
     });
-    const p: Preview = { child, kind, name, logs: [] };
+    const p: Preview = { child, kind, name, logs: [], prompt: null };
     const push = (c: Buffer) => {
+      const raw = c.toString("utf8");
+      // bridge interactive confirms to the UI: "? Question ... (Y/n)"
+      const q = raw.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").match(/\?\s+([^\n?]{5,200}?)\s*\((?:Y\/n|y\/N)\)/);
+      if (q) p.prompt = q[1].trim();
       const text = c
         .toString("utf8")
         .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")

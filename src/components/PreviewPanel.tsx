@@ -23,7 +23,13 @@ async function api(body: Record<string, unknown>) {
 export default function PreviewPanel({ root }: { root: string }) {
   const [choices, setChoices] = useState<{ kind: "app" | "site"; items: { name: string; label: string }[] } | null>(null);
   const [loadingChoices, setLoadingChoices] = useState<"app" | "site" | null>(null);
-  const [status, setStatus] = useState<{ running: boolean; kind?: string; name?: string; logs?: string }>({ running: false });
+  const [status, setStatus] = useState<{
+    running: boolean;
+    kind?: string;
+    name?: string;
+    logs?: string;
+    prompt?: string | null;
+  }>({ running: false });
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -120,6 +126,31 @@ export default function PreviewPanel({ root }: { root: string }) {
               Stop
             </button>
           </div>
+          {status.prompt && (
+            <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+              <p className="text-xs text-amber-800">{status.prompt}?</p>
+              <div className="mt-1.5 flex gap-2">
+                <button
+                  onClick={async () => {
+                    await api({ path: root, action: "answer", name: "yes" });
+                    setStatus((s) => ({ ...s, prompt: null }));
+                  }}
+                  className="rounded-lg bg-slate-900 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-700"
+                >
+                  Yes
+                </button>
+                <button
+                  onClick={async () => {
+                    await api({ path: root, action: "answer", name: "no" });
+                    setStatus((s) => ({ ...s, prompt: null }));
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-[11px] font-medium hover:bg-slate-50"
+                >
+                  No
+                </button>
+              </div>
+            </div>
+          )}
           {status.logs && (
             <details className="mt-1">
               <summary className="cursor-pointer text-[10px] text-sky-600">server log</summary>
