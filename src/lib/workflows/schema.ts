@@ -56,14 +56,10 @@ export interface StepDef {
   /** Step timeout in minutes (default 15). BRD-scale analysis and large
    * implementations legitimately need more. */
   timeoutMinutes?: number;
-  /** agent: the step's role — the unit users configure models by. A user's
-   * per-role model (run.roleModels) wins; otherwise the role's tier applies. */
+  /** agent: the step's role — the ONLY per-step model knob. Resolution:
+   * the user's per-role model (run.roleModels) wins; otherwise the role's
+   * tier (ROLE_TIER) resolves through the agent's shipped tiers map. */
   role?: StepRole;
-  /** agent: model tier for this step ("best" = architecture/review judgment,
-   * "light" = cheap mechanical work). Unset = the run's selected model.
-   * Resolved from the agent's tiers map — also gives cross-model review
-   * within one vendor (best reviews what default wrote). */
-  modelTier?: "best" | "default" | "light";
   /** agent (review steps): bounded self-healing BEFORE the human gate. When
    * this step's output matches `trigger` (regex, case-insensitive), the
    * engine replays `target`..this step with the findings injected as
@@ -138,11 +134,8 @@ export interface RunState {
   status: "running" | "waiting_gate" | "done" | "failed" | "aborted";
   agent: AgentId;
   model?: string;
-  /** User-configured tier overrides for this run (UI setting); falls back to
-   * the agent's shipped tiers map. */
-  tiers?: { best?: string; default?: string; light?: string };
-  /** User-configured per-ROLE models for this run — the primary model
-   * setting. A step's role model beats its tier resolution. */
+  /** User-configured per-ROLE models for this run — the model setting.
+   * A step's role model beats the shipped tier resolution. */
   roleModels?: Partial<Record<StepRole, string>>;
   inputs: Record<string, string | boolean>;
   steps: StepState[];

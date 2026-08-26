@@ -107,7 +107,6 @@ export function startRun(
   inputs: Record<string, string | boolean>,
   agent: AgentId,
   model?: string,
-  tiers?: RunState["tiers"],
   roleModels?: RunState["roleModels"],
 ): RunState | null {
   const run: RunState = {
@@ -119,7 +118,6 @@ export function startRun(
     status: "running",
     agent,
     model,
-    tiers,
     roleModels,
     inputs,
     steps: def.steps.map((s) => ({
@@ -383,13 +381,11 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         template(def.prompt ?? "", run) +
         feedbackBlock;
       // Model resolution, most specific wins:
-      // 1. the user's per-ROLE model for this run (the primary setting)
-      // 2. the step's tier (explicit modelTier, else the role's default tier)
-      //    via the user's tier overrides or the agent's shipped tiers
+      // 1. the user's per-ROLE model for this run (the Models-by-role setting)
+      // 2. the role's tier through the agent's shipped tiers map
       // 3. the run's selected model / CLI default.
       const roleModel = def.role ? run.roleModels?.[def.role] : undefined;
-      const tier = def.modelTier ?? (def.role ? ROLE_TIER[def.role] : undefined);
-      const tierModel = tier ? (run.tiers?.[tier] ?? agentDef.tiers[tier]) : undefined;
+      const tierModel = def.role ? agentDef.tiers[ROLE_TIER[def.role]] : undefined;
       const stepModel = roleModel || tierModel || run.model;
       step.model = stepModel || "default";
       // claude: stream-json gives a LIVE trace (tool uses + text as produced)

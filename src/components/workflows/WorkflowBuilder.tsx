@@ -183,7 +183,7 @@ export default function WorkflowBuilder({
       <h3 className="text-sm font-semibold">Design a workflow</h3>
       <p className="mt-0.5 text-[11px] text-slate-400">
         Saved into this project (.sfharness/workflows) and run by the same engine as built-ins —
-        gates, standards, tiers, audit included.
+        gates, standards, role-based models, audit included.
       </p>
       {error && (
         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">

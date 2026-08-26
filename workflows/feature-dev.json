@@ -39,7 +39,6 @@
       "title": "Draft technical spec (agent, read-only)",
       "type": "agent",
       "role": "design",
-      "modelTier": "best",
       "readOnly": true,
       "prompt": "You are designing a Salesforce implementation for a requirement. DO NOT modify any files in this step.\nRequirement: {inputs.requirement}\nStudy the existing codebase first (reuse existing classes/objects/patterns — never plan a parallel implementation of something that exists). Reply with a short technical spec: (1) approach, (2) components to create or modify, (3) test plan.\nEnd your reply with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls"
     },
@@ -97,7 +96,6 @@
       "title": "Code review of the changes (agent, read-only)",
       "type": "agent",
       "role": "review",
-      "modelTier": "best",
       "readOnly": true,
       "persona": "salesforce-review",
       "autoRevise": {
@@ -112,7 +110,6 @@
       "title": "Requirement coverage check (agent, read-only)",
       "type": "agent",
       "role": "trace",
-      "modelTier": "best",
       "readOnly": true,
       "prompt": "Coverage check. Re-read the full requirement (and any attached documents it references):\n{inputs.requirement}\nExtract every distinct requirement item, and for EACH one inspect the changed files below:\n  <n>. <item> — IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\nChanged files in this run:\n{steps.changes.output}\nDo not modify any files. Be strict: no evidence in the diff = MISSING. End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE — items <numbers>."
     },

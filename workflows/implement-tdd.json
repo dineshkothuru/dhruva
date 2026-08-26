@@ -52,7 +52,6 @@
       "title": "Read the TDD and plan the build (agent, read-only)",
       "type": "agent",
       "role": "read",
-      "modelTier": "best",
       "readOnly": true,
       "prompt": "Read the approved Technical Design Document at {inputs.tddPath} in this project. DO NOT modify any files in this step.\nScope note from the requester (may narrow the work): {inputs.scope}\nCross-check the TDD against the current codebase (components it references, reuse it assumes). If the TDD has a Build Plan section (task table T-1, T-2… with depends_on), use ITS order as the checklist; otherwise produce the implementation checklist in dependency order yourself. Either way: each component to create or modify, and flag anything in the TDD that no longer matches the codebase.\nEnd with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls"
     },
@@ -113,7 +112,6 @@
       "title": "Code review against the TDD (agent, read-only)",
       "type": "agent",
       "role": "review",
-      "modelTier": "best",
       "readOnly": true,
       "persona": "salesforce-review",
       "tasksFile": "{inputs.tasksPath}",
@@ -129,7 +127,6 @@
       "title": "Requirements traceability matrix (agent, read-only)",
       "type": "agent",
       "role": "trace",
-      "modelTier": "best",
       "readOnly": true,
       "prompt": "Build a requirements traceability matrix. Re-read the ENTIRE TDD at {inputs.tddPath} (chunked reads to the end). Extract every requirement/component/behavior it specifies (respect the scope note: {inputs.scope}). For EACH item, inspect the changed files below and report one line:\n  <n>. <requirement item> — IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\nChanged files in this run:\n{steps.changes.output}\nDo not modify any files. Be strict: no evidence in the diff = MISSING, even if it seems implied. End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE — items <numbers>."
     },

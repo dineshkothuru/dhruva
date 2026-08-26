@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
 import type { RunState } from "@/lib/workflows/schema";
 import CliResult from "@/components/workflows/CliResult";
-import { tiersFor } from "@/lib/tierStore";
 import { loadRoles, saveRoles, rolesFor, type RoleConfig } from "@/lib/roleStore";
 import { STEP_ROLES, ROLE_LABEL, ROLE_TIER } from "@/lib/workflows/schema";
 import { loadDefaultAgent, saveDefaultAgent } from "@/lib/agentStore";
@@ -422,7 +421,6 @@ export default function WorkflowsPane({
         workflow: selected.id,
         inputs: startInputs,
         agent,
-        tiers: tiersFor(agent),
         roleModels: rolesFor(agent),
       });
       if (!ok) {

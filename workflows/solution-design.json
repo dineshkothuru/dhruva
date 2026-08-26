@@ -36,7 +36,6 @@
       "title": "Design per requirement using the gathered context (architect, read-only)",
       "type": "agent",
       "role": "design",
-      "modelTier": "default",
       "readOnly": true,
       "persona": "salesforce-architect",
       "timeoutMinutes": 45,
@@ -47,7 +46,6 @@
       "title": "Design critique (best model, read-only) — auto-fixes once before your gate",
       "type": "agent",
       "role": "review",
-      "modelTier": "best",
       "readOnly": true,
       "persona": "salesforce-architect",
       "autoRevise": {
@@ -90,7 +88,6 @@
       "role": "trace",
       "timeoutMinutes": 30,
       "readOnly": true,
-      "modelTier": "best",
       "autoRevise": {
         "target": "write-doc",
         "trigger": "COVERAGE:\\s*INCOMPLETE",

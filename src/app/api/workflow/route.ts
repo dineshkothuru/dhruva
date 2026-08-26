@@ -146,7 +146,7 @@ export async function POST(req: Request) {
       if (typeof v === "string" && v.length > 8000) inputs[k] = v.slice(0, 8000);
     }
     const model = isSafeModelId(b.model) ? b.model : undefined;
-    // per-role model choices — the primary model setting (role ids fixed)
+    // per-role model choices — the model setting (role ids fixed)
     let roleModels: Partial<Record<StepRole, string>> | undefined;
     if (b.roleModels && typeof b.roleModels === "object") {
       roleModels = {};
@@ -155,16 +155,7 @@ export async function POST(req: Request) {
         if (isSafeModelId(v) && v) roleModels[k] = v;
       }
     }
-    // user-configured tier overrides — model ids validated like any model
-    let tiers: { best?: string; default?: string; light?: string } | undefined;
-    if (b.tiers && typeof b.tiers === "object") {
-      tiers = {};
-      for (const k of ["best", "default", "light"] as const) {
-        const v = (b.tiers as Record<string, unknown>)[k];
-        if (isSafeModelId(v)) tiers[k] = v;
-      }
-    }
-    const run = startRun(root, def, inputs, b.agent, model, tiers, roleModels);
+    const run = startRun(root, def, inputs, b.agent, model, roleModels);
     if (!run) return NextResponse.json({ error: "could not start run" }, { status: 500 });
     return NextResponse.json({ runId: run.runId });
   }

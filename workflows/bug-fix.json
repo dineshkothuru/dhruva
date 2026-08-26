@@ -39,7 +39,6 @@
       "title": "Locate root cause (agent, read-only)",
       "type": "agent",
       "role": "read",
-      "modelTier": "best",
       "readOnly": true,
       "prompt": "You are investigating a bug. DO NOT modify any files in this step.\nBug report: {inputs.description}\nFind the root cause in the local codebase. Reply with: (1) the root cause, (2) the exact files involved, (3) a concrete fix plan. Keep it short.\nEnd your reply with one line listing every involved file as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls, force-app/main/default/classes/ExampleTest.cls"
     },
@@ -97,7 +96,6 @@
       "title": "Code review of the changes (agent, read-only)",
       "type": "agent",
       "role": "review",
-      "modelTier": "best",
       "readOnly": true,
       "persona": "salesforce-review",
       "autoRevise": {

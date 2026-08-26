@@ -5,7 +5,6 @@ import { loadDefaultAgent } from "@/lib/agentStore";
 import type { AgentId } from "@/lib/agents";
 import { estimateUsage, formatUsage } from "@/lib/pricing";
 import { classifyIntake } from "@/lib/intake";
-import { tiersFor } from "@/lib/tierStore";
 import { rolesFor } from "@/lib/roleStore";
 
 interface Msg {
@@ -288,7 +287,6 @@ export default function ChatPane({
           inputs: inputsMap[workflowId] ?? { description: msg.proposal.taskText },
           agent,
           model: models[agent] ?? status?.[agent]?.models?.[0]?.id ?? "",
-          tiers: tiersFor(agent),
           roleModels: rolesFor(agent),
         }),
       });

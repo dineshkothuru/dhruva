@@ -9,7 +9,6 @@ const STEP_TYPES = new Set([
   "verify",
   "tasks-check",
 ]);
-const TIERS = new Set(["best", "default", "light"]);
 const ROLES = new Set(["read", "design", "implement", "review", "trace"]);
 const SLUG = /^[a-z0-9][a-z0-9-]{1,40}$/;
 const KEY = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/;
@@ -71,9 +70,6 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
       step.prompt = s.prompt.slice(0, 8000);
       if (s.readOnly === true) step.readOnly = true;
       if (typeof s.persona === "string" && SLUG.test(s.persona)) step.persona = s.persona;
-      if (typeof s.modelTier === "string" && TIERS.has(s.modelTier)) {
-        step.modelTier = s.modelTier as StepDef["modelTier"];
-      }
       if (typeof s.role === "string" && ROLES.has(s.role)) {
         step.role = s.role as StepDef["role"];
       }
