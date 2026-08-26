@@ -15,6 +15,7 @@ When editing Lightning Web Components:
 - For GraphQL-based reads, keep query definitions reusable, request only required fields, and handle loading/error states explicitly.
 - Surface user feedback with standard Salesforce UX patterns (toasts/spinners/errors).
 - Follow SLDS and accessibility requirements (labels, keyboard support, aria attributes).
+- No custom CSS: compose from lightning base components and SLDS utility classes only. Adding a component `.css` file requires a documented justification in the PR/design; prefer restructuring the markup instead.
 - Validate input on client side and re-validate on server side in Apex.
 - Keep API contracts (`@api`) minimal and stable.
 - Keep events explicit and documented via clear event names/payload shapes.
