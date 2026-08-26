@@ -101,7 +101,6 @@ export default function WorkflowBuilder({
   const [steps, setSteps] = useState<StepDraft[]>(
     seeded?.steps ?? [{ id: "snapshot", title: "Snapshot baseline", type: "snapshot" }],
   );
-  const [scope, setScope] = useState<"central" | "project">("central");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -159,7 +158,12 @@ export default function WorkflowBuilder({
       const res = await fetch("/api/workflow", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save-custom", root, def, scope }),
+        // saved centrally (~/.dhruva/workflows) — available in every project
+        // the user connects on this machine. (.sfharness/workflows is still
+        // READ as an escape hatch for manually distributed files, but the UI
+        // never writes there: the harness git-excludes .sfharness, so a
+        // project-scoped copy could never actually travel with the repo.)
+        body: JSON.stringify({ action: "save-custom", root, def, scope: "central" }),
       });
       const data = await res.json();
       if (!res.ok) setError(String(data.error ?? "could not save"));
@@ -290,17 +294,10 @@ export default function WorkflowBuilder({
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
-        <span className="font-medium">Save to:</span>
-        <label className="flex items-center gap-1.5">
-          <input type="radio" checked={scope === "central"} onChange={() => setScope("central")} />
-          All my projects (this machine)
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input type="radio" checked={scope === "project"} onChange={() => setScope("project")} />
-          This project only (travels with the repo)
-        </label>
-      </div>
+      <p className="mt-4 text-[11px] text-slate-400">
+        Saved to your machine's workflow library (~/.dhruva/workflows) — available in every
+        project you connect.
+      </p>
       <div className="mt-3 flex gap-2">
         <button onClick={save} disabled={saving || !id.trim() || !title.trim() || steps.length === 0} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40">
           {saving ? "Saving…" : "Save workflow"}
