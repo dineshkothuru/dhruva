@@ -18,8 +18,9 @@ interface Module {
 let cache: { baseline: string; modules: Module[]; personas: Map<string, string> } | null = null;
 
 function stdRoot() {
-  // harness repo root — process.cwd() is where next dev/start runs
-  return path.join(process.cwd(), "standards");
+  // harness repo root — process.cwd() is where next dev/start runs; the
+  // Electron shell overrides via env (standalone server cwd differs)
+  return process.env.DHRUVA_STANDARDS_DIR ?? path.join(process.cwd(), "standards");
 }
 
 /** Convert an applyTo glob (e.g. force-app/main/default/ ** / *.cls) to a regex. */

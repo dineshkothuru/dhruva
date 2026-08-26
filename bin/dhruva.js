@@ -29,6 +29,16 @@ if (!has("sf")) {
     process.exit(1);
   }
 }
+// Local Dev plugin (visual testing: local UI files + live org data)
+const plugins = spawnSync("sf", ["plugins"], { shell: true, encoding: "utf8" });
+if (plugins.status === 0 && !String(plugins.stdout).includes("lightning-dev")) {
+  console.log("[dhruva] installing the Salesforce Local Dev plugin (visual testing)...");
+  spawnSync("sf", ["plugins", "install", "@salesforce/plugin-lightning-dev"], {
+    shell: true,
+    stdio: "inherit",
+  });
+}
+
 const agents = ["copilot", "claude", "codex"].filter(has);
 if (agents.length === 0) {
   console.log("[dhruva] WARNING: no agent CLI found. Install at least one and log in once:");

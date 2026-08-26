@@ -6,6 +6,43 @@
   "bin": {
     "dhruva": "bin/dhruva.js"
   },
+  "main": "electron/main.js",
+  "build": {
+    "appId": "com.prutech.dhruva",
+    "productName": "Dhruva",
+    "icon": "electron/icon.png",
+    "directories": {
+      "output": "dist-app"
+    },
+    "files": [
+      "electron/**"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "app-bundle/.next/standalone"
+      },
+      {
+        "from": ".next/static",
+        "to": "app-bundle/.next/standalone/.next/static"
+      },
+      {
+        "from": "public",
+        "to": "app-bundle/.next/standalone/public"
+      },
+      {
+        "from": "standards",
+        "to": "app-bundle/standards"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "shortcutName": "Dhruva"
+    }
+  },
   "files": [
     "bin",
     "src",
@@ -22,7 +59,9 @@
     "dev": "next dev -p 3005",
     "build": "next build",
     "start": "next start -p 3005",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "app": "electron .",
+    "app:dist": "next build && electron-builder --win"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -36,6 +75,8 @@
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "^16.0.0",
     "tailwindcss": "^4",

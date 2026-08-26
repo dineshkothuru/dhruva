@@ -28,6 +28,13 @@ never sees or stores any credential.
 
 ## Install & run
 
+**Desktop app (own window + icon, like the Claude Code app):** download the
+`Dhruva Setup <version>.exe` from the repo's GitHub Releases and run it — it
+installs with a Start Menu/desktop shortcut and opens Dhruva in its own
+window. Unsigned build: Windows SmartScreen shows "unknown publisher" once —
+click "More info → Run anyway". Built with `npm run app:dist` (output in
+`dist-app/`).
+
 **As a command (Claude Code-style — recommended):**
 
 ```
