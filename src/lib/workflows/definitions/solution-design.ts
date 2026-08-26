@@ -17,8 +17,30 @@ export const SOLUTION_DESIGN: WorkflowDef = {
   steps: [
     { id: "snapshot", title: "Snapshot baseline", type: "snapshot" },
     {
+      id: "context",
+      title: "Gather codebase context for the requirement (read-only)",
+      type: "agent",
+      role: "read",
+      readOnly: true,
+      timeoutMinutes: 30,
+      prompt:
+        "CONTEXT GATHERING ONLY — do not design anything and do not modify any files. A solution " +
+        "design will be produced in a later step FROM your inventory, so completeness here decides " +
+        "the design's quality.\n" +
+        "Requirement:\n{inputs.requirement}\n\n" +
+        "If the requirement references attached documents (paths under .sfharness/attachments/), " +
+        "read EVERY attached document in full — every page/line, continuing in chunks until the " +
+        "end of each file.\n\n" +
+        "Then inventory THIS codebase's parts relevant to each ask in the requirement: objects/" +
+        "fields, automation (triggers/flows), apex services, LWCs, permission sets. Output a " +
+        "CONTEXT INVENTORY grouped by requirement area — per entry: the component's exact API " +
+        "name, its file path, what it does TODAY (verified by reading it, never guessed from the " +
+        "name), and why it is relevant. Close with a short list of areas where NOTHING relevant " +
+        "exists (true greenfield).",
+    },
+    {
       id: "analyse",
-      title: "Analyse requirement against the codebase (architect, read-only)",
+      title: "Design per requirement using the gathered context (architect, read-only)",
       type: "agent",
       role: "design",
       modelTier: "default",
@@ -32,8 +54,9 @@ export const SOLUTION_DESIGN: WorkflowDef = {
         "read EVERY attached document in full — every page/line, continuing in chunks until the end " +
         "of each file — before designing anything. A design based on a partially read requirement " +
         "is invalid.\n\n" +
-        "Study the existing codebase first: objects, automation, apex services, LWCs that this " +
-        "requirement touches.\n\n" +
+        "CONTEXT INVENTORY of the existing codebase (gathered in the previous step — use it for " +
+        "what exists today; re-read a component before citing it as EVIDENCE if you need more " +
+        "detail than the inventory gives):\n{steps.context.output}\n\n" +
         "Then output in EXACTLY this structure (it is machine-parsed into review cards):\n\n" +
         "First a short OVERVIEW paragraph (overall approach, phasing, key risks).\n\n" +
         "Then ONE BLOCK PER REQUIREMENT, in the BRD's sequence, each formatted exactly:\n" +

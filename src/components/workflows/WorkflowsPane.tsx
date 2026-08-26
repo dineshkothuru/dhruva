@@ -7,6 +7,7 @@ import CliResult from "@/components/workflows/CliResult";
 import { tiersFor } from "@/lib/tierStore";
 import { loadRoles, saveRoles, rolesFor, type RoleConfig } from "@/lib/roleStore";
 import { STEP_ROLES, ROLE_LABEL, ROLE_TIER } from "@/lib/workflows/schema";
+import { loadDefaultAgent, saveDefaultAgent } from "@/lib/agentStore";
 import WorkflowBuilder from "@/components/workflows/WorkflowBuilder";
 import RequirementCards, { parseRequirements } from "@/components/workflows/RequirementCards";
 
@@ -188,7 +189,9 @@ export default function WorkflowsPane({
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
   const [selected, setSelected] = useState<CatalogItem | null>(null);
   const [inputs, setInputs] = useState<Record<string, string | boolean>>({});
-  const [agent, setAgent] = useState<AgentId>("claude");
+  const [agent, setAgent] = useState<AgentId>(() => loadDefaultAgent() ?? "claude");
+  const [defaultAgent, setDefaultAgent] = useState<AgentId | null>(() => loadDefaultAgent());
+  const [roleTab, setRoleTab] = useState<AgentId>(() => loadDefaultAgent() ?? "claude");
   const [run, setRun] = useState<RunState | null>(null);
   const [history, setHistory] = useState<RunState[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -687,13 +690,43 @@ export default function WorkflowsPane({
             workflow follows — no per-run input needed. Empty = automatic (the shipped default
             shown as placeholder). A change here applies from the next run.
           </p>
-          {AGENT_OPTIONS.map((a) => {
-            const s = status?.[a.id];
-            const cfg = roleCfg[a.id] ?? {};
+          <div className="flex gap-1.5">
+            {AGENT_OPTIONS.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setRoleTab(a.id)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                  roleTab === a.id
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : defaultAgent === a.id
+                      ? "border-emerald-400 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                {a.label}
+                {defaultAgent === a.id && <span className="ml-1.5 text-[10px]">★ default</span>}
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const s = status?.[roleTab];
+            const cfg = roleCfg[roleTab] ?? {};
             return (
-              <div key={a.id}>
-                <span className="text-xs font-semibold text-slate-600">{a.label}</span>
-                <div className="mt-1.5 flex flex-wrap gap-2">
+              <div>
+                <label className="flex w-fit cursor-pointer items-center gap-1.5 text-[11px] text-slate-500">
+                  <input
+                    type="checkbox"
+                    checked={defaultAgent === roleTab}
+                    onChange={(e) => {
+                      const v = e.target.checked ? roleTab : null;
+                      saveDefaultAgent(v);
+                      setDefaultAgent(v);
+                      if (v) setAgent(v);
+                    }}
+                  />
+                  Default agent — preselected for chat and every new run
+                </label>
+                <div className="mt-2.5 flex flex-wrap gap-2">
                   {STEP_ROLES.map((role) => (
                     <label key={role} className="text-[11px] text-slate-400">
                       {ROLE_LABEL[role]}
@@ -701,7 +734,7 @@ export default function WorkflowsPane({
                         value={cfg[role] ?? ""}
                         onChange={(e) => {
                           const all = loadRoles();
-                          all[a.id] = { ...all[a.id], [role]: e.target.value.trim() };
+                          all[roleTab] = { ...all[roleTab], [role]: e.target.value.trim() };
                           saveRoles(all);
                           setRoleCfg(all);
                         }}
@@ -714,7 +747,7 @@ export default function WorkflowsPane({
                 </div>
               </div>
             );
-          })}
+          })()}
           <p className="text-[10px] text-slate-400">
             Roles → steps: Read/investigate = locate, plan, assess · Design/author = analyse, spec,
             write-doc · Implement = implement (all workflows) · Review = design-review, code review ·
@@ -981,6 +1014,7 @@ export default function WorkflowsPane({
                 {AGENT_OPTIONS.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.label}
+                    {defaultAgent === a.id ? " ★ (default)" : ""}
                   </option>
                 ))}
               </select>

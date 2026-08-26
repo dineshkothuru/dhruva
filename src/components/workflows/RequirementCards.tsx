@@ -70,7 +70,10 @@ export default function RequirementCards({
       lines.push(`${i.id} note (item stays approved, incorporate this): ${comments[i.id].trim()}`);
     }
     lines.push(
-      "Rework ONLY the rejected items above; keep every other REQ block EXACTLY as it was (same ids, same order, full output again).",
+      "Rework the rejected items above, AND any other REQ whose DEPENDS-ON chain includes a " +
+        "reworked item — adjust those only as far as the changed dependency forces, noting what " +
+        "rippled. Keep every unaffected REQ block EXACTLY as it was (same ids, same order, full " +
+        "output again).",
     );
     onSubmit(lines.join("\n"));
   }

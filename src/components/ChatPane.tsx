@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { loadDefaultAgent } from "@/lib/agentStore";
 import type { AgentId } from "@/lib/agents";
 import { estimateUsage, formatUsage } from "@/lib/pricing";
 import { classifyIntake } from "@/lib/intake";
@@ -51,7 +52,8 @@ export default function ChatPane({
   onRunStarted?: (runId: string) => void;
 }) {
   const [status, setStatus] = useState<Record<string, AgentStatus> | null>(null);
-  const [agent, setAgent] = useState<AgentId>("copilot");
+  // default agent (user setting) preselected; switching stays per-session
+  const [agent, setAgent] = useState<AgentId>(() => loadDefaultAgent() ?? "copilot");
   // model per agent — persisted as the DEFAULT: whatever you pick is
   // remembered and taken automatically every session, no re-input needed
   const [models, setModels] = useState<Partial<Record<AgentId, string>>>(() => {
