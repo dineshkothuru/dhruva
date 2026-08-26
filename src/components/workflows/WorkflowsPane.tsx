@@ -615,7 +615,7 @@ export default function WorkflowsPane({
                       .reverse()
                       .find((x) => x.type === "agent" && /VERDICT:\s*BLOCKED/i.test(x.output));
                     if (!reviewer) return null;
-                    const fm = reviewer.output.match(/\*{0,2}F\d+:/);
+                    const fm = reviewer.output.match(/\*{0,2}F\d+[\s:(]/);
                     const findings = fm
                       ? reviewer.output.slice(fm.index)
                       : reviewer.output.slice(-3000);
@@ -660,14 +660,29 @@ export default function WorkflowsPane({
                       .find((x) => x.type === "agent" && /VERDICT:\s*BLOCKED/i.test(x.output));
                     const critique: Record<string, string[]> = {};
                     if (reviewer) {
-                      const parts = reviewer.output.split(/(?=\*{0,2}F\d+:)/);
+                      const parts = reviewer.output.split(/(?=\*{0,2}F\d+[\s:(])/);
                       for (const p of parts) {
-                        const head = p.match(/^\*{0,2}(F\d+):\s*(.{0,300}?)\s*\((critical|important|nit)\)/s);
-                        if (!head) continue;
-                        const text = `${head[1]} (${head[3]}): ${head[2].replace(/\*+/g, "")} — ${
-                          p.match(/Problem:\s*([\s\S]{0,300}?)(?:\n\s*Fix:|$)/)?.[1]?.trim() ?? ""
-                        }`;
-                        for (const reqId of new Set(p.match(/REQ-\d+/g) ?? [])) {
+                        // new format: "F1 (critical) [refs: REQ-007]: title"
+                        const neu = p.match(
+                          /^\*{0,2}(F\d+)\s*\((critical|important|nit)\)\s*\[refs:\s*([^\]]*)\]\s*:\s*(.{0,300}?)(?:\n|\*\*|$)/s,
+                        );
+                        // legacy format: "F1: title (critical)"
+                        const old = neu
+                          ? null
+                          : p.match(/^\*{0,2}(F\d+):\s*(.{0,300}?)\s*\((critical|important|nit)\)/s);
+                        if (!neu && !old) continue;
+                        const id = neu ? neu[1] : old![1];
+                        const sev = neu ? neu[2] : old![3];
+                        const title = (neu ? neu[4] : old![2]).replace(/\*+/g, "").trim();
+                        const problem =
+                          p.match(/Problem:\s*([\s\S]{0,300}?)(?:\n\s*Fix:|$)/)?.[1]?.trim() ?? "";
+                        const text = `${id} (${sev}): ${title} — ${problem}`;
+                        // refs come from the declared [refs:] list when present,
+                        // else fall back to scanning the finding body
+                        const refs = neu
+                          ? (neu[3].match(/(?:REQ|UX|T)-\d+/g) ?? [])
+                          : (p.match(/REQ-\d+/g) ?? []);
+                        for (const reqId of new Set(refs)) {
                           (critique[reqId] ??= []).push(text);
                         }
                       }
