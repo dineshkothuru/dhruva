@@ -631,7 +631,7 @@ export default function WorkflowsPane({
                           onClick={() =>
                             gate(
                               "revise",
-                              `Address EVERY blocking finding from the design reviewer, exactly as each Fix line specifies. Do not re-argue a finding — implement its fix or state explicitly why it is impossible:\n\n${findings.slice(0, 3700)}`,
+                              `Address EVERY blocking finding from the design reviewer, exactly as each Fix line specifies. Do not re-argue a finding — implement its fix or state explicitly why it is impossible:\n\n${findings.slice(0, 11000)}`,
                             )
                           }
                           disabled={gating}

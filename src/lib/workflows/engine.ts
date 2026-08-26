@@ -345,6 +345,13 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           step.output += `\n\n[engine] auto-revise round ${round}/${max}: replaying ${targetId}`;
           await persist(run);
           if (!(await replayRange(run, def, from, i + 1))) return;
+          // the replay rewrote this step's output — restore the round marker
+          // so the trace SHOWS the self-healing happened (audit readability)
+          step.output =
+            `[engine] auto-revise round ${round}/${max} completed — "${targetId}" was reworked ` +
+            `with the previous findings as mandatory feedback; below is the RE-REVIEW of the ` +
+            `reworked output\n\n` + step.output;
+          await persist(run);
         }
       }
     } catch (e) {

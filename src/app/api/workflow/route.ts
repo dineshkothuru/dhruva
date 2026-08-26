@@ -94,8 +94,10 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    // generous cap: "Revise with ALL findings" passes a full multi-finding
+    // critique as the instruction — truncating it would silently drop findings
     const feedback =
-      typeof b.feedback === "string" ? b.feedback.trim().slice(0, 4000) : undefined;
+      typeof b.feedback === "string" ? b.feedback.trim().slice(0, 12000) : undefined;
     if (decision === "revise" && !feedback) {
       return NextResponse.json({ error: "revise requires feedback text" }, { status: 400 });
     }
