@@ -2,7 +2,6 @@
   "name": "dhruva",
   "version": "0.2.0",
   "description": "Dhruva - deterministic Salesforce delivery harness. Gated, auditable delivery workflows driven by swappable coding agents, on your machine with your logins.",
-  "private": true,
   "bin": {
     "dhruva": "bin/dhruva.js"
   },
@@ -98,5 +97,28 @@
     "eslint-config-next": "^16.0.0",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dineshkothuru/dhruva.git"
+  },
+  "homepage": "https://github.com/dineshkothuru/dhruva#readme",
+  "bugs": {
+    "url": "https://github.com/dineshkothuru/dhruva/issues"
+  },
+  "keywords": [
+    "salesforce",
+    "sfdx",
+    "delivery",
+    "workflow",
+    "agent",
+    "copilot",
+    "claude",
+    "codex",
+    "orchestrator"
+  ],
+  "engines": {
+    "node": ">=20"
   }
 }
