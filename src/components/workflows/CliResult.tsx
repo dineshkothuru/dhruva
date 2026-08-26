@@ -133,6 +133,45 @@ export default function CliResult({ output }: { output: string }) {
     );
   }
 
+  // --- apex run test: summary chips + failed tests table + coverage
+  if (result.summary && Array.isArray(result.tests)) {
+    const sum = result.summary;
+    sections.push(
+      <div key="testsum" className="flex flex-wrap gap-1.5">
+        <Chip
+          label={String(sum.outcome ?? "?")}
+          tone={String(sum.outcome) === "Passed" ? "ok" : "bad"}
+        />
+        <Chip label={`${sum.testsRan ?? "?"} ran`} tone="info" />
+        <Chip label={`${sum.passing ?? 0} passed`} tone="ok" />
+        <Chip label={`${sum.failing ?? 0} failed`} tone={(sum.failing ?? 0) > 0 ? "bad" : "info"} />
+        {sum.testRunCoverage != null && (
+          <Chip label={`coverage ${sum.testRunCoverage}`} tone="info" />
+        )}
+      </div>,
+    );
+    const failed = result.tests.filter((t: any) => String(t.Outcome ?? t.outcome) !== "Pass");
+    if (failed.length > 0) {
+      sections.push(
+        <div key="testfails">
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-red-500">
+            Failed tests ({failed.length})
+          </p>
+          <Table
+            head={["Test", "Message"]}
+            rows={failed.map((t: any) => ({
+              cells: [
+                String(t.FullName ?? t.fullName ?? ""),
+                String(t.Message ?? t.message ?? ""),
+              ],
+              bad: true,
+            }))}
+          />
+        </div>,
+      );
+    }
+  }
+
   // --- deploy/validate result: status + component/test failures
   if (typeof result.success === "boolean" || result.status) {
     const chips: React.ReactNode[] = [];

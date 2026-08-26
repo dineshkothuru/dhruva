@@ -531,8 +531,9 @@ export default function Home() {
         title="Drag to resize"
       />
 
-      {/* Right panel — chat & workflows */}
-      <section className="flex flex-1 flex-col bg-slate-50">
+      {/* Right panel — chat & workflows (min-w-0: long unbroken output lines
+          must wrap inside cards, never widen the panel past the viewport) */}
+      <section className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-slate-50">
         <div className="flex items-center gap-1 border-b border-slate-200 bg-white px-5 py-2.5">
           {([...(openFiles.length ? (["editor"] as Tab[]) : []), "chat", "workflows"] as Tab[]).map((t) => (
             <button

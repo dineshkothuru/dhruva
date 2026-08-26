@@ -22,7 +22,7 @@ export const RUN_TESTS: WorkflowDef = {
       bin: "sf",
       args: [
         "apex", "run", "test", "--test-level", "{inputs.level}",
-        "{opt:--tests:inputs.tests}", "--code-coverage", "--result-format", "human", "--wait", "60",
+        "{opt:--tests:inputs.tests}", "--code-coverage", "--result-format", "json", "--json", "--wait", "60",
       ],
     },
   ],
