@@ -189,6 +189,48 @@ export default function WorkflowsPane({
   const [error, setError] = useState<string | null>(null);
   const [gateNote, setGateNote] = useState("");
   const [gating, setGating] = useState(false);
+  // per-step failure diagnosis (streamed from the agent, read-only)
+  const [explain, setExplain] = useState<Record<string, string>>({});
+  const [explaining, setExplaining] = useState<string | null>(null);
+
+  async function explainFailure(stepId: string, stepTitle: string, output: string) {
+    if (explaining) return;
+    setExplaining(stepId);
+    setExplain((e) => ({ ...e, [stepId]: "" }));
+    try {
+      const prompt =
+        `A step in a Salesforce delivery workflow failed. Diagnose it. DO NOT modify any files.\n` +
+        `Workflow: ${run?.workflowTitle}\nStep: ${stepTitle}\n` +
+        `Step output (tail):\n${output.slice(-4000)}\n\n` +
+        `Reply with: (1) the root cause in plain language, (2) the exact resolution — ` +
+        `commands to run, Setup paths, or what to change — for a Salesforce developer, ` +
+        `(3) whether re-running the workflow will then succeed. Be brief and concrete.`;
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root, agent, prompt, model: "", readOnly: true }),
+      });
+      if (!res.ok || !res.body) {
+        const err = await res.text();
+        setExplain((e) => ({ ...e, [stepId]: `could not diagnose: ${err || res.status}` }));
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        if (chunk) setExplain((e) => ({ ...e, [stepId]: (e[stepId] ?? "") + chunk }));
+      }
+      const tail = decoder.decode();
+      if (tail) setExplain((e) => ({ ...e, [stepId]: (e[stepId] ?? "") + tail }));
+    } catch (err) {
+      setExplain((e) => ({ ...e, [stepId]: String(err) }));
+    } finally {
+      setExplaining(null);
+    }
+  }
   const [starting, setStarting] = useState(false);
   // monotonically increasing sequence: stale state responses are dropped so a
   // slow poll can never overwrite a fresher post-gate state
@@ -433,6 +475,28 @@ export default function WorkflowsPane({
                 </div>
               ) : (
                 <StepBody output={s.output} type={s.type} running={s.status === "running"} />
+              )}
+              {s.status === "failed" && s.output && (
+                <div className="border-t border-slate-100 px-4 py-2">
+                  {explain[s.id] === undefined ? (
+                    <button
+                      onClick={() => explainFailure(s.id, s.title, s.output)}
+                      disabled={explaining !== null}
+                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40"
+                    >
+                      {explaining === s.id ? "Diagnosing…" : "🛟 Explain & suggest fix"}
+                    </button>
+                  ) : (
+                    <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-sky-600">
+                        Diagnosis ({agent})
+                      </p>
+                      <pre className="whitespace-pre-wrap break-words text-xs text-slate-700">
+                        {explain[s.id] || "analysing…"}
+                      </pre>
+                    </div>
+                  )}
+                </div>
               )}
               {s.usage && (
                 <p className="border-t border-slate-100 px-4 py-1.5 text-[10px] text-slate-400">

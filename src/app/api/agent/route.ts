@@ -25,6 +25,8 @@ export async function POST(req: Request) {
     prompt?: unknown;
     model?: unknown;
     attachments?: unknown;
+    /** true = diagnostic query: agent runs read-only, no snapshot taken. */
+    readOnly?: unknown;
   };
   try {
     body = await req.json();
@@ -60,7 +62,8 @@ export async function POST(req: Request) {
     attachments.length > 0
       ? `${prompt}\n\nAttached files (read them from the project root): ${attachments.join(", ")}`
       : prompt;
-  const { args, viaStdin } = def.build(fullPrompt, model);
+  const readOnly = body.readOnly === true;
+  const { args, viaStdin } = def.build(fullPrompt, model, readOnly);
   if (body.agent === "copilot") {
     // Copilot has native attachment support (images/documents)
     for (const a of attachments) args.push("--attachment", `"${a}"`);
@@ -70,7 +73,7 @@ export async function POST(req: Request) {
   // changed — deterministic, works for projects without git. Skipped while a
   // workflow run is active for this project: re-baselining mid-run (e.g. at a
   // gate) would erase that run's pending diff.
-  if (!hasActiveRun(root)) await takeSnapshot(root);
+  if (!readOnly && !hasActiveRun(root)) await takeSnapshot(root);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
