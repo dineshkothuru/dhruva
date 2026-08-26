@@ -121,8 +121,12 @@ export interface StepState {
   endedAt?: number;
   /** Agent steps: token usage + API-rate cost (exact when the vendor reports it). */
   usage?: { inTokens: number; outTokens: number; costUsd: number; estimated: boolean };
-  /** Agent steps: the model this step actually ran with (tier-resolved). */
+  /** Agent steps: the model this step actually ran with (role-resolved). */
   model?: string;
+  /** Agent steps: WHERE the model came from, human-readable — 'your "review"
+   * role setting' / 'shipped default for the "design" role' / 'run model' /
+   * 'CLI default'. Shown in the UI and kept in the audit. */
+  modelFrom?: string;
 }
 
 export interface RunState {

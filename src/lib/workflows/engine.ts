@@ -387,6 +387,14 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const roleModel = def.role ? run.roleModels?.[def.role] : undefined;
       const tierModel = def.role ? agentDef.tiers[ROLE_TIER[def.role]] : undefined;
       const stepModel = roleModel || tierModel || run.model;
+      // audit WHY this model was chosen, not just which
+      step.modelFrom = roleModel
+        ? `your "${def.role}" role setting`
+        : tierModel
+          ? `shipped default for the "${def.role}" role`
+          : run.model
+            ? "run model"
+            : "CLI default";
       step.model = stepModel || "default";
       // claude: stream-json gives a LIVE trace (tool uses + text as produced)
       // and exact token usage in the final event; others stream plain text.
