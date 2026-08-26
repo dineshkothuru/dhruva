@@ -295,7 +295,7 @@ export default function WorkflowBuilder({
       </div>
 
       <p className="mt-4 text-[11px] text-slate-400">
-        Saved to your machine's workflow library (~/.dhruva/workflows) — available in every
+        Saved to your machine&apos;s workflow library (~/.dhruva/workflows) — available in every
         project you connect.
       </p>
       <div className="mt-3 flex gap-2">
