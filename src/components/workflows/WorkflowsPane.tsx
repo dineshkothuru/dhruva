@@ -64,6 +64,7 @@ const TYPE_CHIP: Record<string, string> = {
   cli: "bg-slate-100 text-slate-500",
   snapshot: "bg-slate-100 text-slate-500",
   changes: "bg-slate-100 text-slate-500",
+  "tasks-check": "bg-teal-50 text-teal-600",
 };
 
 function runCost(r: RunState): number {

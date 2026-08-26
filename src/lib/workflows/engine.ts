@@ -8,6 +8,7 @@ import { takeSnapshot, changesSince, headCommit, commitRunResult } from "@/lib/s
 import { STANDARDS_PROMPT, checkStandards } from "@/lib/standards";
 import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
+import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import type { GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 
 /** Deterministic workflow runner. Runs live in this server process (a local
@@ -204,28 +205,7 @@ async function executeSteps(run: RunState, def: WorkflowDef) {
         step.output += `\n→ revision requested: ${decision.feedback.trim().slice(0, 300)}`;
         run.status = "running";
         await persist(run);
-        for (let k = from; k < i; k++) {
-          const replayDef = def.steps[k];
-          // intermediate gates were already approved — never replay them
-          if (replayDef.type === "gate") continue;
-          if (replayDef.onlyIf && !run.inputs[replayDef.onlyIf]) continue;
-          const replayStep = run.steps.find((s) => s.id === replayDef.id)!;
-          replayStep.output = "";
-          replayStep.usage = undefined;
-          replayStep.status = "running";
-          replayStep.startedAt = Date.now();
-          await persist(run);
-          const ok = await runStep(run, replayDef, replayStep);
-          replayStep.endedAt = Date.now();
-          if (!ok) {
-            if (replayStep.status === "running") replayStep.status = "failed";
-            if ((run.status as string) !== "aborted") run.status = "failed";
-            await persist(run);
-            return;
-          }
-          if (replayStep.status === "running") replayStep.status = "done";
-          await persist(run);
-        }
+        if (!(await replayRange(run, def, from, i))) return;
         // loop: gate again on the revised state
       }
       continue;
@@ -244,6 +224,45 @@ async function executeSteps(run: RunState, def: WorkflowDef) {
         return;
       }
       if (step.status === "running") step.status = "done";
+      // Bounded self-healing (before the human gate): a review step whose
+      // verdict matches its trigger auto-revises its target with the findings
+      // as feedback, then re-runs everything up to and including itself. The
+      // following human gate always still fires — this pre-cleans what the
+      // human reviews, it never replaces them.
+      if (stepDef.type === "agent" && stepDef.autoRevise) {
+        const ar = stepDef.autoRevise;
+        let re: RegExp | null = null;
+        try {
+          re = new RegExp(ar.trigger.slice(0, 200), "i");
+        } catch {
+          re = null;
+        }
+        const from = def.steps.findIndex((s) => s.id === ar.target);
+        const max = Math.min(Math.max(ar.maxRounds ?? 1, 1), 3);
+        for (
+          let round = 1;
+          re && from >= 0 && from < i && round <= max && re.test(step.output);
+          round++
+        ) {
+          // reviewer "REOPEN T-n: comment" lines reopen those tasks so the
+          // implement task-loop reworks only what the reviewer flagged
+          if (stepDef.tasksFile) {
+            const rel = template(stepDef.tasksFile, run).replace(/\\/g, "/");
+            const reopened = await reopenFromFindings(run.root, rel, step.output);
+            if (reopened.length > 0) {
+              step.output += `\n[engine] reopened task(s): ${reopened.join(", ")}`;
+            }
+          }
+          const targetId = def.steps[from].id;
+          run.revisions ??= {};
+          (run.revisions[targetId] ??= []).push(
+            `[auto-revise round ${round} — findings from ${stepDef.id}]\n${step.output.slice(0, 4000)}`,
+          );
+          step.output += `\n\n[engine] auto-revise round ${round}/${max}: replaying ${targetId}`;
+          await persist(run);
+          if (!(await replayRange(run, def, from, i + 1))) return;
+        }
+      }
     } catch (e) {
       step.status = "failed";
       step.output += `\n[engine] ${String(e)}`;
@@ -256,6 +275,39 @@ async function executeSteps(run: RunState, def: WorkflowDef) {
   }
   if ((run.status as string) !== "aborted") run.status = "done";
   await persist(run);
+}
+
+/** Re-run steps [from, to) against the current run state (revision feedback
+ * already recorded). Gates inside the range were already approved and are
+ * never replayed. Returns false when a replayed step fails (run marked). */
+async function replayRange(
+  run: RunState,
+  def: WorkflowDef,
+  from: number,
+  to: number,
+): Promise<boolean> {
+  for (let k = from; k < to; k++) {
+    const replayDef = def.steps[k];
+    if (replayDef.type === "gate") continue;
+    if (replayDef.onlyIf && !run.inputs[replayDef.onlyIf]) continue;
+    const replayStep = run.steps.find((s) => s.id === replayDef.id)!;
+    replayStep.output = "";
+    replayStep.usage = undefined;
+    replayStep.status = "running";
+    replayStep.startedAt = Date.now();
+    await persist(run);
+    const ok = await runStep(run, replayDef, replayStep);
+    replayStep.endedAt = Date.now();
+    if (!ok) {
+      if (replayStep.status === "running") replayStep.status = "failed";
+      if ((run.status as string) !== "aborted") run.status = "failed";
+      await persist(run);
+      return false;
+    }
+    if (replayStep.status === "running") replayStep.status = "done";
+    await persist(run);
+  }
+  return true;
 }
 
 /** The nearest agent step before index i — the step a gate's revision re-runs. */
@@ -315,7 +367,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
               .map((f, n) => `${n + 1}. ${f}`)
               .join("\n")}`
           : "";
-      let prompt =
+      const prompt =
         `You are working inside the Salesforce DX project at ${run.root} ` +
         `(your current working directory). Only read and modify files in this project.\n` +
         `CRITICAL: when the task references a document, attachment, requirement file, or design ` +
@@ -327,21 +379,6 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
         template(def.prompt ?? "", run) +
         feedbackBlock;
-      // Inline-prompt agents (copilot) hit cmd.exe's ~8k command-line limit —
-      // the standards alone exceed it and the task would be truncated away.
-      // Write the full prompt to a harness file and pass a short pointer.
-      if (run.agent === "copilot") {
-        const rel = `.sfharness/tmp/prompt-${run.runId}-${def.id}.txt`;
-        try {
-          await fs.mkdir(path.join(run.root, ".sfharness", "tmp"), { recursive: true });
-          await fs.writeFile(path.join(run.root, rel), prompt, "utf8");
-          prompt =
-            `Read the file ${rel} in this project COMPLETELY (it contains your full ` +
-            `instructions, mandatory standards, and the task) and then carry out the task exactly.`;
-        } catch {
-          /* fall back to the inline prompt (may truncate) */
-        }
-      }
       // Model tier: "best" for judgment steps, "light" for mechanical ones,
       // otherwise the run's selected model. Empty tier value = CLI default.
       const tierModel = def.modelTier
@@ -352,24 +389,125 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       // claude: stream-json gives a LIVE trace (tool uses + text as produced)
       // and exact token usage in the final event; others stream plain text.
       const streamJson = run.agent === "claude";
-      const { args, viaStdin } = agentDef.build(
-        prompt,
-        stepModel,
-        def.readOnly === true,
-        streamJson,
-      );
-      const ok = await spawnToStep(
-        run,
-        step,
-        agentDef.bin,
-        args,
-        viaStdin ? prompt : undefined,
-        streamJson ? makeClaudeTraceTransform(step) : undefined,
-        (def.timeoutMinutes ?? 15) * 60_000,
-      );
+      const spawnAgent = async (fullPrompt: string, promptTag: string): Promise<boolean> => {
+        let p = fullPrompt;
+        // Inline-prompt agents (copilot) hit cmd.exe's ~8k command-line limit —
+        // the standards alone exceed it and the task would be truncated away.
+        // Write the full prompt to a harness file and pass a short pointer.
+        if (run.agent === "copilot") {
+          const rel = `.sfharness/tmp/prompt-${run.runId}-${promptTag}.txt`;
+          try {
+            await fs.mkdir(path.join(run.root, ".sfharness", "tmp"), { recursive: true });
+            await fs.writeFile(path.join(run.root, rel), p, "utf8");
+            p =
+              `Read the file ${rel} in this project COMPLETELY (it contains your full ` +
+              `instructions, mandatory standards, and the task) and then carry out the task exactly.`;
+          } catch {
+            /* fall back to the inline prompt (may truncate) */
+          }
+        }
+        const { args, viaStdin } = agentDef.build(p, stepModel, def.readOnly === true, streamJson);
+        return spawnToStep(
+          run,
+          step,
+          agentDef.bin,
+          args,
+          viaStdin ? p : undefined,
+          streamJson ? makeClaudeTraceTransform(step) : undefined,
+          (def.timeoutMinutes ?? 15) * 60_000,
+        );
+      };
+
+      // Engine-driven task loop: one bounded agent spawn per pending task in
+      // the machine-readable tasks file, dependency-ordered; each completion
+      // is recorded deterministically (status + per-task usage + duration).
+      if (def.taskLoop && def.tasksFile) {
+        const rel = template(def.tasksFile, run).replace(/\\/g, "/");
+        const { data } = await loadTasks(run.root, rel);
+        const pending = data ? pendingInOrder(data) : [];
+        if (data && pending.length > 0) {
+          const totals = { inTokens: 0, outTokens: 0, costUsd: 0, estimated: false };
+          let n = 0;
+          for (const t of pending) {
+            n++;
+            const t0 = Date.now();
+            const outStart = step.output.length;
+            step.usage = undefined; // per-spawn usage lands here (claude: exact)
+            step.output += `\n\n━━ ${t.id} (${n}/${pending.length}): ${t.title} ━━\n`;
+            await persist(run);
+            const latestReview = t.reviews?.length
+              ? t.reviews[t.reviews.length - 1].comment
+              : "";
+            const taskPrompt =
+              prompt +
+              `\n\nCURRENT TASK — complete ONLY this one task now (the other tasks run as separate steps; do not start them):\n` +
+              `${t.id}: ${t.title}\n` +
+              (t.change ? `Mechanism: ${t.change}\n` : "") +
+              `Files this task should touch: ${t.files.join(", ") || "(per the design)"}\n` +
+              (t.test_scenarios?.length ? `Test scenarios: ${t.test_scenarios.join("; ")}\n` : "") +
+              (t.traces?.length ? `Traces: ${t.traces.join(", ")}\n` : "") +
+              (latestReview
+                ? `REVIEWER COMMENT (mandatory — this reopened task's work order): ${latestReview}\n`
+                : "");
+            const ok = await spawnAgent(taskPrompt, `${def.id}-${t.id}`);
+            const u =
+              step.usage ??
+              estimateUsage(run.agent, stepModel, taskPrompt, step.output.slice(outStart));
+            totals.inTokens += u.inTokens;
+            totals.outTokens += u.outTokens;
+            totals.costUsd += u.costUsd;
+            totals.estimated = totals.estimated || u.estimated;
+            if (!ok) {
+              step.usage = totals;
+              step.output += `\n[engine] ${t.id} failed — remaining tasks stay pending in ${rel}`;
+              return false;
+            }
+            const fresh = await loadTasks(run.root, rel);
+            const ft = fresh.data?.tasks.find((x) => x.id === t.id);
+            if (fresh.data && ft) {
+              ft.status = "completed";
+              ft.tokens_in = u.inTokens;
+              ft.tokens_out = u.outTokens;
+              ft.duration_s = Math.round((Date.now() - t0) / 1000);
+              await saveTasks(run.root, rel, fresh.data);
+            }
+            await persist(run);
+          }
+          step.usage = totals;
+          harvestAffectedFiles(run, step.output);
+          return true;
+        }
+        step.output += `[engine] no valid tasks file or nothing pending (${rel}) — running as a single step\n`;
+      }
+
+      const ok = await spawnAgent(prompt, def.id);
       harvestAffectedFiles(run, step.output);
       if (!step.usage) step.usage = estimateUsage(run.agent, stepModel, prompt, step.output);
       return ok;
+    }
+    case "tasks-check": {
+      // Deterministic validation of the agent-produced tasks file — bad
+      // structure is caught by CODE before anything consumes it.
+      const rel = template(def.tasksFile ?? "", run).replace(/\\/g, "/");
+      if (!rel) {
+        step.output = "[engine] tasks-check requires tasksFile";
+        return false;
+      }
+      const { data, errors } = await loadTasks(run.root, rel);
+      if (!data) {
+        if (def.optional) {
+          step.output = `no valid tasks file (${errors.join("; ")}) — step skipped`;
+          step.status = "skipped";
+          return true;
+        }
+        step.output = `tasks file invalid (${rel}):\n- ${errors.join("\n- ")}`;
+        return false;
+      }
+      const order = pendingInOrder(data);
+      step.output =
+        `tasks file valid: ${data.tasks.length} task(s), ${order.length} pending\n` +
+        `execution order: ${order.map((t) => t.id).join(" → ") || "(none pending)"}`;
+      return true;
     }
     case "verify": {
       // Deterministic standards enforcement over the actual changed files —

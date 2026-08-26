@@ -59,6 +59,29 @@ export function checkWorkflowSemantics(def: WorkflowDef): string[] {
         problems.push(`gate "${s.id}": reviseTarget "${s.reviseTarget}" must be an agent step`);
       }
     }
+    // autoRevise target must be an EARLIER agent step, with a valid trigger
+    if (s.type === "agent" && s.autoRevise) {
+      const t = stepIds.indexOf(s.autoRevise.target);
+      if (t === -1) {
+        problems.push(`step "${s.id}": autoRevise target "${s.autoRevise.target}" does not exist`);
+      } else if (t >= idx) {
+        problems.push(`step "${s.id}": autoRevise target must run before it`);
+      } else if (def.steps[t].type !== "agent") {
+        problems.push(`step "${s.id}": autoRevise target must be an agent step`);
+      }
+      try {
+        new RegExp(s.autoRevise.trigger);
+      } catch {
+        problems.push(`step "${s.id}": autoRevise trigger is not a valid regex`);
+      }
+    }
+    // tasks-check and taskLoop need the tasks file path
+    if (s.type === "tasks-check" && !s.tasksFile) {
+      problems.push(`step "${s.id}": tasks-check requires tasksFile`);
+    }
+    if (s.taskLoop && !s.tasksFile) {
+      problems.push(`step "${s.id}": taskLoop requires tasksFile`);
+    }
     // expansion placeholders need their producers earlier in the flow
     if (s.args?.includes("{changedSourceDirs}") && !seenBefore(idx, (p) => p.type === "changes")) {
       problems.push(

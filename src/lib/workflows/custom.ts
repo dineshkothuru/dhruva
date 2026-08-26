@@ -8,7 +8,15 @@ import { checkWorkflowSemantics } from "./validate";
  * .sfharness/workflows/<id>.json in the SAME shape as built-ins, so the
  * engine runs them identically (gates, agents, verify, tiers, revisions). */
 
-const STEP_TYPES = new Set(["snapshot", "agent", "cli", "gate", "changes", "verify"]);
+const STEP_TYPES = new Set([
+  "snapshot",
+  "agent",
+  "cli",
+  "gate",
+  "changes",
+  "verify",
+  "tasks-check",
+]);
 const TIERS = new Set(["best", "default", "light"]);
 const SLUG = /^[a-z0-9][a-z0-9-]{1,40}$/;
 const KEY = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/;
@@ -74,6 +82,29 @@ export function validateWorkflowDef(raw: unknown): WorkflowDef {
       if (typeof s.modelTier === "string" && TIERS.has(s.modelTier)) {
         step.modelTier = s.modelTier as StepDef["modelTier"];
       }
+      if (s.autoRevise && typeof s.autoRevise === "object") {
+        const a = s.autoRevise as { target?: unknown; trigger?: unknown; maxRounds?: unknown };
+        if (
+          typeof a.target === "string" &&
+          SLUG.test(a.target) &&
+          typeof a.trigger === "string" &&
+          a.trigger.length <= 200
+        ) {
+          step.autoRevise = {
+            target: a.target,
+            trigger: a.trigger,
+            maxRounds:
+              typeof a.maxRounds === "number" ? Math.min(Math.max(a.maxRounds, 1), 3) : undefined,
+          };
+        }
+      }
+      if (s.taskLoop === true) step.taskLoop = true;
+    }
+    if (typeof s.timeoutMinutes === "number") {
+      step.timeoutMinutes = Math.min(Math.max(Math.round(s.timeoutMinutes), 1), 120);
+    }
+    if (typeof s.tasksFile === "string" && s.tasksFile.length <= 200 && !s.tasksFile.includes("..")) {
+      step.tasksFile = s.tasksFile;
     }
     if (s.type === "cli") {
       if (s.bin !== "sf" && s.bin !== "git") throw new Error(`cli step "${s.id}": bin must be sf or git`);

@@ -88,13 +88,14 @@ export const BUG_FIX: WorkflowDef = {
       modelTier: "best",
       readOnly: true,
       persona: "salesforce-review",
+      autoRevise: { target: "implement", trigger: "VERDICT:\\s*BLOCKED", maxRounds: 1 },
       prompt:
         "Review ONLY the changes listed below (made in this run) against the team standards. " +
         "Do not modify any files.\n" +
         "Changed files:\n{steps.changes.output}\n" +
         "Deterministic standards-check result:\n{steps.verify-standards.output}\n" +
-        "Read each changed file, review the actual change, and end with the explicit verdict: " +
-        "ready, or blocked with the specific blocking items.",
+        "Read each changed file, review the actual change, and end with exactly one line:\n" +
+        "VERDICT: READY — or — VERDICT: BLOCKED, followed by the numbered blocking items.",
     },
     {
       id: "approve-changes",

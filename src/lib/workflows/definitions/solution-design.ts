@@ -20,7 +20,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       id: "analyse",
       title: "Analyse requirement against the codebase (architect, read-only)",
       type: "agent",
-      modelTier: "best",
+      modelTier: "default",
       readOnly: true,
       persona: "salesforce-architect",
       timeoutMinutes: 45,
@@ -53,6 +53,31 @@ export const SOLUTION_DESIGN: WorkflowDef = {
         "pending work — never redesign what exists; follow the team standards in this prompt.",
     },
     {
+      id: "design-review",
+      title: "Design critique (best model, read-only) — auto-fixes once before your gate",
+      type: "agent",
+      modelTier: "best",
+      readOnly: true,
+      persona: "salesforce-review",
+      autoRevise: { target: "analyse", trigger: "VERDICT:\\s*BLOCKED", maxRounds: 1 },
+      prompt:
+        "You are the DESIGN REVIEWER — adversarially critique the solution design below before a " +
+        "human sees it. Do not modify any files.\n\n" +
+        "Design under review:\n{steps.analyse.output}\n\n" +
+        "Original requirement:\n{inputs.requirement}\n\n" +
+        "Check, verifying against the ACTUAL codebase (read the components named as evidence):\n" +
+        "1. EVIDENCE is real — every component cited for ALREADY IMPLEMENTED/PARTIAL exists and " +
+        "does what is claimed. A wrong claim here is the worst failure mode.\n" +
+        "2. STATUS is honest — nothing marked implemented that is only similar.\n" +
+        "3. DESIGN covers the full PENDING scope of its requirement, reuses existing components, " +
+        "and declarative-vs-code choices are justified.\n" +
+        "4. No requirement from the source text/documents is missing a REQ block; dependencies " +
+        "and sequencing make sense.\n" +
+        "Report findings referencing requirements inline as REQ-xxx (NEVER as '### REQ-' headings " +
+        "— those are machine-parsed). End with exactly one line:\n" +
+        "VERDICT: APPROVED — or — VERDICT: BLOCKED, followed by the numbered findings to fix.",
+    },
+    {
       id: "approve-design",
       title: "Review each requirement's design",
       type: "gate",
@@ -66,8 +91,9 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       type: "agent",
       timeoutMinutes: 30,
       prompt:
-        "Write the APPROVED solution design as TWO Markdown documents (create folders if needed). " +
-        "These two files are the only ones you may create or modify in this step:\n\n" +
+        "Write the APPROVED solution design as TWO Markdown documents plus ONE machine-readable " +
+        "tasks file (create folders if needed). These three files are the only ones you may create " +
+        "or modify in this step:\n\n" +
         "1. docs/designs/{inputs.docName}-hld.md — HIGH-LEVEL DESIGN, written for stakeholders and " +
         "review boards, with EXACTLY these numbered sections:\n" +
         "  1. Context — problem space, constraints, existing system boundaries (only what the " +
@@ -101,10 +127,20 @@ export const SOLUTION_DESIGN: WorkflowDef = {
         "  7. Test Strategy — the test classes/scenarios to write (positive/negative/bulk). Note: " +
         "Apex tests run in the org, so tests are written WITH the implementation and proven via a " +
         "check-only deploy with RunLocalTests — never promise a run-failing-tests-first cycle.\n" +
-        "  8. Build Plan — ordered task table: T-n | title | depends_on | files (project-relative " +
-        "paths) | test scenarios | traces (REQ/AC ids). Implementation follows this order.\n" +
+        "  8. Build Plan — a short human-readable summary table of the tasks file below " +
+        "(T-n | title | depends on | traces). The tasks file is the authority.\n" +
         "  9. Decisions — one line each: Decision -> Rationale -> Consequence.\n" +
         "  10. Open Questions that may affect implementation.\n\n" +
+        "3. docs/designs/{inputs.docName}-tasks.json — the MACHINE-READABLE build plan the " +
+        "implementation workflow executes task by task. Strict JSON (no comments, no trailing " +
+        "commas), exactly this shape:\n" +
+        '{ "version": 1, "tasks": [ { "id": "T-1", "title": "<imperative, one line>", ' +
+        '"depends_on": [], "files": ["force-app/main/default/classes/Example.cls"], ' +
+        '"change": "<the mechanism - what edit, where>", "test_scenarios": ["<case>"], ' +
+        '"traces": ["REQ-001", "AC-1"], "status": "pending" } ] }\n' +
+        "Rules: ids T-1, T-2… sequential; every task lists the project-relative files it touches " +
+        "and traces to at least one REQ/AC; depends_on only references earlier tasks; no cycles; " +
+        "one component (plus its test class) per task; order = safe deployment order.\n\n" +
         "Approved design from the analysis step:\n{steps.analyse.output}\n\n" +
         "Incorporate every detail from the approved design; expand where precision is needed but " +
         "do not contradict what was approved. Cross-link the two documents at the top of each.\n\n" +
@@ -123,12 +159,19 @@ export const SOLUTION_DESIGN: WorkflowDef = {
     },
     { id: "changes", title: "Collect created documents", type: "changes" },
     {
+      id: "tasks-check",
+      title: "Validate the build-plan tasks file (deterministic)",
+      type: "tasks-check",
+      tasksFile: "docs/designs/{inputs.docName}-tasks.json",
+    },
+    {
       id: "coverage-check",
       title: "Verify the documents cover every requirement (agent, read-only)",
       type: "agent",
       timeoutMinutes: 30,
       readOnly: true,
       modelTier: "best",
+      autoRevise: { target: "write-doc", trigger: "COVERAGE:\\s*INCOMPLETE", maxRounds: 1 },
       prompt:
         "Design coverage verification. Do not modify any files.\n" +
         "Read IN FULL: (1) the original requirement text below and every attached document it " +

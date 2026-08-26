@@ -8,7 +8,14 @@
 
 import type { AgentId } from "@/lib/agents";
 
-export type StepType = "snapshot" | "agent" | "cli" | "gate" | "changes" | "verify";
+export type StepType =
+  | "snapshot"
+  | "agent"
+  | "cli"
+  | "gate"
+  | "changes"
+  | "verify"
+  | "tasks-check";
 
 export interface StepDef {
   id: string;
@@ -34,6 +41,20 @@ export interface StepDef {
    * Resolved from the agent's tiers map — also gives cross-model review
    * within one vendor (best reviews what default wrote). */
   modelTier?: "best" | "default" | "light";
+  /** agent (review steps): bounded self-healing BEFORE the human gate. When
+   * this step's output matches `trigger` (regex, case-insensitive), the
+   * engine replays `target`..this step with the findings injected as
+   * feedback, up to `maxRounds` times (default 1). The human gate always
+   * follows — this only cleans what the human reviews, never replaces them. */
+  autoRevise?: { target: string; trigger: string; maxRounds?: number };
+  /** tasks-check / agent taskLoop / reviewer reopen: project-relative path
+   * template of the machine-readable tasks file (JSON, see tasks.ts). */
+  tasksFile?: string;
+  /** agent: engine-driven task loop — one agent spawn per PENDING task in
+   * tasksFile (dependency order); each success is marked completed with its
+   * own token usage. Falls back to a normal single run when the file is
+   * absent (older TDDs). */
+  taskLoop?: boolean;
   /** gate: message template shown to the approver. */
   message?: string;
   /** gate: step id a "revise" decision replays from (default: the nearest

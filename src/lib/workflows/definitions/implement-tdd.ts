@@ -12,6 +12,12 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       kind: "text",
       default: "docs/designs/solution-design-tdd.md",
     },
+    {
+      key: "tasksPath",
+      label: "Build-plan tasks file (from Solution design; blank/missing = single-pass build)",
+      kind: "text",
+      default: "docs/designs/solution-design-tasks.json",
+    },
     { key: "scope", label: "Scope note (optional — e.g. only components 1-3)", kind: "text", default: "", attachTo: true },
     { key: "runTests", label: "Run local Apex tests during validation", kind: "boolean", default: true },
     { key: "deploy", label: "Deploy to the connected sandbox at the end", kind: "boolean", default: true },
@@ -61,8 +67,11 @@ export const IMPLEMENT_TDD: WorkflowDef = {
     { id: "rebaseline", title: "Re-baseline after org refresh", type: "snapshot" },
     {
       id: "implement",
-      title: "Implement per TDD (agent)",
+      title: "Implement per TDD (agent — one bounded run per build-plan task)",
       type: "agent",
+      taskLoop: true,
+      tasksFile: "{inputs.tasksPath}",
+      timeoutMinutes: 30,
       prompt:
         "Implement the approved plan. The Technical Design Document at {inputs.tddPath} is the " +
         "specification — follow its component designs, API names, and test strategy exactly.\n" +
@@ -85,13 +94,18 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       modelTier: "best",
       readOnly: true,
       persona: "salesforce-review",
+      tasksFile: "{inputs.tasksPath}",
+      autoRevise: { target: "implement", trigger: "VERDICT:\\s*BLOCKED", maxRounds: 1 },
       prompt:
         "Review ONLY the changes listed below against the team standards AND against the TDD at " +
         "{inputs.tddPath} (the changes must implement what the TDD specifies — flag deviations). " +
         "Do not modify any files.\n" +
         "Changed files:\n{steps.changes.output}\n" +
         "Deterministic standards-check result:\n{steps.verify-standards.output}\n" +
-        "End with the explicit verdict: ready, or blocked with the specific blocking items.",
+        "For each blocking finding that belongs to a build-plan task, output one line:\n" +
+        "REOPEN T-<n>: <what to fix and why>\n" +
+        "(the engine reopens exactly those tasks for rework). Then end with exactly one line:\n" +
+        "VERDICT: READY — or — VERDICT: BLOCKED, followed by the numbered blocking items.",
     },
     {
       id: "traceability",
