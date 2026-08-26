@@ -40,7 +40,7 @@
       "type": "agent",
       "role": "design",
       "readOnly": true,
-      "prompt": "You are designing a Salesforce implementation for a requirement. DO NOT modify any files in this step.\nRequirement: {inputs.requirement}\nStudy the existing codebase first (reuse existing classes/objects/patterns — never plan a parallel implementation of something that exists). Reply with a short technical spec: (1) approach, (2) components to create or modify, (3) test plan.\nEnd your reply with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls"
+      "prompt": "You are designing a Salesforce implementation for a requirement. DO NOT modify any files in this step.\nRequirement: {inputs.requirement}\nStudy the existing codebase first (reuse existing classes/objects/patterns \u2014 never plan a parallel implementation of something that exists).\nReply in EXACTLY this structure:\n1. USE CASES \u2014 extract them from the requirement with stable ids:\n   UC-1: <title> \u2014 <actor> wants to <action> so that <outcome>.  (happy paths)\n   UC-E1: <title> \u2014 what happens when <error/edge condition>.    (error & edge cases \u2014 think bulk loads, missing permissions, null data, concurrent edits)\n2. SCOPE \u2014 'In scope' bullet list and 'Out of scope' bullet list (with why), so the reviewer sees the boundary explicitly.\n3. TECHNICAL SPEC \u2014 (a) approach, (b) components to create or modify with exact API names, (c) test plan covering every UC id above.\n4. OPEN QUESTIONS \u2014 anything unresolved that could change the design ('none' if none).\nEnd your reply with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls"
     },
     {
       "id": "approve-spec",
@@ -103,7 +103,7 @@
         "trigger": "VERDICT:\\s*BLOCKED",
         "maxRounds": 1
       },
-      "prompt": "Review ONLY the changes listed below (made in this run) against the team standards. Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nRead each changed file, review the actual change, and end with exactly one line:\nVERDICT: READY — or — VERDICT: BLOCKED, followed by the numbered blocking items."
+      "prompt": "Review ONLY the changes listed below (made in this run) against the team standards. Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nRead each changed file and review the actual change. Report each finding in this exact shape (severity in parentheses):\nF<n>: <short title> (critical | important | nit)\n  Where: <file / component / section>\n  Problem: <what is wrong>\n  Fix: <the concrete change to make>\ncritical = would break in production or violates a blocking standard; important = should be fixed before deploy; nit = style/polish, never blocks.\nThen end with exactly one line:\nVERDICT: READY \u2014 or \u2014 VERDICT: BLOCKED, followed by the critical/important finding ids.\nnit-only findings never block."
     },
     {
       "id": "traceability",
@@ -111,7 +111,7 @@
       "type": "agent",
       "role": "trace",
       "readOnly": true,
-      "prompt": "Coverage check. Re-read the full requirement (and any attached documents it references):\n{inputs.requirement}\nExtract every distinct requirement item, and for EACH one inspect the changed files below:\n  <n>. <item> — IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\nChanged files in this run:\n{steps.changes.output}\nDo not modify any files. Be strict: no evidence in the diff = MISSING. End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE — items <numbers>."
+      "prompt": "Coverage check. Re-read the full requirement (and any attached documents it references):\n{inputs.requirement}\nThe approved spec extracted numbered use cases (UC-n / UC-En):\n{steps.spec.output}\nFor EACH UC id in the spec (and any requirement item the spec missed), inspect the changed files below and report one line:\n  UC-x: <title> \u2014 IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\nChanged files in this run:\n{steps.changes.output}\nDo not modify any files. Be strict: no evidence in the diff = MISSING. Items marked Out of scope in the spec are excluded \u2014 list them as SKIPPED (out of scope). End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE \u2014 items <UC ids>."
     },
     {
       "id": "approve-changes",
@@ -157,7 +157,7 @@
     },
     {
       "id": "visual-preview",
-      "title": "Visual test — local files against live org data (Local Dev)",
+      "title": "Visual test \u2014 local files against live org data (Local Dev)",
       "type": "cli",
       "bin": "sf",
       "detached": true,
