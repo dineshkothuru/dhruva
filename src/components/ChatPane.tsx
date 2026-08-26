@@ -52,8 +52,27 @@ export default function ChatPane({
 }) {
   const [status, setStatus] = useState<Record<string, AgentStatus> | null>(null);
   const [agent, setAgent] = useState<AgentId>("copilot");
-  // model per agent, so switching agents remembers each one's choice
-  const [models, setModels] = useState<Partial<Record<AgentId, string>>>({});
+  // model per agent — persisted as the DEFAULT: whatever you pick is
+  // remembered and taken automatically every session, no re-input needed
+  const [models, setModels] = useState<Partial<Record<AgentId, string>>>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem("sfdh.chatModels") ?? "null");
+      return raw && typeof raw === "object" ? raw : {};
+    } catch {
+      return {};
+    }
+  });
+  function rememberModel(id: AgentId, value: string) {
+    setModels((m) => {
+      const next = { ...m, [id]: value };
+      try {
+        localStorage.setItem("sfdh.chatModels", JSON.stringify(next));
+      } catch {
+        /* best-effort */
+      }
+      return next;
+    });
+  }
   const [custom, setCustom] = useState<Partial<Record<AgentId, boolean>>>({});
   const [input, setInput] = useState("");
   // ChatPane only mounts after a project connects (post-hydration), so a
@@ -325,7 +344,7 @@ export default function ChatPane({
             {isCustomModel && (
               <input
                 value={models[agent] ?? ""}
-                onChange={(e) => setModels((m) => ({ ...m, [agent]: e.target.value }))}
+                onChange={(e) => rememberModel(agent, e.target.value)}
                 placeholder="model id, e.g. claude-sonnet-5"
                 spellCheck={false}
                 disabled={running}
@@ -337,15 +356,15 @@ export default function ChatPane({
               onChange={(e) => {
                 if (e.target.value === CUSTOM) {
                   setCustom((c) => ({ ...c, [agent]: true }));
-                  setModels((m) => ({ ...m, [agent]: "" }));
+                  rememberModel(agent, "");
                 } else {
                   setCustom((c) => ({ ...c, [agent]: false }));
-                  setModels((m) => ({ ...m, [agent]: e.target.value }));
+                  rememberModel(agent, e.target.value);
                 }
               }}
               disabled={running}
               className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 outline-none focus:border-slate-400 disabled:opacity-50"
-              title="Model the agent runs with — pick one your org's policy allows, or Custom for any model id"
+              title="Model the agent runs with — your pick is saved as the default and used automatically from then on"
             >
               {current.models.map((m) => (
                 <option key={m.id} value={m.id}>

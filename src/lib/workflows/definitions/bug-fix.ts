@@ -22,6 +22,7 @@ export const BUG_FIX: WorkflowDef = {
       id: "locate",
       title: "Locate root cause (agent, read-only)",
       type: "agent",
+      role: "read",
       modelTier: "best",
       readOnly: true,
       prompt:
@@ -60,6 +61,7 @@ export const BUG_FIX: WorkflowDef = {
       id: "implement",
       title: "Re-analyse fresh code if needed, then implement fix (agent)",
       type: "agent",
+      role: "implement",
       prompt:
         "Implement the fix for this bug.\n" +
         "Bug report: {inputs.description}\n" +
@@ -85,6 +87,7 @@ export const BUG_FIX: WorkflowDef = {
       id: "review",
       title: "Code review of the changes (agent, read-only)",
       type: "agent",
+      role: "review",
       modelTier: "best",
       readOnly: true,
       persona: "salesforce-review",

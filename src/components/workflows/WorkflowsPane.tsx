@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
 import type { RunState } from "@/lib/workflows/schema";
 import CliResult from "@/components/workflows/CliResult";
-import { loadTiers, saveTiers, tiersFor, type TierConfig } from "@/lib/tierStore";
+import { tiersFor } from "@/lib/tierStore";
+import { loadRoles, saveRoles, rolesFor, type RoleConfig } from "@/lib/roleStore";
+import { STEP_ROLES, ROLE_LABEL, ROLE_TIER } from "@/lib/workflows/schema";
 import WorkflowBuilder from "@/components/workflows/WorkflowBuilder";
 import RequirementCards, { parseRequirements } from "@/components/workflows/RequirementCards";
 
@@ -239,7 +241,7 @@ export default function WorkflowsPane({
   // slow poll can never overwrite a fresher post-gate state
   const stateSeq = useRef(0);
 
-  const [tierCfg, setTierCfg] = useState<Record<string, TierConfig>>({});
+  const [roleCfg, setRoleCfg] = useState<Record<string, RoleConfig>>({});
   const [status, setStatus] = useState<Record<
     string,
     { tiers?: Record<string, string> }
@@ -322,7 +324,7 @@ export default function WorkflowsPane({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!cancelled) setTierCfg(loadTiers());
+      if (!cancelled) setRoleCfg(loadRoles());
       fetch("/api/agent-status")
         .then((r) => r.json())
         .then((s) => {
@@ -412,6 +414,7 @@ export default function WorkflowsPane({
         inputs: startInputs,
         agent,
         tiers: tiersFor(agent),
+        roleModels: rolesFor(agent),
       });
       if (!ok) {
         setError(String(data.error ?? "could not start"));
@@ -676,41 +679,47 @@ export default function WorkflowsPane({
 
       <details className="mt-4 rounded-xl border border-slate-200 bg-white">
         <summary className="cursor-pointer px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
-          Model tiers — which model runs judgment vs coding steps
+          Models by role — which model plays each role, per agent
         </summary>
-        <div className="space-y-3 border-t border-slate-100 p-4">
+        <div className="space-y-4 border-t border-slate-100 p-4">
           <p className="text-[11px] text-slate-400">
-            <span className="font-medium">best</span> runs analysis/design/review/traceability
-            steps; <span className="font-medium">default</span> runs implementation;{" "}
-            <span className="font-medium">light</span> is reserved for cheap mechanical steps.
-            Empty = the shipped default shown as placeholder. Pick models your org policy allows.
+            Every workflow step plays one of five roles; set the model per role once and every
+            workflow follows — no per-run input needed. Empty = automatic (the shipped default
+            shown as placeholder). A change here applies from the next run.
           </p>
           {AGENT_OPTIONS.map((a) => {
             const s = status?.[a.id];
-            const cfg = tierCfg[a.id] ?? {};
+            const cfg = roleCfg[a.id] ?? {};
             return (
-              <div key={a.id} className="flex flex-wrap items-center gap-2">
-                <span className="w-28 text-xs font-medium text-slate-600">{a.label}</span>
-                {(["best", "default", "light"] as const).map((tier) => (
-                  <label key={tier} className="flex items-center gap-1 text-[11px] text-slate-400">
-                    {tier}
-                    <input
-                      value={cfg[tier] ?? ""}
-                      onChange={(e) => {
-                        const all = loadTiers();
-                        all[a.id] = { ...all[a.id], [tier]: e.target.value.trim() };
-                        saveTiers(all);
-                        setTierCfg(all);
-                      }}
-                      placeholder={s?.tiers?.[tier] || "cli default"}
-                      spellCheck={false}
-                      className="w-36 rounded-lg border border-slate-200 px-2 py-1 font-mono text-[11px] outline-none focus:border-slate-400"
-                    />
-                  </label>
-                ))}
+              <div key={a.id}>
+                <span className="text-xs font-semibold text-slate-600">{a.label}</span>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {STEP_ROLES.map((role) => (
+                    <label key={role} className="text-[11px] text-slate-400">
+                      {ROLE_LABEL[role]}
+                      <input
+                        value={cfg[role] ?? ""}
+                        onChange={(e) => {
+                          const all = loadRoles();
+                          all[a.id] = { ...all[a.id], [role]: e.target.value.trim() };
+                          saveRoles(all);
+                          setRoleCfg(all);
+                        }}
+                        placeholder={s?.tiers?.[ROLE_TIER[role]] || "cli default"}
+                        spellCheck={false}
+                        className="mt-0.5 block w-36 rounded-lg border border-slate-200 px-2 py-1 font-mono text-[11px] outline-none focus:border-slate-400"
+                      />
+                    </label>
+                  ))}
+                </div>
               </div>
             );
           })}
+          <p className="text-[10px] text-slate-400">
+            Roles → steps: Read/investigate = locate, plan, assess · Design/author = analyse, spec,
+            write-doc · Implement = implement (all workflows) · Review = design-review, code review ·
+            Trace/coverage = coverage-check, traceability.
+          </p>
         </div>
       </details>
 

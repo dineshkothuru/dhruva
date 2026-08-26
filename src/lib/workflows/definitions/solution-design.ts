@@ -20,6 +20,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       id: "analyse",
       title: "Analyse requirement against the codebase (architect, read-only)",
       type: "agent",
+      role: "design",
       modelTier: "default",
       readOnly: true,
       persona: "salesforce-architect",
@@ -56,6 +57,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       id: "design-review",
       title: "Design critique (best model, read-only) — auto-fixes once before your gate",
       type: "agent",
+      role: "review",
       modelTier: "best",
       readOnly: true,
       // architect persona, NOT the code-review one: this judges architecture
@@ -92,6 +94,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       id: "write-doc",
       title: "Write HLD + TDD documents (with ERD)",
       type: "agent",
+      role: "design",
       timeoutMinutes: 30,
       prompt:
         "Write the APPROVED solution design as TWO Markdown documents plus ONE machine-readable " +
@@ -171,6 +174,7 @@ export const SOLUTION_DESIGN: WorkflowDef = {
       id: "coverage-check",
       title: "Verify the documents cover every requirement (agent, read-only)",
       type: "agent",
+      role: "trace",
       timeoutMinutes: 30,
       readOnly: true,
       modelTier: "best",

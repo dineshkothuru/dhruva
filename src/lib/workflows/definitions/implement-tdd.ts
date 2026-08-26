@@ -34,6 +34,7 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       id: "plan",
       title: "Read the TDD and plan the build (agent, read-only)",
       type: "agent",
+      role: "read",
       modelTier: "best",
       readOnly: true,
       prompt:
@@ -69,6 +70,7 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       id: "implement",
       title: "Implement per TDD (agent — one bounded run per build-plan task)",
       type: "agent",
+      role: "implement",
       taskLoop: true,
       tasksFile: "{inputs.tasksPath}",
       timeoutMinutes: 30,
@@ -91,6 +93,7 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       id: "review",
       title: "Code review against the TDD (agent, read-only)",
       type: "agent",
+      role: "review",
       modelTier: "best",
       readOnly: true,
       persona: "salesforce-review",
@@ -111,6 +114,7 @@ export const IMPLEMENT_TDD: WorkflowDef = {
       id: "traceability",
       title: "Requirements traceability matrix (agent, read-only)",
       type: "agent",
+      role: "trace",
       modelTier: "best",
       readOnly: true,
       prompt:

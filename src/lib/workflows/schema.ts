@@ -8,6 +8,26 @@
 
 import type { AgentId } from "@/lib/agents";
 
+/** The five model-consuming roles an agent step can play. Users pick models
+ * ROLE-wise (5 decisions), not step-wise (17) — every step inherits from its
+ * role; the tier map below is the shipped fallback per role. */
+export type StepRole = "read" | "design" | "implement" | "review" | "trace";
+export const STEP_ROLES: StepRole[] = ["read", "design", "implement", "review", "trace"];
+export const ROLE_LABEL: Record<StepRole, string> = {
+  read: "Read / investigate",
+  design: "Design / author",
+  implement: "Implement",
+  review: "Review (critic)",
+  trace: "Trace / coverage",
+};
+export const ROLE_TIER: Record<StepRole, "best" | "default" | "light"> = {
+  read: "best",
+  design: "default",
+  implement: "default",
+  review: "best",
+  trace: "best",
+};
+
 export type StepType =
   | "snapshot"
   | "agent"
@@ -36,6 +56,9 @@ export interface StepDef {
   /** Step timeout in minutes (default 15). BRD-scale analysis and large
    * implementations legitimately need more. */
   timeoutMinutes?: number;
+  /** agent: the step's role — the unit users configure models by. A user's
+   * per-role model (run.roleModels) wins; otherwise the role's tier applies. */
+  role?: StepRole;
   /** agent: model tier for this step ("best" = architecture/review judgment,
    * "light" = cheap mechanical work). Unset = the run's selected model.
    * Resolved from the agent's tiers map — also gives cross-model review
@@ -118,6 +141,9 @@ export interface RunState {
   /** User-configured tier overrides for this run (UI setting); falls back to
    * the agent's shipped tiers map. */
   tiers?: { best?: string; default?: string; light?: string };
+  /** User-configured per-ROLE models for this run — the primary model
+   * setting. A step's role model beats its tier resolution. */
+  roleModels?: Partial<Record<StepRole, string>>;
   inputs: Record<string, string | boolean>;
   steps: StepState[];
   /** Changed files as of the last "changes" step. */

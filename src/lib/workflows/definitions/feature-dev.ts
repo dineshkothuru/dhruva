@@ -22,6 +22,7 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "spec",
       title: "Draft technical spec (agent, read-only)",
       type: "agent",
+      role: "design",
       modelTier: "best",
       readOnly: true,
       prompt:
@@ -53,6 +54,7 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "implement",
       title: "Implement feature + tests (agent)",
       type: "agent",
+      role: "implement",
       prompt:
         "Implement this feature in the current project.\n" +
         "Requirement: {inputs.requirement}\n" +
@@ -73,6 +75,7 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "review",
       title: "Code review of the changes (agent, read-only)",
       type: "agent",
+      role: "review",
       modelTier: "best",
       readOnly: true,
       persona: "salesforce-review",
@@ -89,6 +92,7 @@ export const FEATURE_DEV: WorkflowDef = {
       id: "traceability",
       title: "Requirement coverage check (agent, read-only)",
       type: "agent",
+      role: "trace",
       modelTier: "best",
       readOnly: true,
       prompt:

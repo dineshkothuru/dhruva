@@ -19,6 +19,7 @@ export const TEST_GEN: WorkflowDef = {
       id: "assess",
       title: "Assess coverage gaps (agent, read-only)",
       type: "agent",
+      role: "read",
       modelTier: "best",
       readOnly: true,
       persona: "salesforce-test",
@@ -44,6 +45,7 @@ export const TEST_GEN: WorkflowDef = {
       id: "implement",
       title: "Write the tests (agent)",
       type: "agent",
+      role: "implement",
       prompt:
         "Write the tests per the approved plan:\n{steps.assess.output}\n\n" +
         "Rules of engagement: modify/create TEST classes (and the shared TestDataFactory if " +

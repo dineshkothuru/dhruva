@@ -4,6 +4,7 @@ import { isAttachableRoot } from "@/lib/fsguard";
 import { isAgentId } from "@/lib/agents";
 import { isSafeModelId } from "@/lib/agents";
 import { WORKFLOWS } from "@/lib/workflows/builtins";
+import { STEP_ROLES, type StepRole } from "@/lib/workflows/schema";
 import {
   deleteCustomWorkflow,
   listCustomWorkflows,
@@ -135,6 +136,15 @@ export async function POST(req: Request) {
       if (typeof v === "string" && v.length > 8000) inputs[k] = v.slice(0, 8000);
     }
     const model = isSafeModelId(b.model) ? b.model : undefined;
+    // per-role model choices — the primary model setting (role ids fixed)
+    let roleModels: Partial<Record<StepRole, string>> | undefined;
+    if (b.roleModels && typeof b.roleModels === "object") {
+      roleModels = {};
+      for (const k of STEP_ROLES) {
+        const v = (b.roleModels as Record<string, unknown>)[k];
+        if (isSafeModelId(v) && v) roleModels[k] = v;
+      }
+    }
     // user-configured tier overrides — model ids validated like any model
     let tiers: { best?: string; default?: string; light?: string } | undefined;
     if (b.tiers && typeof b.tiers === "object") {
@@ -144,7 +154,7 @@ export async function POST(req: Request) {
         if (isSafeModelId(v)) tiers[k] = v;
       }
     }
-    const run = startRun(root, def, inputs, b.agent, model, tiers);
+    const run = startRun(root, def, inputs, b.agent, model, tiers, roleModels);
     if (!run) return NextResponse.json({ error: "could not start run" }, { status: 500 });
     return NextResponse.json({ runId: run.runId });
   }

@@ -10,6 +10,7 @@ import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import type { GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
+import { ROLE_TIER } from "./schema";
 
 /** Deterministic workflow runner. Runs live in this server process (a local
  * single-user tool); every state change is persisted to
@@ -107,6 +108,7 @@ export function startRun(
   agent: AgentId,
   model?: string,
   tiers?: RunState["tiers"],
+  roleModels?: RunState["roleModels"],
 ): RunState | null {
   const run: RunState = {
     runId: randomUUID().slice(0, 12),
@@ -118,6 +120,7 @@ export function startRun(
     agent,
     model,
     tiers,
+    roleModels,
     inputs,
     steps: def.steps.map((s) => ({
       id: s.id,
@@ -379,12 +382,15 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
         template(def.prompt ?? "", run) +
         feedbackBlock;
-      // Model tier: "best" for judgment steps, "light" for mechanical ones,
-      // otherwise the run's selected model. Empty tier value = CLI default.
-      const tierModel = def.modelTier
-        ? (run.tiers?.[def.modelTier] ?? agentDef.tiers[def.modelTier])
-        : undefined;
-      const stepModel = def.modelTier ? tierModel || run.model : run.model;
+      // Model resolution, most specific wins:
+      // 1. the user's per-ROLE model for this run (the primary setting)
+      // 2. the step's tier (explicit modelTier, else the role's default tier)
+      //    via the user's tier overrides or the agent's shipped tiers
+      // 3. the run's selected model / CLI default.
+      const roleModel = def.role ? run.roleModels?.[def.role] : undefined;
+      const tier = def.modelTier ?? (def.role ? ROLE_TIER[def.role] : undefined);
+      const tierModel = tier ? (run.tiers?.[tier] ?? agentDef.tiers[tier]) : undefined;
+      const stepModel = roleModel || tierModel || run.model;
       step.model = stepModel || "default";
       // claude: stream-json gives a LIVE trace (tool uses + text as produced)
       // and exact token usage in the final event; others stream plain text.
