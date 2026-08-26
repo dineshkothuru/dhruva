@@ -522,7 +522,12 @@ export default function WorkflowsPane({
           {(run.status === "failed" || run.status === "aborted") && (
             <button
               onClick={async () => {
-                const { ok, data } = await api({ action: "resume", root, runId: run.runId });
+                const { ok, data } = await api({
+                  action: "resume",
+                  root,
+                  runId: run.runId,
+                  roleModels: rolesFor(run.agent),
+                });
                 if (!ok) alert(String(data.error ?? "cannot resume"));
                 else await fetchRunState(run.runId);
               }}
@@ -822,9 +827,26 @@ export default function WorkflowsPane({
                             setRoleCfg(all);
                           }}
                           onBlur={(e) => {
+                            let v = e.target.value.trim();
+                            // model ids are case-sensitive at the CLI — when the
+                            // typed value matches a known id except for case,
+                            // auto-correct instead of failing at run time
+                            const known = [
+                              ...(s?.models ?? []).map((m) => m.id),
+                              ...loadCustomModels(roleTab),
+                            ].filter(Boolean);
+                            const match = known.find(
+                              (id) => id.toLowerCase() === v.toLowerCase() && id !== v,
+                            );
+                            if (match) {
+                              v = match;
+                              const all = loadRoles();
+                              all[roleTab] = { ...all[roleTab], [role]: v };
+                              saveRoles(all);
+                              setRoleCfg(all);
+                            }
                             // a completed custom id becomes a suggestion everywhere
-                            const v = e.target.value.trim();
-                            if (v && !(s?.models ?? []).some((m) => m.id === v)) {
+                            if (v && !known.includes(v)) {
                               addCustomModel(roleTab, v);
                             }
                           }}

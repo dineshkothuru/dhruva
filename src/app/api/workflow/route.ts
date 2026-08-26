@@ -117,7 +117,15 @@ export async function POST(req: Request) {
     if (typeof b.runId !== "string") {
       return NextResponse.json({ error: "runId required" }, { status: 400 });
     }
-    const run = await resumeRun(root, b.runId);
+    let resumeRoles: Partial<Record<StepRole, string>> | undefined;
+    if (b.roleModels && typeof b.roleModels === "object") {
+      resumeRoles = {};
+      for (const k of STEP_ROLES) {
+        const v = (b.roleModels as Record<string, unknown>)[k];
+        if (isSafeModelId(v) && v) resumeRoles[k] = v;
+      }
+    }
+    const run = await resumeRun(root, b.runId, resumeRoles);
     if (!run) {
       return NextResponse.json(
         { error: "cannot resume — run is live/finished/unknown, or the workflow definition changed since (start a fresh run)" },

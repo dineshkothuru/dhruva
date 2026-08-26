@@ -161,7 +161,11 @@ const MAX_REVISIONS_PER_GATE = 5;
  * gates stay approved; everything from the failure point re-runs. Returns
  * null when the run is live, unknown, finished, or the workflow definition
  * has changed since (then a fresh start is the only honest option). */
-export async function resumeRun(root: string, runId: string): Promise<RunState | null> {
+export async function resumeRun(
+  root: string,
+  runId: string,
+  roleModels?: RunState["roleModels"],
+): Promise<RunState | null> {
   let run = runs.get(runId);
   if (!run) {
     try {
@@ -200,6 +204,12 @@ export async function resumeRun(root: string, runId: string): Promise<RunState |
     s.modelFrom = undefined;
   }
   run.steps[start].output = "[engine] resumed — re-running from this step\n";
+  // refresh model settings on resume — a run that failed BECAUSE of a bad
+  // role model must be fixable by correcting the setting and resuming
+  if (roleModels && Object.keys(roleModels).length > 0) {
+    run.roleModels = roleModels;
+    run.steps[start].output += "[engine] role-model settings refreshed from your current configuration\n";
+  }
   run.status = "running";
   run.endCommit = undefined;
   runs.set(run.runId, run);
