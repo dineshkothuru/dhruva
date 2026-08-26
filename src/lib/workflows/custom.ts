@@ -21,6 +21,12 @@ export type WorkflowScope = "central" | "project";
 const SLUG = /^[a-z0-9][a-z0-9-]{1,40}$/;
 
 function centralDir() {
+  // XDG-style config home (~/.config/dhruva) — the convention most CLIs use
+  const cfg = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
+  return path.join(cfg, "dhruva", "workflows");
+}
+// pre-rename location — still read (never written) so nothing already saved is lost
+function legacyCentralDir() {
   return path.join(os.homedir(), ".dhruva", "workflows");
 }
 function projectDir(root: string) {
@@ -52,6 +58,7 @@ export async function listCustomWorkflows(
   root: string,
 ): Promise<{ def: WorkflowDef; scope: WorkflowScope }[]> {
   const byId = new Map<string, { def: WorkflowDef; scope: WorkflowScope }>();
+  for (const def of await readDir(legacyCentralDir())) byId.set(def.id, { def, scope: "central" });
   for (const def of await readDir(centralDir())) byId.set(def.id, { def, scope: "central" });
   for (const def of await readDir(projectDir(root))) byId.set(def.id, { def, scope: "project" });
   return [...byId.values()].sort((a, b) => a.def.title.localeCompare(b.def.title));
@@ -73,7 +80,7 @@ export async function saveCustomWorkflow(
 export async function deleteCustomWorkflow(root: string, id: string): Promise<boolean> {
   if (!SLUG.test(id)) return false;
   let deleted = false;
-  for (const dir of [projectDir(root), centralDir()]) {
+  for (const dir of [projectDir(root), centralDir(), legacyCentralDir()]) {
     try {
       await fs.unlink(path.join(dir, `${id}.json`));
       deleted = true;
@@ -89,7 +96,7 @@ export async function loadWorkflow(root: string, id: string): Promise<WorkflowDe
   const builtins = await builtinWorkflows();
   if (builtins[id]) return builtins[id];
   if (!SLUG.test(id)) return null;
-  for (const dir of [projectDir(root), centralDir()]) {
+  for (const dir of [projectDir(root), centralDir(), legacyCentralDir()]) {
     try {
       const raw = JSON.parse(await fs.readFile(path.join(dir, `${id}.json`), "utf8"));
       return validateWorkflowDef(raw);

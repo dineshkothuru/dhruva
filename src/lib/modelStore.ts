@@ -22,7 +22,8 @@ export function loadCustomModels(agent: string): string[] {
 
 export function addCustomModel(agent: string, id: string) {
   const v = id.trim();
-  if (!v || v.length > 60) return;
+  // only valid model-id shapes become suggestions — never propagate typos
+  if (!/^[A-Za-z0-9._-]{1,60}$/.test(v)) return;
   const all = loadAll();
   const list = all[agent] ?? [];
   if (list.includes(v)) return;

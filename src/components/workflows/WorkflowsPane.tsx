@@ -783,7 +783,11 @@ export default function WorkflowsPane({
                 </label>
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                   {STEP_ROLES.map((role) => {
-                    const set = !!cfg[role]?.trim();
+                    const val = cfg[role]?.trim() ?? "";
+                    const set = !!val;
+                    // must be an exact CLI model slug — the server DROPS
+                    // anything else, so warn loudly instead of failing silently
+                    const invalid = set && !/^[A-Za-z0-9._-]{1,60}$/.test(val);
                     return (
                       <label key={role} className="block">
                         <span className="text-[11px] font-medium text-slate-500">{ROLE_LABEL[role]}</span>
@@ -806,9 +810,19 @@ export default function WorkflowsPane({
                           placeholder={s?.tiers?.[ROLE_TIER[role]] || "cli default"}
                           spellCheck={false}
                           className={`mt-1 block w-full rounded-lg border px-2.5 py-1.5 font-mono text-[11px] outline-none focus:border-slate-400 ${
-                            set ? "border-sky-200 bg-sky-50/40" : "border-slate-200"
+                            invalid
+                              ? "border-red-400 bg-red-50/50"
+                              : set
+                                ? "border-sky-200 bg-sky-50/40"
+                                : "border-slate-200"
                           }`}
                         />
+                        {invalid && (
+                          <span className="mt-0.5 block text-[10px] font-medium text-red-600">
+                            not a model id (letters/digits/dots/dashes only — no spaces) — would
+                            be IGNORED at run time
+                          </span>
+                        )}
                       </label>
                     );
                   })}
