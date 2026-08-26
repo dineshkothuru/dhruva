@@ -139,7 +139,10 @@ export default function ChatPane({
       setAttachments([]);
       setMessages((m) => [
         ...m,
-        { role: "user", text: prompt + (attached.length ? `\n📎 ${attachments.map((a) => a.name).join(", ")}` : "") },
+        {
+          role: "user",
+          text: prompt + (attached.length ? `\nAttached: ${attachments.map((a) => a.name).join(", ")}` : ""),
+        },
         {
           role: "proposal",
           text: "",
@@ -486,7 +489,11 @@ export default function ChatPane({
                 key={a.rel}
                 className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600"
               >
-                📎 {a.name}
+                <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M4 2h5l3 3v9H4z" strokeLinejoin="round" />
+                  <path d="M9 2v3h3" strokeLinejoin="round" />
+                </svg>
+                {a.name}
                 <button
                   onClick={() => setAttachments((x) => x.filter((y) => y.rel !== a.rel))}
                   className="text-slate-400 hover:text-slate-700"
@@ -510,10 +517,16 @@ export default function ChatPane({
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading || running}
-            className="self-end rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-40"
-            title="Attach images, PDFs, or documents (saved into the project's harness area)"
+            className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40"
+            title="Add files — images, PDFs, or documents"
           >
-            {uploading ? "…" : "📎"}
+            {uploading ? (
+              <span className="text-xs">…</span>
+            ) : (
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+            )}
           </button>
           <textarea
             value={input}
