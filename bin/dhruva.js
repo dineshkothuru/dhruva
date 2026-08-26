@@ -12,10 +12,14 @@ const path = require("node:path");
 const appRoot = path.join(__dirname, "..");
 const port = process.env.DHRUVA_PORT || "3005";
 
-// `dhruva update` — pull the latest version and rebuild on next start
+// `dhruva update` — install the latest published version from the npm
+// registry (immutable, versioned). `dhruva update edge` tracks the GitHub
+// master branch instead (whatever was pushed last).
 if (process.argv[2] === "update") {
-  console.log("[dhruva] updating from GitHub...");
-  const r = spawnSync("npm", ["install", "-g", "github:dineshkothuru/dhruva"], {
+  const edge = process.argv[3] === "edge";
+  const source = edge ? "github:dineshkothuru/dhruva" : "dhruva@latest";
+  console.log(`[dhruva] updating from ${edge ? "GitHub master (edge)" : "the npm registry"}...`);
+  const r = spawnSync("npm", ["install", "-g", source], {
     shell: true,
     stdio: "inherit",
   });

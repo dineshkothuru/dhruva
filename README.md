@@ -38,15 +38,15 @@ click "More info → Run anyway". Built with `npm run app:dist` (output in
 **As a command (Claude Code-style — recommended):**
 
 ```
-npm install -g github:dineshkothuru/dhruva
+npm install -g dhruva
 dhruva
 ```
 
 The `dhruva` command checks prerequisites (installs the Salesforce CLI if
 missing), builds once on first run, starts the app, and opens
 http://localhost:3005. Everything runs on YOUR machine with YOUR logins —
-no credentials ship with the package. (Private repo: authenticate git/npm to
-GitHub first, e.g. `gh auth login`.)
+no credentials ship with the package. Update later with `dhruva update`
+(published releases) or `dhruva update edge` (GitHub master).
 
 **Or from a clone:**
 
