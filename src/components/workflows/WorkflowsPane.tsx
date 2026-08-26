@@ -641,7 +641,15 @@ export default function WorkflowsPane({
                   </div>
                 </div>
               ) : (
-                <StepBody output={s.output} type={s.type} running={s.status === "running"} />
+                <StepBody
+                  output={s.output}
+                  type={s.type}
+                  // never show "working…" unless the RUN itself is still live
+                  running={
+                    s.status === "running" &&
+                    (run.status === "running" || run.status === "waiting_gate")
+                  }
+                />
               )}
               {s.status === "failed" && s.output && (
                 <div className="border-t border-slate-100 px-4 py-2">

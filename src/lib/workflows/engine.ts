@@ -58,7 +58,22 @@ export async function listRuns(root: string): Promise<RunState[]> {
       try {
         const r = JSON.parse(await fs.readFile(path.join(dir, f), "utf8")) as RunState;
         if (!r.runId || !Array.isArray(r.steps)) continue;
-        if (r.status === "running" || r.status === "waiting_gate") r.status = "aborted";
+        if (r.status === "running" || r.status === "waiting_gate") {
+          r.status = "aborted";
+          // normalize the steps too — a step frozen at "running" in a dead
+          // run's audit must not render as working forever, and the reader
+          // deserves to know WHY the run ended
+          for (const s of r.steps) {
+            if (s.status === "running" || s.status === "waiting_gate") {
+              s.status = "failed";
+              s.endedAt ??= Date.now();
+              s.output +=
+                "\n[engine] run ended while this step was in progress — the server process " +
+                "restarted or was killed (dev-mode file edits recompile the app; the installed " +
+                "desktop app is immune). Output above is the last saved state; re-run the workflow.";
+            }
+          }
+        }
         byId.set(r.runId, r);
       } catch {
         /* corrupt audit file — skip */
@@ -82,7 +97,13 @@ export function abortRun(runId: string): boolean {
   run.status = "aborted";
   if (resolveGate(runId, { action: "abort" })) return true; // parked at a gate
   const step = run.steps.find((s) => s.status === "running");
-  if (step) step.output += "\n[engine] aborted by user";
+  if (step) {
+    // mark immediately — the UI must never show "working" on an aborted run,
+    // even if the process tree takes time to die
+    step.status = "failed";
+    step.endedAt = Date.now();
+    step.output += "\n[engine] aborted by user (Stop run) — the step's process was killed";
+  }
   const child = activeChildren.get(runId);
   if (child?.pid) {
     // shell:true means the child is cmd.exe — kill the whole tree
