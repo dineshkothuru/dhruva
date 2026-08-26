@@ -141,3 +141,7 @@ Never commit or push from inside an attached customer project; Dhruva's own
 | Copilot: `Access denied by policy settings` | GitHub **org-level** Copilot policy — admin must enable "Copilot CLI" (personal settings are not enough) |
 | oclif `could not find package.json … type: 'dev'` warnings | Harmless CLI-internals noise — ignore |
 | Snapshot fails on huge org folders | Fixed since v0.1 (long paths + lock self-heal); re-run — first snapshot of a 30k-file org takes ~1–2 min once |
+
+---
+
+Built by **Dinesh Kumar Kothuru** ([GitHub](https://github.com/dineshkothuru)) - MIT licensed.

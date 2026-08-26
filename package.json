@@ -124,5 +124,9 @@
   ],
   "engines": {
     "node": ">=20"
+  },
+  "author": {
+    "name": "Dinesh Kumar Kothuru",
+    "url": "https://github.com/dineshkothuru"
   }
 }
