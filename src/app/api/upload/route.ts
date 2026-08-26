@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import mammoth from "mammoth";
 import { isAttachableRoot } from "@/lib/fsguard";
+import { ensureExtractedFile } from "@/lib/docExtract";
 
 /** Save a chat attachment (issue screenshot / PDF / doc) into the attached
  * project's harness area so agents can read it from disk.
@@ -58,26 +58,15 @@ export async function POST(req: Request) {
   const abs = path.join(dir, name);
   await fs.writeFile(abs, Buffer.from(await file.arrayBuffer()));
 
-  if (ext === ".docx") {
-    try {
-      const { value } = await mammoth.extractRawText({ path: abs });
-      const text = (value ?? "").trim();
-      if (text.length > 0) {
-        const extractedName = `${name}.extracted.md`;
-        await fs.writeFile(
-          path.join(dir, extractedName),
-          `<!-- Extracted from ${file.name} at upload; the original .docx sits alongside. -->\n\n${text}\n`,
-          "utf8",
-        );
-        // agents read the extracted text, not the binary
-        return NextResponse.json({
-          rel: `.sfharness/attachments/${extractedName}`,
-          name: file.name,
-          extracted: true,
-        });
-      }
-    } catch {
-      /* extraction failed — fall through to the original file reference */
+  if (ext === ".docx" || ext === ".pdf") {
+    const sibling = await ensureExtractedFile(abs);
+    if (sibling) {
+      // agents read the extracted text, not the binary
+      return NextResponse.json({
+        rel: `.sfharness/attachments/${path.basename(sibling)}`,
+        name: file.name,
+        extracted: true,
+      });
     }
   }
 

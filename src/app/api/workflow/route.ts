@@ -6,6 +6,7 @@ import { isSafeModelId } from "@/lib/agents";
 import { builtinWorkflows } from "@/lib/workflows/builtins";
 import { STEP_ROLES, type StepRole } from "@/lib/workflows/schema";
 import { readProjectSettings } from "@/lib/projectSettings";
+import { ensureExtractedIn } from "@/lib/docExtract";
 import {
   deleteCustomWorkflow,
   listCustomWorkflows,
@@ -170,6 +171,12 @@ export async function POST(req: Request) {
       inputs.uxRules = s.ux?.rules ?? "";
       inputs.designDir = s.ux?.designDir || "docs/design";
     }
+    // binary documents (.docx/.pdf) in the attachments and design folders get
+    // their agent-readable .extracted.md siblings BEFORE any agent runs —
+    // covers files dropped into folders that never passed through upload
+    const scanDirs = [".sfharness/attachments"];
+    if (typeof inputs.designDir === "string" && inputs.designDir) scanDirs.push(inputs.designDir);
+    await ensureExtractedIn(root, scanDirs);
     const model = isSafeModelId(b.model) ? b.model : undefined;
     // per-role model choices — the model setting (role ids fixed)
     let roleModels: Partial<Record<StepRole, string>> | undefined;
