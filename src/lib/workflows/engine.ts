@@ -454,6 +454,10 @@ function expandArgs(argv: string[], run: RunState): string[] | null {
       const files = run.affected ?? [];
       if (files.length === 0) return null;
       for (const f of files.slice(0, 30)) out.push("--source-dir", cliSafe(f));
+    } else if (a.startsWith("{flag:")) {
+      // "{flag:--synchronous:inputs.key}" → the bare flag only when truthy
+      const m = a.match(/^\{flag:([\w-]+):inputs\.([\w-]+)\}$/);
+      if (m && run.inputs[m[2]]) out.push(m[1]);
     } else if (a.startsWith("{opt:")) {
       // "{opt:--flag:inputs.key}" → ["--flag", value] only when value non-empty
       const m = a.match(/^\{opt:([\w-]+):inputs\.([\w-]+)\}$/);

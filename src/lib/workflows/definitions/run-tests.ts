@@ -13,6 +13,12 @@ export const RUN_TESTS: WorkflowDef = {
       default: "RunLocalTests",
     },
     { key: "tests", label: "Class names (only for RunSpecifiedTests, comma-separated)", kind: "text", default: "" },
+    {
+      key: "synchronous",
+      label: "Run synchronously (avoids UNABLE_TO_LOCK_ROW when tests contend on shared records; slower)",
+      kind: "boolean",
+      default: false,
+    },
   ],
   steps: [
     {
@@ -22,7 +28,8 @@ export const RUN_TESTS: WorkflowDef = {
       bin: "sf",
       args: [
         "apex", "run", "test", "--test-level", "{inputs.level}",
-        "{opt:--tests:inputs.tests}", "--code-coverage", "--result-format", "json", "--json", "--wait", "60",
+        "{opt:--tests:inputs.tests}", "{flag:--synchronous:inputs.synchronous}",
+        "--code-coverage", "--result-format", "json", "--json", "--wait", "60",
       ],
     },
   ],
