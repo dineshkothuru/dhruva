@@ -12,6 +12,20 @@ const path = require("node:path");
 const appRoot = path.join(__dirname, "..");
 const port = process.env.DHRUVA_PORT || "3005";
 
+// `dhruva update` — pull the latest version and rebuild on next start
+if (process.argv[2] === "update") {
+  console.log("[dhruva] updating from GitHub...");
+  const r = spawnSync("npm", ["install", "-g", "github:dineshkothuru/dhruva"], {
+    shell: true,
+    stdio: "inherit",
+  });
+  process.exit(r.status ?? 1);
+}
+if (process.argv[2] === "version" || process.argv[2] === "--version") {
+  console.log(`dhruva ${require(path.join(appRoot, "package.json")).version}`);
+  process.exit(0);
+}
+
 function has(cmd) {
   const probe = spawnSync(cmd, ["--version"], { shell: true, stdio: "ignore" });
   return probe.status === 0;
