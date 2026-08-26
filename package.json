@@ -21,7 +21,11 @@
         "from": ".next/standalone",
         "to": "app-bundle/.next/standalone",
         "filter": [
-          "**/*"
+          "**/*",
+          "!dist-app/**",
+          "!.git/**",
+          "!*.exe",
+          "!*.tgz"
         ]
       },
       {
