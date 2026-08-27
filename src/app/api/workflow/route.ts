@@ -179,7 +179,7 @@ export async function POST(req: Request) {
       const s = await readProjectSettings(root);
       inputs.uxEnabled = s.ux?.enabled === true;
       inputs.uxRules = s.ux?.rules ?? "";
-      inputs.designDir = s.ux?.designDir || "docs/design";
+      inputs.designDir = s.ux?.designDir || "dhruva-docs/design";
     }
     // binary documents (.docx/.pdf) in the attachments and design folders get
     // their agent-readable .extracted.md siblings BEFORE any agent runs -

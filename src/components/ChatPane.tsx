@@ -490,8 +490,8 @@ export default function ChatPane({
       // The chain handoff. Design outputs are stamped with the run that made
       // them, so this points at the PREVIOUS phase - the engine substitutes
       // its id when the handoff fires.
-      out.tddPath = "docs/designs/solution-design-{prevRunId}-tdd.md";
-      out.tasksPath = "docs/designs/solution-design-{prevRunId}-tasks.json";
+      out.tddPath = "dhruva-docs/designs/solution-design-{prevRunId}-tdd.md";
+      out.tasksPath = "dhruva-docs/designs/solution-design-{prevRunId}-tasks.json";
       out.deploy = false;
       return out;
     }

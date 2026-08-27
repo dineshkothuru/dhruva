@@ -5,7 +5,7 @@
   "inputs": [
     {
       "key": "tddPath",
-      "label": "TDD path (from a Solution design run - see docs/designs/)",
+      "label": "TDD path (from a Solution design run - see dhruva-docs/designs/)",
       "kind": "text",
       "default": ""
     },

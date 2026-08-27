@@ -31,7 +31,7 @@ export async function readProjectSettings(root: string): Promise<ProjectSettings
         designDir:
           typeof raw.ux.designDir === "string" && !raw.ux.designDir.includes("..")
             ? raw.ux.designDir.slice(0, 200)
-            : "docs/design",
+            : "dhruva-docs/design",
         rules: typeof raw.ux.rules === "string" ? raw.ux.rules.slice(0, 4000) : "",
       };
     }

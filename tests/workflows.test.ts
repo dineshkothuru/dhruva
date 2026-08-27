@@ -156,8 +156,8 @@ describe("checkWorkflowSemantics", () => {
 describe("design outputs cannot overwrite each other", () => {
   it("stamps every design artefact with the run id", async () => {
     const raw = await fs.readFile(path.resolve(__dirname, "../workflows/solution-design.json"), "utf8");
-    // every docs/designs path the workflow writes must carry {runId}
-    const written = raw.match(/docs\/designs\/\{inputs\.docName\}[A-Za-z{}.-]*/g) ?? [];
+    // every deliverable path the workflow writes must carry {runId}
+    const written = raw.match(/dhruva-docs\/designs\/\{inputs\.docName\}[A-Za-z{}.-]*/g) ?? [];
     expect(written.length).toBeGreaterThan(0);
     for (const p of written) expect(p).toContain("{runId}");
   });
@@ -165,7 +165,7 @@ describe("design outputs cannot overwrite each other", () => {
   it("leaves no fixed filename that a second run would clobber", async () => {
     for (const f of ["solution-design.json", "ux-design.json"]) {
       const raw = await fs.readFile(path.resolve(__dirname, "../workflows", f), "utf8");
-      expect(raw).not.toMatch(/docs\/designs\/\{inputs\.docName\}-(hld|tdd|tasks|ux)/);
+      expect(raw).not.toMatch(/dhruva-docs\/designs\/\{inputs\.docName\}-(hld|tdd|tasks|ux)/);
     }
   });
 
@@ -174,5 +174,15 @@ describe("design outputs cannot overwrite each other", () => {
     const def = JSON.parse(raw) as { inputs: { key: string; default?: string }[] };
     const tdd = def.inputs.find((i) => i.key === "tddPath");
     expect(tdd?.default).toBe("");
+  });
+});
+
+describe("deliverables live in their own folder", () => {
+  it("writes under dhruva-docs, never a team's own docs/ tree", async () => {
+    for (const f of ["solution-design.json", "ux-design.json", "implement-tdd.json"]) {
+      const raw = await fs.readFile(path.resolve(__dirname, "../workflows", f), "utf8");
+      // no bare docs/designs path may remain
+      expect(raw).not.toMatch(/(?<!dhruva-)docs\/designs/);
+    }
   });
 });

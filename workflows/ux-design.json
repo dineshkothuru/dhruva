@@ -72,7 +72,7 @@
       "type": "agent",
       "role": "design",
       "timeoutMinutes": 30,
-      "prompt": "Write the APPROVED UX design as a developer-ready spec plus a machine-readable tasks file (create folders if needed). These two files are the only ones you may create or modify in this step:\n\n1. docs/designs/{inputs.docName}-{runId}-ux.md - the UX SPEC, numbered sections: 1. Context and design conventions applied; 2. Component inventory (per UX-n: exact LWC API name, composition, states, interactions/data contract, accessibility, reuse decisions); 3. Navigation/flow between components; 4. Test strategy (Jest per component: states, events, accessibility asserts); 5. Open questions. Plain ASCII punctuation, exact API names in backticks, tables where they beat prose.\n\n2. docs/designs/{inputs.docName}-{runId}-tasks.json - strict JSON, exactly this shape:\n{ \"version\": 1, \"tasks\": [ { \"id\": \"T-1\", \"title\": \"<imperative>\", \"depends_on\": [], \"files\": [\"force-app/main/default/lwc/example/example.html\"], \"change\": \"<what to build>\", \"test_scenarios\": [\"<case>\"], \"traces\": [\"UX-1\"], \"status\": \"pending\" } ] }\nOne component (markup+JS+meta plus its Jest test) per task; every task traces to at least one UX-n; depends_on only references earlier tasks; order = safe build order.\n\nApproved UX design:\n{steps.ux-design.output}\n\nIncorporate every approved detail; do not contradict what was approved."
+      "prompt": "Write the APPROVED UX design as a developer-ready spec plus a machine-readable tasks file (create folders if needed). These two files are the only ones you may create or modify in this step:\n\n1. dhruva-docs/designs/{inputs.docName}-{runId}-ux.md - the UX SPEC, numbered sections: 1. Context and design conventions applied; 2. Component inventory (per UX-n: exact LWC API name, composition, states, interactions/data contract, accessibility, reuse decisions); 3. Navigation/flow between components; 4. Test strategy (Jest per component: states, events, accessibility asserts); 5. Open questions. Plain ASCII punctuation, exact API names in backticks, tables where they beat prose.\n\n2. dhruva-docs/designs/{inputs.docName}-{runId}-tasks.json - strict JSON, exactly this shape:\n{ \"version\": 1, \"tasks\": [ { \"id\": \"T-1\", \"title\": \"<imperative>\", \"depends_on\": [], \"files\": [\"force-app/main/default/lwc/example/example.html\"], \"change\": \"<what to build>\", \"test_scenarios\": [\"<case>\"], \"traces\": [\"UX-1\"], \"status\": \"pending\" } ] }\nOne component (markup+JS+meta plus its Jest test) per task; every task traces to at least one UX-n; depends_on only references earlier tasks; order = safe build order.\n\nApproved UX design:\n{steps.ux-design.output}\n\nIncorporate every approved detail; do not contradict what was approved."
     },
     {
       "id": "changes",
@@ -83,7 +83,7 @@
       "id": "tasks-check",
       "title": "Validate the build-plan tasks file (deterministic)",
       "type": "tasks-check",
-      "tasksFile": "docs/designs/{inputs.docName}-{runId}-tasks.json"
+      "tasksFile": "dhruva-docs/designs/{inputs.docName}-{runId}-tasks.json"
     },
     {
       "id": "coverage-check",
@@ -97,14 +97,14 @@
         "trigger": "COVERAGE:\\s*INCOMPLETE",
         "maxRounds": 1
       },
-      "prompt": "Coverage verification. Do not modify any files.\nRead docs/designs/{inputs.docName}-{runId}-ux.md and docs/designs/{inputs.docName}-{runId}-tasks.json in full.\nApproved UX design:\n{steps.ux-design.output}\n\nFor EVERY UX-n block report one line:\n  UX-n - COVERED (spec section + task id) | MISSING FROM SPEC | NO TASK | DIVERGES (quote it)\nAlso flag spec content or tasks with no approved UX block behind them (scope creep). End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE - items <UX ids>."
+      "prompt": "Coverage verification. Do not modify any files.\nRead dhruva-docs/designs/{inputs.docName}-{runId}-ux.md and dhruva-docs/designs/{inputs.docName}-{runId}-tasks.json in full.\nApproved UX design:\n{steps.ux-design.output}\n\nFor EVERY UX-n block report one line:\n  UX-n - COVERED (spec section + task id) | MISSING FROM SPEC | NO TASK | DIVERGES (quote it)\nAlso flag spec content or tasks with no approved UX block behind them (scope creep). End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE - items <UX ids>."
     },
     {
       "id": "approve-doc",
       "title": "Accept the UX spec",
       "type": "gate",
       "reviseTarget": "write-doc",
-      "message": "Review the coverage verdict and the spec (docs/designs/). Accept to complete - then build it with 'Implement from TDD': TDD path = docs/designs/{inputs.docName}-{runId}-ux.md, tasks file = docs/designs/{inputs.docName}-{runId}-tasks.json, visual test ON."
+      "message": "Review the coverage verdict and the spec (dhruva-docs/designs/). Accept to complete - then build it with 'Implement from TDD': TDD path = dhruva-docs/designs/{inputs.docName}-{runId}-ux.md, tasks file = dhruva-docs/designs/{inputs.docName}-{runId}-tasks.json, visual test ON."
     }
   ]
 }
