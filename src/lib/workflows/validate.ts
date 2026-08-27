@@ -68,7 +68,9 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
       if (typeof s.prompt !== "string" || !s.prompt.trim()) {
         throw new Error(`agent step "${s.id}" needs a prompt`);
       }
-      step.prompt = s.prompt.slice(0, 8000);
+      // no cap: a step prompt carries the task AND its output contract, and
+      // silently trimming the tail of it drops the contract first
+      step.prompt = s.prompt;
       if (s.readOnly === true) step.readOnly = true;
       if (typeof s.persona === "string" && SLUG.test(s.persona)) step.persona = s.persona;
       if (typeof s.role === "string" && ROLES.has(s.role)) {
@@ -107,7 +109,7 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
     }
     if (s.type === "gate") {
       step.message =
-        typeof s.message === "string" && s.message.trim() ? s.message.slice(0, 1000) : "Proceed?";
+        typeof s.message === "string" && s.message.trim() ? s.message : "Proceed?";
       if (typeof s.reviseTarget === "string" && SLUG.test(s.reviseTarget)) {
         step.reviseTarget = s.reviseTarget;
       }

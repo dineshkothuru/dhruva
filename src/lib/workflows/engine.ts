@@ -1012,11 +1012,14 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
   }
 }
 
-/** Fill "{inputs.x}" and "{steps.id.output}" placeholders. Referenced outputs
- * get a generous budget (an approved multi-REQ design is the whole point of
- * the reference) and an EXPLICIT truncation marker - silent loss here once
- * made a 15-requirement design produce 4-requirement documents. */
-const TEMPLATE_REF_CAP = 48_000;
+/** Fill "{inputs.x}" and "{steps.id.output}" placeholders.
+ *
+ * A referenced step output is passed WHOLE - no cap. There used to be one, and
+ * it kept biting: at 8,000 chars a 15-requirement design produced
+ * 4-requirement documents, and raising it to 48,000 only moved the cliff (the
+ * largest real design measured 40,728, so 85% of the budget was already gone).
+ * Every agent step is a fresh CLI process, so nothing accumulates across steps
+ * and there is no context pressure to spend a cap on. */
 function template(text: string, run: RunState): string {
   return text
     // {runId} lets a workflow stamp its outputs, so running the same workflow
@@ -1025,14 +1028,7 @@ function template(text: string, run: RunState): string {
     .replace(/\{inputs\.([\w-]+)\}/g, (_, k) => String(run.inputs[k] ?? ""))
     .replace(/\{steps\.([\w-]+)\.output\}/g, (_, id) => {
       const s = run.steps.find((x) => x.id === id);
-      if (!s) return "";
-      if (s.output.length <= TEMPLATE_REF_CAP) return s.output;
-      return (
-        s.output.slice(0, TEMPLATE_REF_CAP) +
-        `\n[TRUNCATED - the referenced step output is ${s.output.length} chars, ` +
-        `${s.output.length - TEMPLATE_REF_CAP} chars were cut. Treat this input as INCOMPLETE ` +
-        `and say so in your output.]`
-      );
+      return s ? s.output : "";
     });
 }
 

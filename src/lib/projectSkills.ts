@@ -10,9 +10,10 @@ import { globToRegex } from "@/lib/standardsLibrary";
  * standards/ library stays the higher law for HOW to build. */
 
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,60}$/;
-/** Per-skill injection cap and total budget - agent input must stay lean. */
-export const SKILL_CHAR_CAP = 8_000;
-export const SKILLS_TOTAL_CAP = 24_000;
+/** Size hint only - shown in the UI for a large skill file. Nothing is
+ * truncated: a team that wrote a skill wants the agent to have all of it, and
+ * every agent step is a fresh CLI process so nothing accumulates. */
+export const SKILL_SIZE_HINT = 60_000;
 
 // obvious credential shapes - a skill file must never carry a secret
 const SECRET_RE =
@@ -65,7 +66,7 @@ export async function listSkills(root: string): Promise<SkillMeta[]> {
           name,
           chars: st.size,
           mtime: st.mtimeMs,
-          truncated: st.size > SKILL_CHAR_CAP,
+          truncated: false,
           applyTo,
         });
       } catch {
@@ -111,8 +112,8 @@ export async function deleteSkill(root: string, name: string): Promise<boolean> 
 }
 
 /** The injection block for agent prompts - "" when the project has no skills.
- * Deterministic: same files → same block. Per-skill and total caps applied
- * with explicit truncation markers so nothing is silently dropped.
+ * Deterministic: same files → same block. Every in-scope skill is injected
+ * WHOLE - no per-skill or total cap.
  *
  * Scoping: a skill may declare an applyTo glob (standards syntax). It is
  * EXCLUDED only when the step knows its files (scopeFiles non-empty) and none
@@ -136,18 +137,10 @@ export async function skillsPrompt(
         /* bad glob - treat as unscoped rather than silently dropping */
       }
     }
-    if (body.length >= SKILLS_TOTAL_CAP) {
-      body += `\n[further skills omitted - total project-knowledge budget reached: ${m.name} and later files]\n`;
-      break;
-    }
     const raw = await readSkill(root, m.name);
     if (!raw) continue;
     names.push(m.name);
-    let text = parseSkill(raw).body.trim();
-    if (text.length > SKILL_CHAR_CAP) {
-      text = text.slice(0, SKILL_CHAR_CAP) + "\n[truncated - skill exceeds the per-skill budget; trim the file]";
-    }
-    body += `\n## ${m.name}\n${text}\n`;
+    body += `\n## ${m.name}\n${parseSkill(raw).body.trim()}\n`;
   }
   const block =
     `\nPROJECT KNOWLEDGE (specific to THIS org - follow it; where it conflicts with the ` +

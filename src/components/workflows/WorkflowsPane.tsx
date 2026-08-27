@@ -134,7 +134,7 @@ export default function WorkflowsPane({
       const prompt =
         `A step in a Salesforce delivery workflow failed. Diagnose it. DO NOT modify any files.\n` +
         `Workflow: ${run?.workflowTitle}\nStep: ${stepTitle}\n` +
-        `Step output (tail):\n${output.slice(-4000)}\n\n` +
+        `Step output:\n${output}\n\n` +
         `Reply with: (1) the root cause in plain language, (2) the exact resolution - ` +
         `commands to run, Setup paths, or what to change - for a Salesforce developer, ` +
         `(3) whether re-running the workflow will then succeed. Be brief and concrete.`;
@@ -814,7 +814,7 @@ export default function WorkflowsPane({
                     const fm = reviewer.output.match(/\*{0,2}F\d+[\s:(]/);
                     const findings = fm
                       ? reviewer.output.slice(fm.index)
-                      : reviewer.output.slice(-3000);
+                      : reviewer.output;
                     const gateParsed = parseFindings(findings);
                     return (
                       <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
@@ -836,7 +836,7 @@ export default function WorkflowsPane({
                           onClick={() =>
                             gate(
                               "revise",
-                              `Address EVERY blocking finding from the design reviewer, exactly as each Fix line specifies. Do not re-argue a finding - implement its fix or state explicitly why it is impossible:\n\n${findings.slice(0, 11000)}`,
+                              `Address EVERY blocking finding from the design reviewer, exactly as each Fix line specifies. Do not re-argue a finding - implement its fix or state explicitly why it is impossible:\n\n${findings}`,
                             )
                           }
                           disabled={gating}

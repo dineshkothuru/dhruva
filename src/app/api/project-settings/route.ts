@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       clean.ux = {
         enabled: s.ux.enabled === true,
         designDir: dir && !dir.includes("..") && !path.isAbsolute(dir) ? dir.slice(0, 200) : "docs/design",
-        rules: typeof s.ux.rules === "string" ? s.ux.rules.slice(0, 4000) : "",
+        rules: typeof s.ux.rules === "string" ? s.ux.rules : "",
       };
     }
     await writeProjectSettings(root, clean);

@@ -97,7 +97,7 @@ export async function POST(req: Request) {
     // generous cap: "Revise with ALL findings" passes a full multi-finding
     // critique as the instruction - truncating it would silently drop findings
     const feedback =
-      typeof b.feedback === "string" ? b.feedback.trim().slice(0, 12000) : undefined;
+      typeof b.feedback === "string" ? b.feedback.trim() : undefined;
     if (decision === "revise" && !feedback) {
       return NextResponse.json({ error: "revise requires feedback text" }, { status: 400 });
     }
@@ -170,7 +170,7 @@ export async function POST(req: Request) {
       b.inputs && typeof b.inputs === "object" ? (b.inputs as Record<string, string | boolean>) : {};
     for (const [k, v] of Object.entries(inputs)) {
       if (typeof v !== "string" && typeof v !== "boolean") delete inputs[k];
-      if (typeof v === "string" && v.length > 8000) inputs[k] = v.slice(0, 8000);
+      if (typeof v === "string") inputs[k] = v;
     }
     // Project-settings injection: when the workflow declares the UX inputs,
     // fill them from .dhruva/settings.json - server-side, so it's
@@ -213,7 +213,7 @@ export async function POST(req: Request) {
         if (l.inputs && typeof l.inputs === "object") {
           for (const [k, v] of Object.entries(l.inputs)) {
             if (typeof v === "boolean") li[k] = v;
-            else if (typeof v === "string") li[k] = v.slice(0, 8000);
+            else if (typeof v === "string") li[k] = v;
           }
         }
         chain.push({
