@@ -224,6 +224,21 @@ function StepBody({
   const boxRef = useRef<HTMLDivElement>(null);
   // structured view by default; the toggle shows the untouched raw trace
   const [raw, setRaw] = useState(false);
+  // which half of the header is showing. Result by default - the activity is
+  // evidence you open when you want it. A RUNNING step opens on activity,
+  // because there is no result yet and the tool trace is the live story.
+  // Stored as "what the user explicitly picked", not as the resolved tab, so
+  // the default can follow the step's state without fighting the user.
+  const [choice, setChoice] = useState<"did" | "result" | null>(null);
+  const [wasRunning, setWasRunning] = useState(running);
+  if (wasRunning !== running) {
+    // the step just finished: drop any choice made while it was live, so a
+    // completed step always lands on its outcome
+    setWasRunning(running);
+    setChoice(null);
+  }
+  const tab = choice ?? (running ? "did" : "result");
+  const setTab = setChoice;
   useEffect(() => {
     if (running) boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight });
   }, [output, running]);
@@ -353,7 +368,6 @@ function StepBody({
   if (filesLine) produced.push(`${filesLine[1].split(",").length} file(s) named for retrieval`);
   const uxBlocks = (output.match(/^UX-\d+/gm) ?? []).length;
   if (uxBlocks > 0) produced.push(`${uxBlocks} UX component designs`);
-  const showSummary = !running && (did || produced.length > 0);
 
   // ---- two-section layout (activity vs output): while the agent runs, WHAT
   // IT IS READING is the story; once done, WHAT IT PRODUCED is. Activity =
@@ -417,7 +431,7 @@ function StepBody({
                 Outcome
               </p>
               <p className="mt-1 text-xs leading-relaxed text-emerald-900/85">
-                {produced.length > 0 ? produced.join(" · ") : "no structured output"}
+                {produced.join(" · ")}
               </p>
             </div>
           );
@@ -429,9 +443,24 @@ function StepBody({
             .filter((cells) => !cells.every((c) => /^:?-{2,}:?$/.test(c)));
           if (rows.length === 0) return null;
           const [head, ...body] = rows;
+          // A path or api-name column is reference data - it should not crowd
+          // out the column that carries the actual requirement. Narrow those,
+          // let the descriptive columns take the room.
+          const isRef = head.map((h) => /path|file|location|api name|component|metadata/i.test(h));
           return (
             <div key={`tbl-${i}`} className="my-1.5 overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full border-collapse text-left text-[11px]">
+              {/* a fixed layout in a narrow pane crushes every column to a few
+                  characters; give the table a floor width and let the wrapper
+                  scroll instead */}
+              <table
+                className="w-full table-fixed border-collapse text-left text-[11px]"
+                style={{ minWidth: `${Math.max(460, head.length * 150)}px` }}
+              >
+                <colgroup>
+                  {head.map((_, ci) => (
+                    <col key={ci} style={{ width: isRef[ci] ? "22%" : undefined }} />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr className="bg-slate-50">
                     {head.map((c, ci) => (
@@ -450,7 +479,11 @@ function StepBody({
                       {cells.map((c, ci) => (
                         <td
                           key={ci}
-                          className="border-t border-slate-100 px-2.5 py-1.5 align-top leading-relaxed text-slate-700"
+                          className={`border-t border-slate-100 px-2.5 py-1.5 align-top leading-relaxed ${
+                            isRef[ci]
+                              ? "break-words font-mono text-[10px] text-slate-500"
+                              : "text-slate-700"
+                          }`}
                         >
                           {inlineCode(c)}
                         </td>
@@ -692,73 +725,95 @@ function StepBody({
           </pre>
         </div>
       ) : (
-    <div ref={boxRef} className="max-h-80 space-y-1 overflow-y-auto px-4 py-3">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1 space-y-1">
-      {!running && (verdict || coverage) && (
-        <div
-          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-            /BLOCKED|INCOMPLETE/i.test((verdict ?? coverage)![0])
-              ? "border-red-200 bg-red-50 text-red-700"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+    <div className="px-4 py-3">
+      {/* two-part header, one body: the selected part fills the full width
+          below. Result is selected by default - the activity is evidence you
+          open when you want it, not something competing for the same space. */}
+      {/* real tabs: each sits in its own raised surface, the selected one
+          joins the body below it. An unselected tab still has a visible
+          edge and a hover state, so both read as pressable. */}
+      <div className="flex items-end gap-1 border-b border-slate-200">
+        <button
+          onClick={() => setTab("did")}
+          aria-pressed={tab === "did"}
+          disabled={activitySegs.length === 0}
+          className={`-mb-px flex min-w-0 cursor-pointer items-center gap-1.5 rounded-t-lg border border-b-0 px-3 py-1.5 text-[11px] font-medium transition ${
+            tab === "did"
+              ? "border-slate-200 bg-white text-slate-800"
+              : "border-transparent bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-100"
+          }`}
+          title={did || "no tool activity"}
+        >
+          <Icon.activity size={12} strokeWidth={1.75} className="shrink-0" />
+          <span className="shrink-0">What I did</span>
+          {did && <span className="hidden truncate text-slate-400 xl:inline">· {did}</span>}
+        </button>
+
+        <button
+          onClick={() => setTab("result")}
+          aria-pressed={tab === "result"}
+          className={`-mb-px flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-t-lg border border-b-0 px-3 py-1.5 text-[11px] font-medium transition ${
+            tab === "result"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-transparent bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
           }`}
         >
-          {(verdict ?? coverage)![0]}
-          {findingsCount > 0 && verdict && (
-            <span className="ml-2 font-normal">· {findingsCount} finding(s) detailed below</span>
+          <Icon.ok
+            size={12}
+            strokeWidth={2}
+            className={`shrink-0 ${tab === "result" ? "text-emerald-600" : ""}`}
+          />
+          <span className="shrink-0">{produced.length > 0 ? "Outcome" : "Result"}</span>
+          {produced.length > 0 && (
+            <span className="hidden truncate font-normal text-emerald-900/60 lg:inline">
+              {produced.join(" · ")}
+            </span>
           )}
-        </div>
-      )}
-      {activitySegs.length > 0 &&
-        (running ? (
-          <div className="space-y-1">
-            <p className="flex items-center gap-1.5 pb-0.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-              <span className="inline-block animate-pulse text-sky-500">●</span>
-              Activity - what it is reading and doing
-            </p>
-            {activitySegs.map((seg, i) => renderSeg(seg, i))}
-          </div>
-        ) : (
-          <details className="group rounded-lg border border-slate-100 bg-slate-50/60">
-            <summary className="flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-slate-500 hover:text-slate-800">
-              <Icon.chevron
-                size={11}
-                strokeWidth={2}
-                className="shrink-0 text-slate-400 transition-transform group-open:rotate-90"
-              />
-              <Icon.activity size={12} strokeWidth={1.75} className="shrink-0 text-slate-400" />
-              <span className="font-semibold text-slate-600">What it did</span>
-              {did && <span className="truncate text-slate-400">· {did}</span>}
-            </summary>
-            <div className="space-y-1 border-t border-slate-100 px-2.5 py-2">
-              {activitySegs.map((seg, i) => renderSeg(seg, i))}
-            </div>
-          </details>
-        ))}
-        </div>
-        {toggleBtn}
+        </button>
+
+        <span className="ml-auto hidden shrink-0 items-center pb-1 pl-1 sm:flex">{toggleBtn}</span>
       </div>
-      {/* the answer to "what did it do and what came out" goes FIRST - it was
-          previously the last thing after a long transcript */}
-      {showSummary && renderSeg({ kind: "summary", lines: [] }, -1)}
-      {!running &&
-        activitySegs.length > 0 &&
-        (postToolSegs.length > 0 || findingsCount > 0 || reqItems.length > 0) && (
-          <p className="pt-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            {<Icon.output size={12} strokeWidth={1.75} className="inline shrink-0 text-slate-400" />} Output
+
+      <div
+        ref={boxRef}
+        className={`max-h-80 space-y-1 overflow-y-auto rounded-b-lg border border-t-0 px-3 py-2.5 ${
+          tab === "result"
+            ? "border-emerald-200 bg-emerald-50/30"
+            : "border-slate-200 bg-white"
+        }`}
+      >
+        {tab === "did" ? (
+          activitySegs.map((seg, i) => renderSeg(seg, i))
+        ) : (
+          <>
+            {!running && (verdict || coverage) && (
+              <div
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                  /BLOCKED|INCOMPLETE/i.test((verdict ?? coverage)![0])
+                    ? "border-red-200 bg-red-50 text-red-700"
+                    : "border-emerald-200 bg-white text-emerald-700"
+                }`}
+              >
+                {(verdict ?? coverage)![0]}
+                {findingsCount > 0 && verdict && (
+                  <span className="ml-2 font-normal">· {findingsCount} finding(s) below</span>
+                )}
+              </div>
+            )}
+            {[
+              ...postToolSegs,
+              ...(findingsCount > 0 ? [{ kind: "cards" as const, lines: [] }] : []),
+              ...(reqItems.length > 0 ? [{ kind: "reqcards" as const, lines: [] }] : []),
+              ...trailingSegs,
+            ].map((seg, i) => renderSeg(seg, i))}
+          </>
+        )}
+        {running && (
+          <p className="pt-1 text-[11px] text-slate-400">
+            <span className="mr-1 inline-block animate-pulse text-sky-500">●</span> working…
           </p>
         )}
-      {[
-        ...postToolSegs,
-        ...(findingsCount > 0 ? [{ kind: "cards" as const, lines: [] }] : []),
-        ...(reqItems.length > 0 ? [{ kind: "reqcards" as const, lines: [] }] : []),
-        ...trailingSegs,
-      ].map((seg, i) => renderSeg(seg, i))}
-      {running && (
-        <p className="pt-1 text-[11px] text-slate-400">
-          <span className="mr-1 inline-block animate-pulse text-sky-500">●</span> working…
-        </p>
-      )}
+      </div>
     </div>
       )}
     </div>
