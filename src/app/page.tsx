@@ -7,6 +7,7 @@ import FileTree from "@/components/FileTree";
 import ProjectSkills from "@/components/ProjectSkills";
 import ProjectSettingsPanel from "@/components/ProjectSettingsPanel";
 import TeamStandards from "@/components/TeamStandards";
+import TelemetrySettings from "@/components/TelemetrySettings";
 import FolderPicker from "@/components/FolderPicker";
 import PreviewPanel from "@/components/PreviewPanel";
 import EditorPane from "@/components/EditorPane";
@@ -704,7 +705,10 @@ export default function Home() {
                   <ProjectSettingsPanel key={`pset-${result.path}`} root={result.path} />
                 </div>
               </div>
-              <TeamStandards active={tab === "setup"} />
+              <div className="space-y-4">
+                <TeamStandards active={tab === "setup"} />
+                <TelemetrySettings active={tab === "setup"} />
+              </div>
             </div>
           </div>
         ) : (

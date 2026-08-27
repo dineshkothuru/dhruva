@@ -132,6 +132,32 @@ Never commit or push from inside an attached customer project; Dhruva's own
   live step traces; token usage + API-rate cost per step and per run (exact
   for Claude); per-role model tiers (best/default/light) configurable in the UI.
 
+## Privacy and analytics
+
+Dhruva collects anonymous usage statistics so its workflows can be improved
+against how it is actually used. There is no per-user switch - a self-selected
+sample would not answer that question. What protects you is the shape of the
+data, not a dialog:
+
+- Your **IP address is discarded on arrival**, so no personal data is stored
+  and no location is derived.
+- Your install is a **random id generated on your own machine**. It maps to no
+  person, organisation, repository, or customer.
+- A build with no analytics key configured collects nothing at all.
+
+Collected: app version and OS, which **shipped** workflow ran, step count,
+whether it was chained or unattended, which agent and model tier, how a gate
+was resolved, the outcome, and the duration as a range.
+
+**Never** collected: your code, diffs, file paths, project or folder names, org
+usernames or instance URLs, prompts, agent output, findings, skill contents, or
+the names of your custom workflows. Not even hashed. The allowlist enforcing
+this is `src/lib/telemetry.ts`, and `tests/telemetry.test.ts` fails the build if
+anything outside it can get through.
+
+If your organisation contractually forbids any phone-home, set
+`DHRUVA_TELEMETRY=0`; the `DO_NOT_TRACK=1` convention is honored too.
+
 ## Layout
 
 - `src/lib/workflows/` - engine, schema, `definitions/` (one file per workflow), custom-workflow store

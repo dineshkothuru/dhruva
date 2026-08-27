@@ -10,6 +10,7 @@ import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import { skillsPrompt } from "@/lib/projectSkills";
+import { durationBucket, track } from "@/lib/telemetry";
 import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { ROLE_TIER } from "./schema";
 
@@ -154,6 +155,13 @@ export function startRun(
     })),
   };
   if (autoGate) run.autoGate = true;
+  void track("run_started", {
+    workflow_id: def.id,
+    agent,
+    step_count: def.steps.length,
+    chained: !!chain,
+    unattended: autoGate === true,
+  });
   if (chain && chainIndex !== undefined && chain[chainIndex]) {
     run.chain = chain.map((c) => ({ ...c }));
     run.chain[chainIndex].runId = run.runId;
@@ -247,6 +255,15 @@ async function execute(run: RunState, def: WorkflowDef, startIndex = 0) {
   // later runs re-baseline - done for every terminal status incl. aborted.
   run.endCommit = (await commitRunResult(run.root, run.runId)) ?? undefined;
   await persist(run);
+  void track("run_finished", {
+    workflow_id: run.workflowId,
+    agent: run.agent,
+    outcome: run.status,
+    step_count: run.steps.length,
+    chained: !!run.chain,
+    unattended: run.autoGate === true,
+    duration_bucket: durationBucket(Date.now() - run.createdAt),
+  });
   await fireChain(run);
 }
 
@@ -461,6 +478,12 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           await persist(run);
           decision = await decisionPromise;
         }
+        // the DECISION only - never the reviewer's feedback text
+        void track("gate_resolved", {
+          workflow_id: run.workflowId,
+          gate_decision: decision.action,
+          unattended: useAuto,
+        });
         if (decision.action === "approve") {
           run.status = "running";
           step.output += useAuto ? "\n→ approved by the AI gatekeeper (unattended mode)" : "\n→ approved";
