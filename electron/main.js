@@ -56,6 +56,19 @@ function waitForServer(retries = 120) {
   });
 }
 
+const SPLASH = `data:text/html;charset=utf-8,${encodeURIComponent(`
+<!doctype html><html><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;font-family:Segoe UI,system-ui,sans-serif">
+<div style="text-align:center;color:#e2e8f0">
+  <div style="font-size:44px">&#10022;</div>
+  <div style="font-size:20px;font-weight:600;margin-top:8px">Dhruva</div>
+  <div id="m" style="font-size:12px;color:#94a3b8;margin-top:10px">starting the local server…</div>
+  <div style="margin-top:14px;width:160px;height:3px;background:#1e293b;border-radius:2px;overflow:hidden;margin-left:auto;margin-right:auto">
+    <div style="width:40%;height:100%;background:#38bdf8;border-radius:2px;animation:slide 1.2s ease-in-out infinite"></div>
+  </div>
+</div>
+<style>@keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}</style>
+</body></html>`)}`;
+
 async function createWindow() {
   win = new BrowserWindow({
     width: 1440,
@@ -70,7 +83,7 @@ async function createWindow() {
     shell.openExternal(url);
     return { action: "deny" };
   });
-  await win.loadURL(`http://127.0.0.1:${PORT}`);
+  await win.loadURL(SPLASH);
 }
 
 function setupAutoUpdate() {
@@ -99,9 +112,12 @@ function setupAutoUpdate() {
 
 app.whenReady().then(async () => {
   try {
+    // window FIRST — a 5-10s serverless boot with no window feels like a
+    // dead click; the splash appears instantly, the app URL replaces it
+    await createWindow();
     startServer();
     await waitForServer();
-    await createWindow();
+    await win.loadURL(`http://127.0.0.1:${PORT}`);
     setupAutoUpdate();
   } catch (e) {
     const { dialog } = require("electron");

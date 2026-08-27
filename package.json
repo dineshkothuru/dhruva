@@ -1,6 +1,6 @@
 {
   "name": "dhruva",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Dhruva - deterministic Salesforce delivery harness. Gated, auditable delivery workflows driven by swappable coding agents, on your machine with your logins.",
   "bin": {
     "dhruva": "bin/dhruva.js"
@@ -65,7 +65,8 @@
         "owner": "dineshkothuru",
         "repo": "dhruva"
       }
-    ]
+    ],
+    "artifactName": "Dhruva-Setup-${version}.${ext}"
   },
   "files": [
     "bin",
