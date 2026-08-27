@@ -25,7 +25,13 @@ const runs = new Map<string, RunState>();
 const gateWaiters = new Map<string, (decision: GateDecision) => void>(); // key: runId
 // the live child process of each run's current step - so an abort can kill it
 const activeChildren = new Map<string, ReturnType<typeof spawn>>();
-const STEP_OUTPUT_CAP = 60_000;
+/** Runaway backstop, NOT a content budget. The CLI has already generated and
+ * billed every token by the time this applies, so it cannot make a step terser
+ * (that is a sentence in the prompt); all it decides is what the harness keeps
+ * in memory and writes to the run json. Set far above anything real - the
+ * largest step output measured across real runs is 40,728 characters - so it
+ * only ever trips on a process printing without end. */
+const STEP_OUTPUT_CAP = 5_000_000;
 const STEP_TIMEOUT_MS = 15 * 60 * 1000;
 
 export function getRun(runId: string): RunState | undefined {
@@ -1175,20 +1181,25 @@ function spawnToStep(
     child.stdin.on("error", () => {});
     if (stdin) child.stdin.write(stdin);
     child.stdin.end();
-    // when the display cap is hit, keep a TAIL buffer: every machine-read
-    // signal (VERDICT, REOPEN, FILES) lives at the END of agent output, and
-    // capping it away made blocked reviews indistinguishable from approvals
-    let tail = "";
+    // Past the backstop the step is left INCOMPLETE and says so, once. The old
+    // behaviour kept the head plus a 10k tail and spliced them together, which
+    // silently removed the middle - the same shape of bug as slicing a review
+    // to its first 4,000 characters, and invisible to everything downstream.
+    let overflowed = false;
     const push = (chunk: Buffer | string) => {
       const text = chunk.toString().replace(/\x1b\[[0-9;]*m/g, "");
       const rendered = transform ? transform(text) : text;
-      if (!rendered) return void persist(run);
+      if (!rendered) return persistSoon(run);
       if (step.output.length < STEP_OUTPUT_CAP) {
         step.output += rendered;
-      } else {
-        tail = (tail + rendered).slice(-10_000);
+      } else if (!overflowed) {
+        overflowed = true;
+        step.output +=
+          `\n[engine] RUNAWAY OUTPUT: this step passed ${STEP_OUTPUT_CAP / 1_000_000}M characters ` +
+          `and the rest was not captured. Treat this step's result as INCOMPLETE - it is a ` +
+          `backstop against a process printing without end, not a size budget.\n`;
       }
-      void persist(run);
+      persistSoon(run);
     };
     child.stdout.on("data", push);
     child.stderr.on("data", push);
@@ -1196,6 +1207,7 @@ function spawnToStep(
       clearTimeout(timer);
       activeChildren.delete(run.runId);
       step.output += `\n[engine] could not start ${bin}: ${e.message}`;
+      void persist(run);
       resolve(false);
     });
     child.on("close", (code) => {
@@ -1204,17 +1216,46 @@ function spawnToStep(
       // flush the transform's trailing partial line (a final stream-json
       // result event without a newline carries the exact usage)
       if (transform) push("\n");
-      if (tail) {
-        step.output += `\n[...display capped at ${STEP_OUTPUT_CAP / 1000}k chars - the final output follows:]\n${tail}`;
-      }
       step.output += `\n[exit ${code}]`;
+      // step boundary: flush the debounced audit write immediately
+      void persist(run);
       resolve(code === 0);
     });
   });
 }
 
 let persistChain = Promise.resolve();
+
+/** Debounce window for the streaming hot path. */
+const PERSIST_DEBOUNCE_MS = 250;
+const pendingPersist = new Map<string, ReturnType<typeof setTimeout>>();
+
+/** Audit write for the STREAMING path.
+ *
+ * persist() rewrites the entire run as pretty-printed json, and a step's stdout
+ * arrives as hundreds of small chunks, so writing on every chunk costs O(n^2)
+ * in the output size. That was survivable only because the output was capped at
+ * 60k; with the cap raised to a runaway backstop it is not. Coalesce the chunk
+ * writes and let the boundaries - step end, gate, status change - call persist()
+ * directly, which also cancels anything pending here. */
+function persistSoon(run: RunState) {
+  if (pendingPersist.has(run.runId)) return;
+  pendingPersist.set(
+    run.runId,
+    setTimeout(() => {
+      pendingPersist.delete(run.runId);
+      void persist(run);
+    }, PERSIST_DEBOUNCE_MS),
+  );
+}
+
 async function persist(run: RunState) {
+  // a forced write supersedes any coalesced one still waiting
+  const queued = pendingPersist.get(run.runId);
+  if (queued) {
+    clearTimeout(queued);
+    pendingPersist.delete(run.runId);
+  }
   // serialize writes; audit file lives with the project
   persistChain = persistChain.then(async () => {
     try {
