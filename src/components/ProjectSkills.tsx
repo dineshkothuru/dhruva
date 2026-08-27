@@ -317,11 +317,13 @@ export default function ProjectSkills({
           {!lib && <p className="text-[10px] text-slate-300">loading…</p>}
           {lib && (
             <>
-              <div className="flex flex-wrap gap-1.5">
+              <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-300">
+                Standards - the rules (scoped to matching files)
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
                 {[
-                  { title: "baseline", body: lib.baseline.body, icon: "📕" },
-                  ...lib.modules.map((m) => ({ title: m.name, body: m.body, icon: "📕" })),
-                  ...lib.personas.map((p) => ({ title: `${p.name} (persona)`, body: p.body, icon: "🎭" })),
+                  { title: "baseline", body: lib.baseline.body },
+                  ...lib.modules.map((m) => ({ title: m.name, body: m.body })),
                 ].map((x) => (
                   <button
                     key={x.title}
@@ -329,7 +331,22 @@ export default function ProjectSkills({
                     className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 hover:border-slate-300 hover:text-slate-700"
                     title="view (read-only)"
                   >
-                    {x.icon} {x.title.replace(" (persona)", "")}
+                    📕 {x.title}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[9px] font-semibold uppercase tracking-widest text-slate-300">
+                Personas - the hats agent steps wear (architect, reviewer, ...)
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {lib.personas.map((p) => (
+                  <button
+                    key={p.name}
+                    onClick={() => setViewing({ title: `${p.name} (persona)`, body: p.body })}
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                    title="view (read-only)"
+                  >
+                    🎭 {p.name}
                   </button>
                 ))}
               </div>
