@@ -132,28 +132,31 @@ Never commit or push from inside an attached customer project; Dhruva's own
   live step traces; token usage + API-rate cost per step and per run (exact
   for Claude); per-role model tiers (best/default/light) configurable in the UI.
 
-## Privacy and telemetry
+## Privacy and analytics
 
-Dhruva runs inside customer Salesforce codebases, so the default is silence:
-**telemetry is OFF until you turn it on**, and a build without an analytics
-key configured collects nothing at all.
+Dhruva collects anonymous usage statistics so its workflows can be improved
+against how it is actually used. There is no per-user switch - a self-selected
+sample would not answer that question. What protects you is the shape of the
+data, not a dialog:
 
-If you opt in (a one-time prompt, or the switch in Setup), it sends:
+- Your **IP address is discarded on arrival**, so no personal data is stored
+  and no location is derived.
+- Your install is a **random id generated on your own machine**. It maps to no
+  person, organisation, repository, or customer.
+- A build with no analytics key configured collects nothing at all.
 
-- app version and OS
-- which **shipped** workflow ran, how many steps, whether it was chained or unattended
-- which agent and model tier, and how a gate was resolved
-- finished / failed / aborted, and the duration as a range
+Collected: app version and OS, which **shipped** workflow ran, step count,
+whether it was chained or unattended, which agent and model tier, how a gate
+was resolved, the outcome, and the duration as a range.
 
-It **never** sends your code, diffs, file paths, project or folder names, org
-usernames or instance URLs, prompts, agent output, findings, skill contents,
-or the names of your custom workflows. Not even hashed. The allowlist that
-enforces this is `src/lib/telemetry.ts`, and `tests/telemetry.test.ts` fails
-the build if anything outside it can get through.
+**Never** collected: your code, diffs, file paths, project or folder names, org
+usernames or instance URLs, prompts, agent output, findings, skill contents, or
+the names of your custom workflows. Not even hashed. The allowlist enforcing
+this is `src/lib/telemetry.ts`, and `tests/telemetry.test.ts` fails the build if
+anything outside it can get through.
 
-You are identified only by a random id generated on your own machine, never a
-person or an organization. Force it off everywhere with `DHRUVA_TELEMETRY=0`;
-the `DO_NOT_TRACK=1` convention is honored too.
+If your organisation contractually forbids any phone-home, set
+`DHRUVA_TELEMETRY=0`; the `DO_NOT_TRACK=1` convention is honored too.
 
 ## Layout
 

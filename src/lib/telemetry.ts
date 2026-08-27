@@ -4,24 +4,31 @@ import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { PostHog } from "posthog-node";
 
-/** Product telemetry - OFF until the user explicitly turns it on.
+/** Product analytics - ALWAYS ON once a key is configured.
  *
- * Dhruva runs inside customer Salesforce codebases, often under NDA. That
- * makes silent telemetry unacceptable, so this module is built around one
- * rule: NOTHING derived from the customer's project ever leaves the machine.
+ * There is no per-user switch: the point is a complete picture of how Dhruva
+ * is used, not a self-selected sample. What makes that acceptable is the
+ * shape of the data, not a consent dialog:
  *
- * The allowlist below is the whole contract. Adding a field to it is a
- * deliberate decision, reviewed like any other change - never a convenience.
- * If a value could identify a customer, a person, a repository, or a piece of
- * work, it does not belong here.
+ *   - The IP address is explicitly discarded ($ip: null), so PostHog stores
+ *     no personal data and derives no location.
+ *   - An install is identified by a random id generated on the machine. It
+ *     maps to no person, org, repository, or customer.
+ *   - ALLOWED_PROPS below is the complete list of what may ever be sent.
+ *
+ * Dhruva runs inside customer Salesforce codebases, often under NDA, so the
+ * allowlist is a hard boundary. Adding a field to it is a reviewed decision,
+ * never a convenience. If a value could identify a customer, a person, a
+ * repository, or a piece of work, it does not belong here.
  *
  * NEVER sent: file paths, project or folder names, org usernames, instance
  * URLs, requirement text, prompts, agent output, findings, code, diffs,
  * error messages, skill contents. Not even hashed - a hashed org name is
  * still a stable identifier for that org.
  *
- * Off switches, any one of which wins: the stored opt-in being absent or
- * false, DHRUVA_TELEMETRY=0, or the DO_NOT_TRACK=1 convention. */
+ * Off switches (for the rare enterprise that contractually forbids any
+ * phone-home; nothing in the UI exposes these): DHRUVA_TELEMETRY=0, or the
+ * DO_NOT_TRACK=1 convention. A build with no key configured sends nothing. */
 
 const HOST = "https://us.i.posthog.com";
 
@@ -64,13 +71,10 @@ const SHIPPED_WORKFLOWS = new Set([
 
 export type TelemetryProps = Record<string, string | number | boolean | undefined>;
 
+/** Persisted state is one random id - the minimum needed to count installs
+ * rather than events. No consent flag: analytics are not optional per user. */
 interface Settings {
-  /** true only after the user opts in; undefined means "never asked". */
-  enabled?: boolean;
-  /** random, generated locally - identifies an INSTALL, never a person. */
   installId?: string;
-  /** so a future version can re-ask if the policy changes. */
-  askedVersion?: string;
 }
 
 function settingsPath() {
@@ -80,64 +84,55 @@ function settingsPath() {
 
 let cache: Settings | null = null;
 
-export async function readSettings(): Promise<Settings> {
-  if (cache) return cache;
+async function installId(): Promise<string> {
+  if (cache?.installId) return cache.installId;
   try {
     cache = JSON.parse(await fs.readFile(settingsPath(), "utf8")) as Settings;
   } catch {
     cache = {};
   }
-  return cache;
-}
-
-export async function writeSettings(next: Settings): Promise<Settings> {
-  const merged: Settings = { ...(await readSettings()), ...next };
-  if (merged.enabled && !merged.installId) merged.installId = randomUUID();
-  try {
-    await fs.mkdir(path.dirname(settingsPath()), { recursive: true });
-    await fs.writeFile(settingsPath(), JSON.stringify(merged, null, 2), "utf8");
-  } catch {
-    /* a read-only config dir must not break the app */
+  if (!cache.installId) {
+    cache.installId = randomUUID();
+    try {
+      await fs.mkdir(path.dirname(settingsPath()), { recursive: true });
+      await fs.writeFile(settingsPath(), JSON.stringify(cache, null, 2), "utf8");
+    } catch {
+      /* a read-only config dir must not break the app - the id just becomes
+         per-process, which slightly over-counts installs and nothing worse */
+    }
   }
-  cache = merged;
-  if (!merged.enabled) await shutdown(); // stop immediately on opt-out
-  return merged;
+  return cache.installId;
 }
 
-/** Environment kill switches beat any stored preference. */
+/** Environment kill switches. Not surfaced in the UI. */
 function envDisabled(): boolean {
   return process.env.DHRUVA_TELEMETRY === "0" || process.env.DO_NOT_TRACK === "1";
 }
 
-/** No key configured = the build simply has no telemetry backend. */
+/** No key configured = the build simply has no analytics backend. */
 function apiKey(): string | undefined {
   return process.env.DHRUVA_POSTHOG_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY || undefined;
 }
 
-/** Has the user been asked yet? Drives the one-time opt-in prompt. */
+/** Drives the read-only transparency card in Setup. */
 export async function telemetryState(): Promise<{
   configured: boolean;
-  asked: boolean;
   enabled: boolean;
   envDisabled: boolean;
 }> {
-  const s = await readSettings();
   return {
     configured: !!apiKey(),
-    asked: s.enabled !== undefined,
-    enabled: s.enabled === true && !envDisabled(),
+    enabled: !!apiKey() && !envDisabled(),
     envDisabled: envDisabled(),
   };
 }
 
 let client: PostHog | null = null;
 
-async function getClient(): Promise<PostHog | null> {
+function getClient(): PostHog | null {
   if (envDisabled()) return null;
   const key = apiKey();
   if (!key) return null;
-  const s = await readSettings();
-  if (s.enabled !== true) return null;
   if (!client) {
     client = new PostHog(key, {
       host: process.env.DHRUVA_POSTHOG_HOST || HOST,
@@ -176,22 +171,22 @@ export function durationBucket(ms: number): string {
   return ">45m";
 }
 
-/** Fire-and-forget. Any failure is swallowed: telemetry must never affect
+/** Fire-and-forget. Any failure is swallowed: analytics must never affect
  * the product, and a user must never see an error because of it. */
 export async function track(event: string, props: TelemetryProps = {}): Promise<void> {
   try {
-    const ph = await getClient();
+    const ph = getClient();
     if (!ph) return;
-    const s = await readSettings();
-    if (!s.installId) return;
     ph.capture({
-      distinctId: s.installId,
+      distinctId: await installId(),
       event,
       properties: {
         ...sanitizeProps(props),
         app_version: process.env.npm_package_version ?? "unknown",
         os: process.platform,
-        $process_person_profile: false, // no person profiles, no IP-derived geo
+        // discard the IP at ingest: no personal data stored, no geo derived
+        $ip: null,
+        $process_person_profile: false,
       },
     });
   } catch {

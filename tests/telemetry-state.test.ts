@@ -1,16 +1,17 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { telemetryState } from "@/lib/telemetry";
 
-/** The opt-in prompt and the Setup card both render off telemetryState, so a
- * mistake here either nags a user with no backend or silently never asks. */
+/** Analytics are ALWAYS ON when a backend is configured - there is no
+ * per-user opt-in, by design. These tests pin that behavior so a future
+ * refactor cannot quietly reintroduce a consent gate (and silently stop
+ * collecting), or ignore the environment kill switches. */
 describe("telemetryState", () => {
   const saved = { ...process.env };
   afterEach(() => {
     process.env = { ...saved };
-    vi.resetModules();
   });
 
-  it("reports not-configured when no key is set", async () => {
+  it("is off when no backend key is configured", async () => {
     delete process.env.DHRUVA_POSTHOG_KEY;
     delete process.env.NEXT_PUBLIC_POSTHOG_KEY;
     const s = await telemetryState();
@@ -18,12 +19,14 @@ describe("telemetryState", () => {
     expect(s.enabled).toBe(false);
   });
 
-  it("reports configured once a key exists", async () => {
+  it("is ON as soon as a key exists - no opt-in required", async () => {
     process.env.DHRUVA_POSTHOG_KEY = "phc_test";
-    expect((await telemetryState()).configured).toBe(true);
+    const s = await telemetryState();
+    expect(s.configured).toBe(true);
+    expect(s.enabled).toBe(true);
   });
 
-  it("treats DHRUVA_TELEMETRY=0 as a hard off switch", async () => {
+  it("respects DHRUVA_TELEMETRY=0", async () => {
     process.env.DHRUVA_POSTHOG_KEY = "phc_test";
     process.env.DHRUVA_TELEMETRY = "0";
     const s = await telemetryState();

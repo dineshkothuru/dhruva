@@ -8,7 +8,6 @@ import ProjectSkills from "@/components/ProjectSkills";
 import ProjectSettingsPanel from "@/components/ProjectSettingsPanel";
 import TeamStandards from "@/components/TeamStandards";
 import TelemetrySettings from "@/components/TelemetrySettings";
-import TelemetryConsent from "@/components/TelemetryConsent";
 import FolderPicker from "@/components/FolderPicker";
 import PreviewPanel from "@/components/PreviewPanel";
 import EditorPane from "@/components/EditorPane";
@@ -719,9 +718,6 @@ export default function Home() {
         )}
       </section>
 
-      {/* one-time opt-in - renders only when a backend is configured and the
-          user has not answered yet */}
-      <TelemetryConsent />
     </div>
   );
 }
