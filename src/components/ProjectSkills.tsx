@@ -252,13 +252,23 @@ export default function ProjectSkills({
             spellCheck={false}
             className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-400"
           />
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={4}
-            placeholder="Paste plain text - saved as an .md file and injected into every agent prompt for this project."
-            className="mt-1.5 w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-400"
-          />
+          <div className="relative mt-1.5">
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={5}
+              placeholder="Paste plain text - saved as an .md file and injected into every agent prompt for this project. Or attach a file with ＋ (md/txt kept as-is, docx/pdf text-extracted)."
+              className="w-full rounded-md border border-slate-200 px-2 py-1 pr-8 text-xs outline-none focus:border-slate-400"
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+              className="absolute bottom-2.5 right-2 flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+              title="Attach a file as this skill's content - md/txt kept as-is, docx/pdf text-extracted"
+            >
+              ＋
+            </button>
+          </div>
           <label className="mt-1.5 block text-[10px] font-medium text-slate-500">
             Applies to (optional - steps not touching matching files skip this skill; analysis
             steps always get everything)
@@ -292,14 +302,6 @@ export default function ProjectSkills({
               className="rounded-md bg-slate-900 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-700 disabled:opacity-40"
             >
               Save skill
-            </button>
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-              className="rounded-md border border-slate-300 px-2.5 py-1 text-[11px] text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-              title="md/txt kept as-is; docx/pdf text-extracted"
-            >
-              📎 Upload
             </button>
             <input
               ref={fileRef}
