@@ -7,6 +7,8 @@ import FileTree from "@/components/FileTree";
 import ProjectSkills from "@/components/ProjectSkills";
 import ProjectSettingsPanel from "@/components/ProjectSettingsPanel";
 import TeamStandards from "@/components/TeamStandards";
+import TelemetrySettings from "@/components/TelemetrySettings";
+import TelemetryConsent from "@/components/TelemetryConsent";
 import FolderPicker from "@/components/FolderPicker";
 import PreviewPanel from "@/components/PreviewPanel";
 import EditorPane from "@/components/EditorPane";
@@ -704,7 +706,10 @@ export default function Home() {
                   <ProjectSettingsPanel key={`pset-${result.path}`} root={result.path} />
                 </div>
               </div>
-              <TeamStandards active={tab === "setup"} />
+              <div className="space-y-4">
+                <TeamStandards active={tab === "setup"} />
+                <TelemetrySettings active={tab === "setup"} />
+              </div>
             </div>
           </div>
         ) : (
@@ -713,6 +718,10 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {/* one-time opt-in - renders only when a backend is configured and the
+          user has not answered yet */}
+      <TelemetryConsent />
     </div>
   );
 }

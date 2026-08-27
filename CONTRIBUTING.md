@@ -63,8 +63,11 @@ id, references an undeclared input, or points at a step that runs later.
 - **No em dashes or en dashes** anywhere in the app, prompts, or docs. Use a
   plain hyphen. `tests/workflows.test.ts` enforces this for workflow files.
 - **Never send project content to a third party.** Telemetry (if enabled) is
-  restricted to the allowlist in `src/lib/telemetry.ts`; adding a field there
-  is a deliberate decision, not a convenience.
+  restricted to the `ALLOWED_PROPS` allowlist in `src/lib/telemetry.ts`.
+  Adding a field there is a deliberate decision, not a convenience: it must
+  be impossible for the value to identify a customer, a person, a repository,
+  or a piece of work. `tests/telemetry.test.ts` guards this contract, and
+  telemetry stays OFF until the user opts in.
 - **Every path from user input goes through `src/lib/fsguard.ts`.** Do not
   build paths by hand in a route.
 - Comments should explain *why*, not restate the code. The existing comments
