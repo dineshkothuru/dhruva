@@ -275,10 +275,20 @@ function StepBody({
         }
         if (seg.kind === "toolgroup") {
           const denials = seg.lines.filter((l) => /denied/i.test(l));
+          // summarize WHAT was done, not how many lines it printed:
+          // action headers start with ● (copilot) / ⚙ (claude) / X (denied)
+          const verbs = new Map<string, number>();
+          for (const l of seg.lines) {
+            const m = l.match(/^[●⚙Xx✗]\s*([A-Za-z_-]+)/);
+            if (m) verbs.set(m[1], (verbs.get(m[1]) ?? 0) + 1);
+          }
+          const summary =
+            [...verbs.entries()].map(([v, n]) => (n > 1 ? `${v} ×${n}` : v)).join(", ") ||
+            `${seg.lines.length} line${seg.lines.length === 1 ? "" : "s"}`;
           return (
             <details key={i} open={running} className="rounded-lg border border-slate-100 bg-slate-50">
               <summary className="cursor-pointer px-2 py-1 text-[11px] text-slate-400 hover:text-slate-600">
-                🔧 tool activity ({seg.lines.length} line{seg.lines.length === 1 ? "" : "s"})
+                🔧 {summary}
                 {denials.length > 0 && (
                   <span className="ml-2 rounded bg-amber-100 px-1.5 text-[9px] font-semibold text-amber-700">
                     {denials.length} blocked by read-only rules
@@ -289,10 +299,13 @@ function StepBody({
                 {seg.lines.map((l, n) => (
                   <p
                     key={n}
-                    className={`truncate font-mono text-[10px] ${
-                      /denied/i.test(l) ? "text-amber-700" : "text-slate-500"
+                    className={`whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed ${
+                      /denied/i.test(l)
+                        ? "text-amber-700"
+                        : /^[●⚙]/.test(l)
+                          ? "font-semibold text-slate-600"
+                          : "text-slate-400"
                     }`}
-                    title={l}
                   >
                     {l}
                   </p>
