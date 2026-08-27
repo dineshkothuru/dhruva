@@ -6,6 +6,7 @@ import type { DetectionResult } from "@/lib/types";
 import FileTree from "@/components/FileTree";
 import ProjectSkills from "@/components/ProjectSkills";
 import ProjectSettingsPanel from "@/components/ProjectSettingsPanel";
+import TeamStandards from "@/components/TeamStandards";
 import FolderPicker from "@/components/FolderPicker";
 import PreviewPanel from "@/components/PreviewPanel";
 import EditorPane from "@/components/EditorPane";
@@ -689,18 +690,21 @@ export default function Home() {
               Per-project knowledge and configuration - stored under .dhruva/ inside{" "}
               {result.projectName}, applied to every agent working in this project.
             </p>
-            <div className="mt-4 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white">
+            {/* what you configure on the left, what ships with Dhruva on the
+                right - splits at lg so a laptop already gets two columns */}
+            <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+              <div className="space-y-4">
                 <ProjectSkills
                   key={`skills-${result.path}`}
                   root={result.path}
                   onOpenFile={openFile}
                   active={tab === "setup"}
                 />
+                <div className="rounded-xl border border-slate-200 bg-white">
+                  <ProjectSettingsPanel key={`pset-${result.path}`} root={result.path} />
+                </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white">
-                <ProjectSettingsPanel key={`pset-${result.path}`} root={result.path} />
-              </div>
+              <TeamStandards active={tab === "setup"} />
             </div>
           </div>
         ) : (

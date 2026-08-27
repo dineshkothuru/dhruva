@@ -69,12 +69,6 @@ export default function ProjectSkills({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [lib, setLib] = useState<{
-    baseline: { chars: number; body: string };
-    modules: { name: string; body: string }[];
-    personas: { name: string; body: string }[];
-  } | null>(null);
-  const [viewing, setViewing] = useState<{ title: string; body: string } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -171,34 +165,52 @@ export default function ProjectSkills({
     }
   }
 
-  async function loadLibrary() {
-    if (lib) return;
-    try {
-      setLib(await fetch("/api/standards").then((r) => r.json()));
-    } catch {
-      /* browser stays empty */
-    }
-  }
-
   return (
-    <div className="border-t border-slate-100 px-5 py-3">
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-          Project skills
+    <section className="rounded-xl border border-slate-200 bg-white">
+      <header className="flex items-start gap-2.5 border-b border-slate-100 px-4 py-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-base">
+          📘
         </span>
-        {injected > 0 && (
-          <span className="text-[10px] text-slate-300">~{(injected / 1000).toFixed(1)}k chars injected</span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-xs font-semibold text-slate-800">Project skills</h3>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
+            What is true of THIS org - conventions, landmines, facts the code cannot tell an agent.
+          </p>
+        </div>
+        {skills.length > 0 && (
+          <div className="shrink-0 text-right">
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-indigo-600">
+              {skills.length} {skills.length === 1 ? "skill" : "skills"}
+            </span>
+            {injected > 0 && (
+              <p className="mt-1 text-[9px] text-slate-400">
+                ~{(injected / 1000).toFixed(1)}k chars injected
+              </p>
+            )}
+          </div>
         )}
-      </div>
+      </header>
 
-      {skills.length === 0 && (
-        <p className="mt-1 text-[10px] text-slate-300">
-          org-specific knowledge for agents - conventions, landmines, facts
-        </p>
-      )}
-
-      {/* skills as compact boxes: click opens the editor, ✕ always visible */}
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className="px-4 py-3">
+      {skills.length === 0 ? (
+        /* empty state: a real invitation, not a button floating in whitespace */
+        <div className="flex flex-col items-center rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-4 py-6 text-center">
+          <span className="text-2xl opacity-40">📘</span>
+          <p className="mt-2 text-xs font-medium text-slate-600">No project skills yet</p>
+          <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-slate-400">
+            Add what an agent could not work out from the code alone - naming a team follows, an
+            integration that must never be touched, a quirk of this org.
+          </p>
+          <button
+            onClick={() => setAdding(true)}
+            className="mt-3 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
+          >
+            ＋ Add the first skill
+          </button>
+        </div>
+      ) : (
+      /* skills as compact boxes: click opens the editor, ✕ always visible */
+      <div className="flex flex-wrap gap-2">
         {skills.map((s) => (
           <div
             key={s.name}
@@ -236,6 +248,8 @@ export default function ProjectSkills({
         >
           ＋ Add skill
         </button>
+      </div>
+      )}
       </div>
 
       {adding && (
@@ -320,55 +334,6 @@ export default function ProjectSkills({
         </div>
       )}
 
-      <details className="mt-2" onToggle={(e) => (e.target as HTMLDetailsElement).open && void loadLibrary()}>
-        <summary className="cursor-pointer text-[10px] font-medium uppercase tracking-widest text-slate-300 hover:text-slate-500">
-          📚 Team standards (read-only)
-        </summary>
-        <div className="mt-2">
-          {!lib && <p className="text-[10px] text-slate-300">loading…</p>}
-          {lib && (
-            <>
-              <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-300">
-                Standards - the rules (scoped to matching files)
-              </p>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {[
-                  { title: "baseline", body: lib.baseline.body },
-                  ...lib.modules.map((m) => ({ title: m.name, body: m.body })),
-                ].map((x) => (
-                  <button
-                    key={x.title}
-                    onClick={() => setViewing({ title: x.title, body: x.body })}
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 hover:border-slate-300 hover:text-slate-700"
-                    title="view (read-only)"
-                  >
-                    📕 {x.title}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2.5 text-[9px] font-semibold uppercase tracking-widest text-slate-300">
-                Personas - the hats agent steps wear (architect, reviewer, ...)
-              </p>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {lib.personas.map((p) => (
-                  <button
-                    key={p.name}
-                    onClick={() => setViewing({ title: `${p.name} (persona)`, body: p.body })}
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 hover:border-slate-300 hover:text-slate-700"
-                    title="view (read-only)"
-                  >
-                    🎭 {p.name}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1.5 text-[9px] text-slate-300">
-                shipped with Dhruva - same for every project, not editable here
-              </p>
-            </>
-          )}
-        </div>
-      </details>
-
       {deleting && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-8"
@@ -407,27 +372,6 @@ export default function ProjectSkills({
         </div>
       )}
 
-      {viewing && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-8"
-          onClick={(e) => e.target === e.currentTarget && setViewing(null)}
-        >
-          <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
-            <div className="flex items-center">
-              <h3 className="text-sm font-semibold">{viewing.title}</h3>
-              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-400">
-                read-only · shipped standard
-              </span>
-              <button onClick={() => setViewing(null)} className="ml-auto rounded px-2 text-slate-400 hover:text-slate-700">
-                ✕
-              </button>
-            </div>
-            <pre className="mt-3 max-h-[70vh] overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
-              {viewing.body}
-            </pre>
-          </div>
-        </div>
-      )}
-    </div>
+    </section>
   );
 }
