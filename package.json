@@ -1,6 +1,6 @@
 {
   "name": "dhruva",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Dhruva - deterministic Salesforce delivery harness. Gated, auditable delivery workflows driven by swappable coding agents, on your machine with your logins.",
   "bin": {
     "dhruva": "bin/dhruva.js"
