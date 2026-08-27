@@ -258,7 +258,141 @@ function StepBody({
     return <CliResult output={output} />;
   }
 
-  // verify / changes / streaming cli output stays terminal-style
+  // ---- non-agent steps. These are deterministic engine output, so they
+  // parse exactly rather than heuristically - and they deserve a layout as
+  // much as the agent steps do. All string parsing, no tokens.
+  if (type === "snapshot" && !running) {
+    const ok = /taken/i.test(output);
+    return (
+      <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-3">
+        {ok ? (
+          <Icon.ok size={14} strokeWidth={2} className="shrink-0 text-emerald-600" />
+        ) : (
+          <Icon.warn size={14} strokeWidth={2} className="shrink-0 text-amber-500" />
+        )}
+        <p className="text-xs text-slate-600">
+          {ok
+            ? "Baseline captured. Every change from here is attributable to this run."
+            : output}
+        </p>
+      </div>
+    );
+  }
+
+  if (type === "tasks-check" && !running) {
+    const valid = /tasks file valid/i.test(output);
+    const counts = output.match(/(\d+) task\(s\), (\d+) pending/);
+    const order = output.match(/execution order:\s*(.+)/)?.[1]?.trim();
+    const ids = order && order !== "(none pending)" ? order.split(/\s*[→>]+\s*/) : [];
+    const errs = output.split("\n").filter((l) => l.trim().startsWith("- "));
+    return (
+      <div className="space-y-2 border-t border-slate-100 px-4 py-3">
+        <p className="flex items-center gap-1.5 text-xs">
+          {valid ? (
+            <Icon.ok size={13} strokeWidth={2} className="shrink-0 text-emerald-600" />
+          ) : (
+            <Icon.warn size={13} strokeWidth={2} className="shrink-0 text-red-500" />
+          )}
+          <span className={valid ? "text-slate-700" : "font-medium text-red-700"}>
+            {valid
+              ? counts
+                ? `Build plan is valid: ${counts[1]} tasks, ${counts[2]} still pending.`
+                : "Build plan is valid."
+              : "Build plan rejected"}
+          </span>
+        </p>
+        {ids.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="mr-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Order
+            </span>
+            {ids.map((id, k) => (
+              <span key={`${id}-${k}`} className="flex items-center gap-1">
+                {k > 0 && <Icon.chevron size={10} strokeWidth={2} className="text-slate-300" />}
+                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">
+                  {id}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+        {errs.length > 0 && (
+          <ul className="space-y-0.5">
+            {errs.map((e, k) => (
+              <li key={k} className="text-[11px] leading-relaxed text-red-700">
+                {e.replace(/^-\s*/, "")}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  if (type === "verify" && !running) {
+    const passed = /standards check passed|no changed files/i.test(output);
+    // "ERROR    rule    file" followed by an indented detail line
+    const rows: { sev: string; rule: string; file: string; detail: string }[] = [];
+    const lines = output.split("\n");
+    lines.forEach((l, k) => {
+      const m = l.match(/^(ERROR|WARN|WARNING)\s+(\S+)\s+(\S+)\s*$/);
+      if (m) rows.push({ sev: m[1], rule: m[2], file: m[3], detail: (lines[k + 1] ?? "").trim() });
+    });
+    const summary = output.match(/(\d+) error-level violation\(s\)[^\n]*/)?.[0];
+    const firstLine = lines[0] ?? "";
+    return (
+      <div className="space-y-2 border-t border-slate-100 px-4 py-3">
+        <p className="flex items-center gap-1.5 text-xs">
+          {passed ? (
+            <Icon.ok size={13} strokeWidth={2} className="shrink-0 text-emerald-600" />
+          ) : (
+            <Icon.warn size={13} strokeWidth={2} className="shrink-0 text-red-500" />
+          )}
+          <span className={passed ? "text-slate-700" : "font-medium text-red-700"}>
+            {passed ? firstLine : (summary ?? `${rows.length} standards violation(s)`)}
+          </span>
+        </p>
+        {rows.map((r, k) => (
+          <div
+            key={k}
+            className={`rounded-lg border px-2.5 py-1.5 ${
+              /ERROR/.test(r.sev) ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
+            }`}
+          >
+            <p className="flex flex-wrap items-center gap-1.5">
+              <span
+                className={`rounded px-1.5 text-[9px] font-bold uppercase text-white ${
+                  /ERROR/.test(r.sev) ? "bg-red-600" : "bg-amber-500"
+                }`}
+              >
+                {r.sev}
+              </span>
+              <span className="font-mono text-[11px] font-semibold text-slate-700">{r.rule}</span>
+              <span className="truncate font-mono text-[10px] text-slate-500">{r.file}</span>
+            </p>
+            {r.detail && (
+              <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">{r.detail}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (type === "changes" && !running) {
+    // the run view renders this list with working diff links; showing the raw
+    // text here as well would just duplicate it
+    if (/no files changed/i.test(output)) {
+      return (
+        <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+          No files changed by this run.
+        </p>
+      );
+    }
+    return null;
+  }
+
+  // anything else (streaming cli, engine notices) stays terminal-style
   if (type !== "agent") {
     return (
       <div ref={boxRef} className="max-h-72 overflow-y-auto border-t border-slate-100">
