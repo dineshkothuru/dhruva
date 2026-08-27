@@ -453,7 +453,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const role = def.persona ? await persona(def.persona).catch(() => "") : "";
       // project knowledge (.sfharness/skills/*.md) — the org-specific layer,
       // injected for every vendor; audited per step below
-      const skills = await skillsPrompt(run.root).catch(() => ({ block: "", names: [], chars: 0 }));
+      const skills = await skillsPrompt(run.root, scopeFiles).catch(() => ({ block: "", names: [], chars: 0 }));
       // Reviewer feedback from gates: mandatory, most recent last.
       const feedback = run.revisions?.[def.id];
       const feedbackBlock =

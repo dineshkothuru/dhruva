@@ -11,12 +11,15 @@ interface SkillMeta {
   chars: number;
   mtime: number;
   truncated: boolean;
+  applyTo: string | null;
 }
 
 const COVERED_HINT =
   "Already covered by the team standards: Apex (classes, triggers, async, tests), LWC, flows, " +
   "security & FLS, naming, logging, metadata, deployments. Write only what is TRUE OF THIS ORG " +
-  "and not derivable from code — conventions, landmines, org facts.";
+  "and not derivable from code — conventions, landmines, org facts. Optional scoping: start the " +
+  'file with ---\\napplyTo: "force-app/main/default/lwc/**"\\n--- to inject it only for steps ' +
+  "touching matching files (analysis steps always get everything).";
 
 export default function ProjectSkills({
   root,
@@ -171,6 +174,14 @@ export default function ProjectSkills({
             >
               📘 {s.name}
             </button>
+            {s.applyTo && (
+              <span
+                className="max-w-24 truncate rounded bg-sky-50 px-1 font-mono text-[8px] text-sky-600"
+                title={`scoped: injected only for steps touching ${s.applyTo}`}
+              >
+                {s.applyTo}
+              </span>
+            )}
             {s.truncated && (
               <span className="text-[9px] font-semibold text-amber-600" title="exceeds the per-skill injection budget — trim it">
                 truncated

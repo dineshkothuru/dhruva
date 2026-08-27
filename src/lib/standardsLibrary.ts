@@ -23,8 +23,9 @@ function stdRoot() {
   return process.env.DHRUVA_STANDARDS_DIR ?? path.join(process.cwd(), "standards");
 }
 
-/** Convert an applyTo glob (e.g. force-app/main/default/ ** / *.cls) to a regex. */
-function globToRegex(glob: string): RegExp {
+/** Convert an applyTo glob (e.g. force-app/main/default/ ** / *.cls) to a regex.
+ * Exported: project skills reuse the same scoping syntax. */
+export function globToRegex(glob: string): RegExp {
   // split on "**/" and "**" first so the single-"*" pass can't mangle the
   // regex fragments those expand to
   const esc = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
