@@ -185,40 +185,40 @@ export default function ProjectSkills({
         {skills.map((s) => (
           <div
             key={s.name}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 py-1 pl-2.5 pr-1 text-xs hover:border-slate-300"
+            className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-2.5 pr-1 text-xs hover:border-slate-300"
           >
-            <button
-              onClick={() => onOpenFile?.(`.sfharness/skills/${s.name}.md`)}
-              className="font-medium text-slate-600 hover:text-slate-900"
-              title={`open in the editor · ${(s.chars / 1000).toFixed(1)}k chars${s.applyTo ? ` · applies to ${s.applyTo}` : ""}`}
-            >
-              📘 {s.name}
-            </button>
-            {s.applyTo && (
-              <span className="rounded bg-sky-100 px-1 text-[8px] font-semibold uppercase text-sky-600" title={s.applyTo}>
-                scoped
-              </span>
-            )}
-            {s.truncated && (
-              <span className="rounded bg-amber-100 px-1 text-[8px] font-semibold uppercase text-amber-600" title="exceeds the injection budget - trim it">
-                truncated
-              </span>
-            )}
-            <button
-              onClick={async () => {
-                if (!confirm(`Delete skill "${s.name}"?`)) return;
-                await fetch("/api/skills", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ action: "delete", root, name: s.name }),
-                });
-                await refresh();
-              }}
-              className="rounded px-1 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-500"
-              title="Delete this skill"
-            >
-              ✕
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => onOpenFile?.(`.sfharness/skills/${s.name}.md`)}
+                className="font-medium text-slate-600 hover:text-slate-900"
+                title={`open in the editor · ${(s.chars / 1000).toFixed(1)}k chars`}
+              >
+                📘 {s.name}
+              </button>
+              {s.truncated && (
+                <span className="rounded bg-amber-100 px-1 text-[8px] font-semibold uppercase text-amber-600" title="exceeds the injection budget - trim it">
+                  truncated
+                </span>
+              )}
+              <button
+                onClick={async () => {
+                  if (!confirm(`Delete skill "${s.name}"?`)) return;
+                  await fetch("/api/skills", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "delete", root, name: s.name }),
+                  });
+                  await refresh();
+                }}
+                className="rounded px-1 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-500"
+                title="Delete this skill"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mt-0.5 max-w-56 truncate font-mono text-[9px] text-sky-600" title={s.applyTo ?? undefined}>
+              {s.applyTo ? `applies to: ${s.applyTo}` : "applies to: everything"}
+            </p>
           </div>
         ))}
         <button
