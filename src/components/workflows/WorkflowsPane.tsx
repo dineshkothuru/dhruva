@@ -10,6 +10,45 @@ import { loadDefaultAgent, saveDefaultAgent } from "@/lib/agentStore";
 import { loadCustomModels, addCustomModel } from "@/lib/modelStore";
 import WorkflowBuilder, { type BuilderSeed } from "@/components/workflows/WorkflowBuilder";
 import RequirementCards, { parseRequirements } from "@/components/workflows/RequirementCards";
+import { parseFindings, type Finding } from "@/lib/findings";
+
+const SEV_STYLE: Record<Finding["severity"], { border: string; chip: string }> = {
+  critical: { border: "border-l-red-500", chip: "bg-red-100 text-red-700" },
+  important: { border: "border-l-amber-400", chip: "bg-amber-100 text-amber-700" },
+  nit: { border: "border-l-slate-300", chip: "bg-slate-100 text-slate-500" },
+};
+
+/** One reviewer finding as a designed card - severity edge, labeled fields. */
+function FindingCard({ f }: { f: Finding }) {
+  const sev = SEV_STYLE[f.severity];
+  return (
+    <div className={`rounded-lg border border-l-4 border-slate-200 bg-white p-3 ${sev.border}`}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="font-mono text-[10px] font-semibold text-slate-400">{f.id}</span>
+        <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${sev.chip}`}>
+          {f.severity}
+        </span>
+        {f.refs.map((r) => (
+          <span key={r} className="rounded-full bg-sky-50 px-2 py-0.5 font-mono text-[9px] text-sky-600">
+            {r}
+          </span>
+        ))}
+        <span className="w-full text-xs font-semibold text-slate-800 sm:w-auto sm:flex-1">{f.title}</span>
+      </div>
+      {f.where && (
+        <p className="mt-1.5 truncate font-mono text-[10px] text-slate-400" title={f.where}>
+          📍 {f.where}
+        </p>
+      )}
+      {f.problem && <p className="mt-1.5 text-xs leading-relaxed text-slate-700">{f.problem}</p>}
+      {f.fix && (
+        <p className="mt-1.5 rounded-md bg-emerald-50 px-2.5 py-1.5 text-xs leading-relaxed text-emerald-800">
+          <span className="font-semibold">Fix:</span> {f.fix}
+        </p>
+      )}
+    </div>
+  );
+}
 
 interface CatalogItem {
   id: string;
@@ -128,31 +167,38 @@ function StepBody({
   }
 
   // ---- agent trace: structured for humans. Narration stays prominent; tool
-  // activity collapses into groups; denials are highlighted; a verdict banner
-  // summarizes review steps at the top. All deterministic parsing.
-  const lines = output.split("\n");
+  // activity collapses into groups; denials are highlighted; reviewer findings
+  // render as designed cards; a verdict banner summarizes review steps at the
+  // top. All deterministic parsing - zero tokens.
   const verdict = output.match(/VERDICT:\s*(APPROVED|READY|BLOCKED)[^\n]*/i);
   const coverage = output.match(/COVERAGE:\s*(COMPLETE|INCOMPLETE)[^\n]*/i);
-  const findingsCount = (output.match(/\*{0,2}F\d+[\s:(]/g) ?? []).length;
+  const parsed = parseFindings(output);
+  const findingsCount = parsed.findings.length;
 
   const isTool = (t: string) =>
     /^[⚙●○◦]\s?/.test(t) || /^[│|├└╰]\s?/.test(t) || /^[Xx✗]\s+\S/.test(t) || /^\/\s?\S/.test(t);
   type Seg = { kind: "text" | "engine" | "exit" | "toolgroup"; lines: string[] };
-  const segs: Seg[] = [];
-  for (const raw of lines) {
-    const t = raw.trimEnd();
-    if (!t) continue;
-    const kind: Seg["kind"] = /^\[exit -?\d+\]$/.test(t)
-      ? "exit"
-      : t.startsWith("[engine]") || t.startsWith("[agent error]")
-        ? "engine"
-        : isTool(t)
-          ? "toolgroup"
-          : "text";
-    const last = segs[segs.length - 1];
-    if (kind === "toolgroup" && last?.kind === "toolgroup") last.lines.push(t);
-    else segs.push({ kind, lines: [t] });
-  }
+  const buildSegs = (text: string): Seg[] => {
+    const out: Seg[] = [];
+    for (const raw of text.split("\n")) {
+      const t = raw.trimEnd();
+      if (!t) continue;
+      if (/^VERDICT:|^COVERAGE:/i.test(t)) continue; // shown in the banner
+      const kind: Seg["kind"] = /^\[exit -?\d+\]$/.test(t)
+        ? "exit"
+        : t.startsWith("[engine]") || t.startsWith("[agent error]")
+          ? "engine"
+          : isTool(t)
+            ? "toolgroup"
+            : "text";
+      const last = out[out.length - 1];
+      if (kind === "toolgroup" && last?.kind === "toolgroup") last.lines.push(t);
+      else out.push({ kind, lines: [t] });
+    }
+    return out;
+  };
+  const segs = buildSegs(parsed.before);
+  const trailingSegs = buildSegs(parsed.trailing);
 
   return (
     <div className="relative border-t border-slate-100">
@@ -189,7 +235,16 @@ function StepBody({
           )}
         </div>
       )}
-      {segs.map((seg, i) => {
+      {[...segs, ...(findingsCount > 0 ? [{ kind: "cards" as const, lines: [] }] : []), ...trailingSegs].map((seg, i) => {
+        if (seg.kind === "cards") {
+          return (
+            <div key={`cards-${i}`} className="space-y-2 py-1">
+              {parsed.findings.map((f) => (
+                <FindingCard key={f.id} f={f} />
+              ))}
+            </div>
+          );
+        }
         if (seg.kind === "exit") {
           const ok = seg.lines[0] === "[exit 0]";
           return (
@@ -734,14 +789,23 @@ export default function WorkflowsPane({
                     const findings = fm
                       ? reviewer.output.slice(fm.index)
                       : reviewer.output.slice(-3000);
+                    const gateParsed = parseFindings(findings);
                     return (
                       <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
                           Reviewer findings - still BLOCKED after the auto-fix round
                         </p>
-                        <pre className="mt-1.5 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded bg-white/60 p-2 text-xs text-slate-700">
-                          {findings}
-                        </pre>
+                        {gateParsed.findings.length > 0 ? (
+                          <div className="mt-2 max-h-96 space-y-2 overflow-y-auto">
+                            {gateParsed.findings.map((f) => (
+                              <FindingCard key={f.id} f={f} />
+                            ))}
+                          </div>
+                        ) : (
+                          <pre className="mt-1.5 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded bg-white/60 p-2 text-xs text-slate-700">
+                            {findings}
+                          </pre>
+                        )}
                         <button
                           onClick={() =>
                             gate(
