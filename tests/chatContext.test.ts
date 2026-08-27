@@ -6,6 +6,8 @@ import {
   MAX_TURNS,
   type ChatTurn,
   buildRunContext,
+  threadFileHint,
+  type RunGroupRef,
   type RunRef,
 } from "@/lib/chatContext";
 
@@ -87,44 +89,97 @@ describe("contextSummary", () => {
 });
 
 
-/** A chain started from chat used to be invisible to that same chat: asking
- * "did the design finish?" got a blank look. */
+/** Asking "what happened to the design chain?" used to get a blank look, and
+ * scoping it to the current thread would have kept it blank in a fresh chat. */
 describe("buildRunContext", () => {
-  const r = (over: Partial<RunRef> = {}): RunRef => ({
+  const phase = (over: Partial<RunRef> = {}): RunRef => ({
+    id: "40c5de4c",
     title: "Solution design",
-    status: "running",
-    stepsDone: 4,
+    status: "done",
+    stepsDone: 13,
     stepsTotal: 13,
     ...over,
   });
+  const group = (over: Partial<RunGroupRef> = {}): RunGroupRef => ({
+    phases: [phase()],
+    state: "done",
+    startedHere: false,
+    ...over,
+  });
 
-  it("says nothing when the conversation started no runs", () => {
+  it("says nothing when the project has no runs", () => {
     expect(buildRunContext([])).toBe("");
   });
 
-  it("reports progress so the agent can answer 'how far along is it?'", () => {
-    const block = buildRunContext([r({ currentStep: "Design critique" })]);
-    expect(block).toContain("Solution design");
+  it("reports progress so 'how far along is it?' is answerable", () => {
+    const block = buildRunContext([
+      group({ state: "running", phases: [phase({ status: "running", stepsDone: 4, currentStep: "Design critique" })] }),
+    ]);
     expect(block).toContain("4/13 steps");
     expect(block).toContain("Design critique");
   });
 
-  it("carries the run's stated outcome when it has one", () => {
-    const block = buildRunContext([r({ status: "done", outcome: "17 requirement designs" })]);
-    expect(block).toContain("17 requirement designs");
+  it("presents a chain as ONE delivery with its phases beneath", () => {
+    const block = buildRunContext([
+      group({
+        state: "running",
+        phases: [
+          phase({ id: "a", title: "Solution design" }),
+          phase({ id: "b", title: "Implement from TDD", status: "running", stepsDone: 2, stepsTotal: 17 }),
+        ],
+      }),
+    ]);
+    expect(block).toContain("Solution design -> Implement from TDD");
+    expect(block).toContain("phase 1 Solution design");
+    expect(block).toContain("phase 2 Implement from TDD");
   });
 
-  it("normalises waiting_gate into something readable", () => {
-    expect(buildRunContext([r({ status: "waiting_gate" })])).toContain("waiting gate");
+  it("covers deliveries this conversation did NOT start", () => {
+    const block = buildRunContext([group({ startedHere: false })]);
+    expect(block).toContain("Solution design");
+    expect(block).not.toContain("started from this conversation");
+  });
+
+  it("marks the ones this conversation kicked off", () => {
+    expect(buildRunContext([group({ startedHere: true })])).toContain(
+      "started from this conversation",
+    );
+  });
+
+  it("carries a phase's stated outcome when it has one", () => {
+    expect(
+      buildRunContext([group({ phases: [phase({ outcome: "17 requirement designs" })] })]),
+    ).toContain("17 requirement designs");
+  });
+
+  it("names each audit file so detail is READ rather than guessed", () => {
+    const block = buildRunContext([group()]);
+    expect(block).toContain(".dhruva/runs/40c5de4c.json");
+    expect(block).toMatch(/READ THAT FILE/);
   });
 
   it("marks the block as facts, not instructions to act on", () => {
-    expect(buildRunContext([r()])).toContain("not something to act on");
+    expect(buildRunContext([group()])).toContain("Not instructions to act on");
   });
 
-  it("bounds how many runs it will describe", () => {
-    const many = Array.from({ length: 20 }, (_, i) => r({ title: `wf${i}` }));
+  it("bounds how many deliveries it describes", () => {
+    const many = Array.from({ length: 20 }, (_, i) => group({ phases: [phase({ id: `r${i}` })] }));
     const block = buildRunContext(many);
-    expect(block.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(6);
+    expect((block.match(/Audit: \.dhruva\/runs\//g) ?? []).length).toBe(5);
+  });
+});
+
+describe("threadFileHint", () => {
+  it("says nothing while the whole thread still fits in the window", () => {
+    expect(threadFileHint("tabc123", false)).toBe("");
+  });
+
+  it("points at the thread file once older turns are dropped", () => {
+    const hint = threadFileHint("tabc123", true);
+    expect(hint).toContain(".dhruva/chats/tabc123.json");
+  });
+
+  it("says nothing without a thread id", () => {
+    expect(threadFileHint("", true)).toBe("");
   });
 });

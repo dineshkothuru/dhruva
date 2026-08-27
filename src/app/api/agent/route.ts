@@ -6,7 +6,14 @@ import { skillsPrompt } from "@/lib/projectSkills";
 import { takeSnapshot } from "@/lib/snapshot";
 import { hasActiveRun, listRuns } from "@/lib/workflows/engine";
 import { parseOutcome } from "@/lib/outcome";
-import { buildContext, buildRunContext, type RunRef } from "@/lib/chatContext";
+import {
+  buildContext,
+  buildRunContext,
+  threadFileHint,
+  type RunGroupRef,
+  type RunRef,
+} from "@/lib/chatContext";
+import { chainState, groupRunsByChain } from "@/lib/chains";
 
 export const maxDuration = 800;
 
@@ -28,6 +35,7 @@ export async function POST(req: Request) {
     prompt?: unknown;
     history?: unknown;
     runIds?: unknown;
+    threadId?: unknown;
     model?: unknown;
     attachments?: unknown;
     /** true = diagnostic query: agent runs read-only, no snapshot taken. */
@@ -76,21 +84,27 @@ export async function POST(req: Request) {
       typeof (x as { text?: unknown }).text === "string" &&
       ((x as { role?: unknown }).role === "user" || (x as { role?: unknown }).role === "agent"),
   );
-  // runs this conversation started - so "did the design finish?" is answerable
-  const wantedRuns = (Array.isArray(body.runIds) ? body.runIds : [])
-    .filter((x): x is string => typeof x === "string")
-    .slice(0, 6);
-  let runRefs: RunRef[] = [];
-  if (wantedRuns.length > 0) {
-    try {
-      const all = await listRuns(root);
-      runRefs = all
-        .filter((r) => wantedRuns.includes(r.runId))
-        .map((r) => {
+  // Recent deliveries in the project, grouped so a chain reads as ONE thing.
+  // Deliberately not limited to runs this thread started: "what happened to
+  // the design chain?" is a fair question in a fresh chat, and the audit is
+  // on disk either way. Only headlines travel; each phase names its file.
+  const startedHere = new Set(
+    (Array.isArray(body.runIds) ? body.runIds : []).filter((x): x is string => typeof x === "string"),
+  );
+  let runGroups: RunGroupRef[] = [];
+  try {
+    const all = await listRuns(root);
+    runGroups = groupRunsByChain(all)
+      .slice(0, 5)
+      .map((g) => ({
+        state: chainState(g),
+        startedHere: g.runs.some((r) => startedHere.has(r.runId)),
+        phases: g.runs.map((r): RunRef => {
           const done = r.steps.filter((x) => x.status === "done" || x.status === "skipped").length;
           const cur = r.steps.find((x) => x.status === "running" || x.status === "waiting_gate");
           const last = [...r.steps].reverse().find((x) => x.type === "agent" && x.output);
           return {
+            id: r.runId,
             title: r.workflowTitle,
             status: r.status,
             stepsDone: done,
@@ -98,14 +112,22 @@ export async function POST(req: Request) {
             currentStep: cur?.title,
             outcome: last ? (parseOutcome(last.output)?.summary ?? undefined) : undefined,
           };
-        });
-    } catch {
-      /* the chat still works without run context */
-    }
+        }),
+      }));
+  } catch {
+    /* the chat still works without delivery context */
   }
+
+  const recent = turns.slice(-40);
+  const historyBlock = buildContext(recent);
+  // the window drops older turns; say where the rest lives instead of paying
+  // to carry it
+  const threadId = typeof body.threadId === "string" ? body.threadId : "";
+  const trimmed = /^[0-9a-z-]{6,40}$/.test(threadId) && recent.length > 8;
   const fullPrompt =
-    buildRunContext(runRefs) +
-    buildContext(turns.slice(-40)) +
+    buildRunContext(runGroups) +
+    historyBlock +
+    threadFileHint(threadId, trimmed) +
     (attachments.length > 0
       ? `${prompt}\n\nAttached files (read them from the project root): ${attachments.join(", ")}`
       : prompt) +

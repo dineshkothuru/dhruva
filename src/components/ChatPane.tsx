@@ -7,6 +7,8 @@ import { estimateUsage, formatUsage } from "@/lib/pricing";
 import { classifyChain, classifyIntake, matchCatalog } from "@/lib/intake";
 import { contextSummary, type ChatTurn } from "@/lib/chatContext";
 import { isEmptyThread, type StoredMsg } from "@/lib/chatStore";
+import { findRelatedRuns, type RelatedRun } from "@/lib/relatedRuns";
+import type { RunState } from "@/lib/workflows/schema";
 import { rolesFor } from "@/lib/roleStore";
 import ChainProposalCard, { type ChainSlot, type WfLite } from "@/components/ChainProposalCard";
 import { Icon } from "@/components/icons";
@@ -27,6 +29,8 @@ interface Msg {
     /** the run this card started - kept structured so a reopened thread
      * can still link to it, and so the agent can be told about it */
     runId?: string;
+    /** deliveries that already look like this request */
+    related?: RelatedRun[];
   };
   /** chain: a multi-workflow plan awaiting the user's shaping + confirmation */
   chain?: {
@@ -36,6 +40,7 @@ interface Msg {
     auto?: boolean;
     resolved?: string;
     runId?: string;
+    related?: RelatedRun[];
   };
 }
 
@@ -127,6 +132,8 @@ export default function ChatPane({
     }
   });
   const [threads, setThreads] = useState<{ id: string; title: string; updatedAt: number }[]>([]);
+  // recent runs, so a request that repeats earlier work can say so
+  const [runs, setRuns] = useState<RunState[]>([]);
   const [showThreads, setShowThreads] = useState(false);
   const [running, setRunning] = useState(false);
   const [attachments, setAttachments] = useState<{ rel: string; name: string }[]>([]);
@@ -211,6 +218,23 @@ export default function ChatPane({
     void refreshThreads();
   }, [refreshThreads]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/workflow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "runs", root }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && Array.isArray(d.runs)) setRuns(d.runs as RunState[]);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [root]);
+
   // write the thread to disk once it settles - .dhruva/chats survives a
   // cleared browser, unlike the localStorage copy which is only a fast cache
   useEffect(() => {
@@ -262,7 +286,16 @@ export default function ChatPane({
       setMessages((m) => [
         ...m,
         userMsg,
-        { role: "chain", text: "", chain: { taskText, reason: chainProposal.reason, slots: chainProposal.phases } },
+        {
+          role: "chain",
+          text: "",
+          chain: {
+            taskText,
+            reason: chainProposal.reason,
+            slots: chainProposal.phases,
+            related: findRelatedRuns(prompt, runs),
+          },
+        },
       ]);
       return;
     }
@@ -278,7 +311,7 @@ export default function ChatPane({
         {
           role: "proposal",
           text: "",
-          proposal: { taskText, ...proposal },
+          proposal: { taskText, ...proposal, related: findRelatedRuns(prompt, runs) },
         },
       ]);
       return;
@@ -378,6 +411,8 @@ export default function ChatPane({
           // runs this conversation started, so the agent can answer questions
           // about how they went
           runIds: startedRunIds(),
+          // where the full thread lives, for questions past the window
+          threadId,
           model: models[agent] ?? status?.[agent]?.models?.[0]?.id ?? "",
           attachments: attached,
         }),
@@ -594,6 +629,38 @@ export default function ChatPane({
     }
   }
 
+  /** "This looks like work you already have." Shown before the run buttons so
+   * an accidental duplicate is caught before it costs anything. */
+  function RelatedWork({ related }: { related?: RelatedRun[] }) {
+    if (!related?.length) return null;
+    return (
+      <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
+        <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-800">
+          <Icon.history size={12} strokeWidth={1.75} />
+          Similar work already exists
+        </p>
+        <div className="mt-1 space-y-0.5">
+          {related.map((r) => (
+            <button
+              key={r.runId}
+              onClick={() => onRunStarted?.(r.runId)}
+              className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-[11px] text-amber-900 hover:bg-amber-100"
+              title={`matched on: ${r.shared.join(", ")}`}
+            >
+              <span className="font-medium">{r.title}</span>
+              <span className="uppercase text-amber-700">{r.status.replace("_", " ")}</span>
+              <span className="text-amber-600">{new Date(r.createdAt).toLocaleDateString()}</span>
+              <span className="ml-auto shrink-0 underline">open</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-[10px] text-amber-700">
+          Check these before starting again - or carry on if this is genuinely different.
+        </p>
+      </div>
+    );
+  }
+
   const current = status?.[agent];
   const isCustomModel = custom[agent] === true;
 
@@ -773,6 +840,7 @@ export default function ChatPane({
               </div>
             ) : m.role === "chain" && m.chain ? (
               <div key={i}>
+                <RelatedWork related={m.chain.related} />
                 <ChainProposalCard
                   slots={m.chain.slots}
                   reason={m.chain.reason}
@@ -798,7 +866,9 @@ export default function ChatPane({
                 {m.proposal.resolved ? (
                   <p className="mt-2 text-xs text-sky-700">→ {m.proposal.resolved}</p>
                 ) : (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="mt-3">
+                    <RelatedWork related={m.proposal.related} />
+                    <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={m.proposal.workflow}
                       onChange={(e) => setProposalWorkflow(i, e.target.value)}
@@ -844,6 +914,7 @@ export default function ChatPane({
                     >
                       Just ask the agent
                     </button>
+                    </div>
                   </div>
                 )}
               </div>
