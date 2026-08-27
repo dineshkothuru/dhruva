@@ -75,6 +75,7 @@ export default function ProjectSkills({
     personas: { name: string; body: string }[];
   } | null>(null);
   const [viewing, setViewing] = useState<{ title: string; body: string } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -212,15 +213,7 @@ export default function ProjectSkills({
                 </span>
               )}
               <button
-                onClick={async () => {
-                  if (!confirm(`Delete skill "${s.name}"?`)) return;
-                  await fetch("/api/skills", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "delete", root, name: s.name }),
-                  });
-                  await refresh();
-                }}
+                onClick={() => setDeleting(s.name)}
                 className="rounded px-1 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-500"
                 title="Delete this skill"
               >
@@ -368,6 +361,44 @@ export default function ProjectSkills({
           )}
         </div>
       </details>
+
+      {deleting && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-8"
+          onClick={(e) => e.target === e.currentTarget && setDeleting(null)}
+        >
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-sm font-semibold text-slate-800">Delete skill &quot;{deleting}&quot;?</h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">
+              The file <span className="font-mono text-[11px]">.sfharness/skills/{deleting}.md</span>{" "}
+              will be permanently deleted from the project folder. It cannot be recovered from
+              Dhruva, and agents stop receiving this knowledge immediately.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleting(null)}
+                className="rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  await fetch("/api/skills", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "delete", root, name: deleting }),
+                  });
+                  setDeleting(null);
+                  await refresh();
+                }}
+                className="rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+              >
+                Delete permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {viewing && (
         <div
