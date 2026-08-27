@@ -1048,19 +1048,27 @@ export default function WorkflowsPane({
                               : "queued - starts after the previous phase finishes clean"
                       }
                     >
-                      <span>
-                        {state === "done"
-                          ? "✓"
-                          : state === "current"
-                            ? live
-                              ? "●"
-                              : run.status === "done"
-                                ? "✓"
-                                : "■"
-                            : state === "started"
-                              ? "▶"
-                              : String(ci + 1)}
-                      </span>
+                      {(() => {
+                        const I =
+                          state === "done"
+                            ? Icon.check
+                            : state === "current"
+                              ? live
+                                ? Icon.running
+                                : run.status === "done"
+                                  ? Icon.check
+                                  : Icon.stop
+                              : state === "started"
+                                ? Icon.run
+                                : Icon.pending;
+                        return (
+                          <I
+                            size={11}
+                            strokeWidth={2.25}
+                            className={state === "current" && live ? "animate-pulse" : ""}
+                          />
+                        );
+                      })()}
                       {c.title}
                       {state === "started" && (
                         <span className="text-[11px] font-semibold uppercase">live</span>

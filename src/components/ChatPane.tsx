@@ -524,8 +524,8 @@ export default function ChatPane({
         {messages.length === 0 && (
           <div className="flex h-full items-center justify-center">
             <div className="max-w-md text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-200 text-xl">
-                💬
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                <Icon.chat size={22} strokeWidth={1.5} />
               </div>
               <h2 className="mt-4 text-base font-semibold">Agent chat</h2>
               <p className="mt-1.5 text-sm text-slate-500">

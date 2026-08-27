@@ -169,8 +169,8 @@ export default function ProjectSkills({
   return (
     <section className="rounded-xl border border-slate-200 bg-white">
       <header className="flex items-start gap-2.5 border-b border-slate-100 px-4 py-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-base">
-          📘
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+          <Icon.skill size={15} strokeWidth={1.75} />
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="text-xs font-semibold text-slate-800">Project skills</h3>
@@ -210,7 +210,7 @@ export default function ProjectSkills({
           </button>
         </div>
       ) : (
-      /* skills as compact boxes: click opens the editor, ✕ always visible */
+      /* skills as compact boxes: click opens the editor, remove is always visible */
       <div className="flex flex-wrap gap-2">
         {skills.map((s) => (
           <div

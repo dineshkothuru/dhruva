@@ -131,6 +131,7 @@ export const Icon = {
   blocked: Ban,
   info: Info,
   running: CircleDot,
+  run: Play,
   pending: CircleDashed,
   failed: CircleX,
   skipped: CircleSlash,

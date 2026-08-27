@@ -348,7 +348,7 @@ export default function Home() {
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md px-1 py-0.5 text-sm hover:bg-slate-100"
                 title="Pick a folder on this machine"
               >
-                📁
+                <Icon.folder size={15} strokeWidth={1.75} className="text-slate-500" />
               </button>
             </div>
             <button
