@@ -1,1 +1,74 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+/* ---- app-wide finish ---------------------------------------------------- */
+
+::selection {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+/* thin, quiet scrollbars everywhere (WebKit + Firefox) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* details/summary: no default triangle double-marker in WebKit */
+summary::-webkit-details-marker {
+  display: none;
+}
+
+/* keyboard focus that looks intentional, not browser-default */
+:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* buttons/links feel responsive to touch */
+button {
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+button:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+/* streaming content fades in rather than popping */
+@keyframes dhruva-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

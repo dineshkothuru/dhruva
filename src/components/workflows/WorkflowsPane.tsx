@@ -9,7 +9,7 @@ import { STEP_ROLES, ROLE_LABEL, ROLE_TIER } from "@/lib/workflows/schema";
 import { loadDefaultAgent, saveDefaultAgent } from "@/lib/agentStore";
 import { loadCustomModels, addCustomModel } from "@/lib/modelStore";
 import WorkflowBuilder, { type BuilderSeed } from "@/components/workflows/WorkflowBuilder";
-import RequirementCards, { parseRequirements } from "@/components/workflows/RequirementCards";
+import RequirementCards, { parseRequirements, ReqBody } from "@/components/workflows/RequirementCards";
 import { parseFindings, type Finding } from "@/lib/findings";
 
 const SEV_STYLE: Record<Finding["severity"], { border: string; chip: string }> = {
@@ -326,9 +326,9 @@ function StepBody({
                       {r.status}
                     </span>
                   </summary>
-                  <pre className="whitespace-pre-wrap break-words border-t border-slate-100 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
-                    {r.body}
-                  </pre>
+                  <div className="border-t border-slate-100 px-3 py-2.5">
+                    <ReqBody body={r.body} />
+                  </div>
                 </details>
               ))}
             </div>
@@ -777,7 +777,7 @@ export default function WorkflowsPane({
                   : "bg-sky-100 text-sky-700"
             }`}
           >
-            {run.status.replace("_", " ")}
+            <span className={`mr-1 inline-flex h-1.5 w-1.5 rounded-full ${run.status === "running" ? "animate-pulse bg-sky-500" : run.status === "waiting_gate" ? "animate-pulse bg-amber-500" : run.status === "done" ? "bg-emerald-500" : "bg-red-400"}`} />{run.status.replace("_", " ")}
           </span>
           <span className="ml-auto font-mono text-[10px] text-slate-400">run {run.runId}</span>
           {(run.status === "running" || run.status === "waiting_gate") && (
@@ -845,7 +845,7 @@ export default function WorkflowsPane({
         )}
         {/* the journey at a glance: where the run is, what's left, where the
             human comes in (gates marked). Pure render - zero tokens. */}
-        <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-y-2">
             {run.steps.map((s, i) => (
               <span key={s.id} className="flex items-center">
@@ -892,10 +892,10 @@ export default function WorkflowsPane({
             <details
               key={s.id}
               open={s.status === "running" || s.status === "waiting_gate" || s.status === "failed"}
-              className={`rounded-xl border border-l-4 bg-white ${
+              className={`rounded-xl border border-l-4 bg-white shadow-sm transition-shadow ${
                 STATUS_EDGE[s.status] ?? "border-l-slate-200"
               } ${
-                s.status === "waiting_gate" ? "border-amber-300 ring-1 ring-amber-200" : "border-slate-200"
+                s.status === "waiting_gate" ? "border-amber-300 ring-1 ring-amber-200 shadow-lg shadow-amber-100/70" : "border-slate-200"
               }`}
             >
               <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm">
@@ -1375,7 +1375,7 @@ export default function WorkflowsPane({
               {list.map((w) => (
                 <div
                   key={w.id}
-                  className={`group relative rounded-xl border bg-white transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md ${
+                  className={`group relative rounded-xl border bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md ${
                     selected?.id === w.id
                       ? "border-slate-900 ring-2 ring-slate-900/10"
                       : "border-slate-200"

@@ -295,9 +295,9 @@ export default function Home() {
         style={{ width: panelWidth }}
         className="flex shrink-0 flex-col bg-white"
       >
-        <div className="border-b border-slate-200 px-5 py-4">
-          <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-            <svg viewBox="0 0 64 64" className="h-5 w-5 shrink-0" aria-hidden>
+        <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 px-5 py-4">
+          <h1 className="flex items-center gap-2.5 text-lg font-semibold tracking-tight text-white">
+            <svg viewBox="0 0 64 64" className="h-6 w-6 shrink-0 rounded-lg ring-1 ring-white/20" aria-hidden>
               <rect width="64" height="64" rx="14" fill="#0f172a" />
               <path
                 d="M32 8 L36.5 27.5 L56 32 L36.5 36.5 L32 56 L27.5 36.5 L8 32 L27.5 27.5 Z"
@@ -306,7 +306,7 @@ export default function Home() {
               <circle cx="32" cy="32" r="3.4" fill="#fbbf24" />
             </svg>
             Dhruva
-            <span className="align-middle text-[10px] font-medium uppercase tracking-widest text-slate-400">
+            <span className="mt-0.5 align-middle text-[9px] font-medium uppercase tracking-[0.18em] text-slate-400">
               Salesforce delivery
             </span>
           </h1>
@@ -564,15 +564,16 @@ export default function Home() {
       {/* Right panel - chat & workflows (min-w-0: long unbroken output lines
           must wrap inside cards, never widen the panel past the viewport) */}
       <section className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-slate-50">
-        <div className="flex items-center gap-1 border-b border-slate-200 bg-white px-5 py-2.5">
+        <div className="flex items-center gap-1 border-b border-slate-200 bg-white px-5 py-2">
+          <div className="flex items-center gap-0.5 rounded-xl bg-slate-100 p-1">
           {([...(openFiles.length ? (["editor"] as Tab[]) : []), "chat", "workflows", "setup"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`relative rounded-lg px-3.5 py-1.5 text-sm font-medium capitalize transition ${
+              className={`relative rounded-lg px-3.5 py-1 text-sm font-medium capitalize transition ${
                 tab === t
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-800"
               }`}
             >
               {t}
@@ -584,7 +585,11 @@ export default function Home() {
               )}
             </button>
           ))}
-          <span className="ml-auto text-xs text-slate-400">
+          </div>
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-slate-400">
+            {connected && (
+              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+            )}
             {connected ? `working in ${result?.projectName}` : "no project attached"}
           </span>
         </div>

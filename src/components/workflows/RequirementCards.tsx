@@ -31,6 +31,71 @@ export function parseRequirements(output: string): ReqItem[] {
   return items;
 }
 
+/** Render a REQ block's body as labeled fields (BRD-REF, EVIDENCE, DESIGN…)
+ * instead of a text wall - backticked API names become code chips. Shared by
+ * the gate cards and the step-trace REQ cards. */
+const FIELD_RE = /^(BRD-REF|STATUS|EVIDENCE|ALREADY-PRESENT|PENDING|DESIGN|EFFORT|DEPENDS-ON):\s*(.*)$/;
+
+function inlineCode(v: string) {
+  return v.split("`").map((part, i) =>
+    i % 2 ? (
+      <code key={i} className="rounded bg-slate-100 px-1 py-px font-mono text-[10px] text-slate-700">
+        {part}
+      </code>
+    ) : (
+      part
+    ),
+  );
+}
+
+export function ReqBody({ body }: { body: string }) {
+  const fields: { label: string; value: string }[] = [];
+  let cur: { label: string; value: string } | null = null;
+  for (const line of body.split("\n")) {
+    const m = line.match(FIELD_RE);
+    if (m) {
+      cur = { label: m[1], value: m[2] };
+      fields.push(cur);
+    } else if (cur && line.trim()) {
+      cur.value += (cur.value ? " " : "") + line.trim();
+    }
+  }
+  if (fields.length === 0) {
+    return (
+      <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-600">{body}</pre>
+    );
+  }
+  return (
+    <dl className="space-y-1.5">
+      {fields
+        .filter((f) => f.label !== "STATUS") // status is the header chip
+        .map((f) => {
+          const none = f.value.trim() === "-" || f.value.trim() === "";
+          return (
+            <div key={f.label} className="flex gap-2.5">
+              <dt className="w-28 shrink-0 pt-0.5 text-right text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                {f.label.replace(/-/g, " ")}
+              </dt>
+              <dd
+                className={`min-w-0 flex-1 text-[11px] leading-relaxed ${
+                  none
+                    ? "text-slate-300"
+                    : f.label === "DESIGN"
+                      ? "rounded-md bg-sky-50/70 px-2 py-1 text-slate-800"
+                      : f.label === "PENDING"
+                        ? "font-medium text-amber-700"
+                        : "text-slate-700"
+                }`}
+              >
+                {none ? "none" : inlineCode(f.value)}
+              </dd>
+            </div>
+          );
+        })}
+    </dl>
+  );
+}
+
 const STATUS_STYLE: Record<string, string> = {
   "ALREADY IMPLEMENTED": "bg-emerald-50 text-emerald-700",
   PARTIAL: "bg-amber-50 text-amber-700",
@@ -143,9 +208,9 @@ export default function RequirementCards({
               <summary className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">
                 design details
               </summary>
-              <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-slate-50 p-2 text-xs text-slate-700">
-                {i.body}
-              </pre>
+              <div className="mt-1 rounded bg-slate-50 p-2.5">
+                <ReqBody body={i.body} />
+              </div>
             </details>
             <input
               value={comments[i.id] ?? ""}
