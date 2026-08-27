@@ -11,6 +11,7 @@ import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import { skillsPrompt } from "@/lib/projectSkills";
 import { OUTCOME_INSTRUCTION } from "@/lib/outcome";
+import { writeTranscript } from "@/lib/runTranscript";
 import { parseFindings } from "@/lib/findings";
 import { costBucket, countBucket, durationBucket, tokensBucket, track } from "@/lib/telemetry";
 import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
@@ -257,6 +258,9 @@ async function execute(run: RunState, def: WorkflowDef, startIndex = 0) {
   // later runs re-baseline - done for every terminal status incl. aborted.
   run.endCommit = (await commitRunResult(run.root, run.runId)) ?? undefined;
   await persist(run);
+  // a line-oriented copy beside the JSON, so the record can be searched
+  // cheaply instead of read whole
+  await writeTranscript(run);
   const totalIn = run.steps.reduce((n, x) => n + (x.usage?.inTokens ?? 0), 0);
   const totalOut = run.steps.reduce((n, x) => n + (x.usage?.outTokens ?? 0), 0);
   const totalCost = run.steps.reduce((n, x) => n + (x.usage?.costUsd ?? 0), 0);

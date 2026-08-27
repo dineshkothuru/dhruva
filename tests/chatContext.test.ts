@@ -155,7 +155,7 @@ describe("buildRunContext", () => {
   it("names each audit file so detail is read rather than guessed", () => {
     const block = buildRunContext([group()]);
     expect(block).toContain(".dhruva/runs/40c5de4c.json");
-    expect(block).toMatch(/read the relevant file/);
+    expect(block).toMatch(/read the matching part/);
   });
 
   it("marks the block as facts, not instructions to act on", () => {
@@ -199,9 +199,9 @@ describe("the archive is discoverable, not just the recent few", () => {
     expect(block).toContain(".dhruva/chats/*.json");
   });
 
-  it("tells the agent to LIST and read for work that is not summarised", () => {
+  it("tells the agent to search the record for work that is not summarised", () => {
     const block = buildRunContext([g]);
-    expect(block).toMatch(/LIST those directories/);
+    expect(block).toMatch(/search those directories/);
     expect(block).toContain("older work");
   });
 
@@ -211,5 +211,23 @@ describe("the archive is discoverable, not just the recent few", () => {
 
   it("still refuses to speak when the project has done nothing", () => {
     expect(buildRunContext([])).toBe("");
+  });
+});
+
+describe("retrieval is told to be cheap", () => {
+  const g = {
+    phases: [{ id: "r1", title: "Solution design", status: "done", stepsDone: 13, stepsTotal: 13 }],
+    state: "done",
+    startedHere: false,
+  };
+
+  it("warns that audit files are large", () => {
+    expect(buildRunContext([g])).toMatch(/50-100KB/);
+  });
+
+  it("tells the agent to search before opening anything", () => {
+    const block = buildRunContext([g]);
+    expect(block).toMatch(/SEARCH FIRST/);
+    expect(block).toMatch(/Never read a whole run file/);
   });
 });

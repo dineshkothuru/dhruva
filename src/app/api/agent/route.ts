@@ -6,6 +6,7 @@ import { skillsPrompt } from "@/lib/projectSkills";
 import { takeSnapshot } from "@/lib/snapshot";
 import { hasActiveRun, listRuns } from "@/lib/workflows/engine";
 import { parseOutcome } from "@/lib/outcome";
+import { ensureTranscript } from "@/lib/runTranscript";
 import {
   buildContext,
   buildRunContext,
@@ -94,6 +95,10 @@ export async function POST(req: Request) {
   let runGroups: RunGroupRef[] = [];
   try {
     const all = await listRuns(root);
+    // runs recorded before transcripts existed have no .md to search; write
+    // the ones we are about to point at, so the archive is searchable
+    // retroactively rather than only from here on
+    await Promise.all(all.slice(0, 12).map((r) => ensureTranscript(r)));
     runGroups = groupRunsByChain(all)
       .slice(0, 5)
       .map((g) => ({

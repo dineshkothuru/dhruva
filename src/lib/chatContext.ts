@@ -126,11 +126,15 @@ export function buildRunContext(groups: RunGroupRef[]): string {
     `                         feedback given at them. This is where "why did we build it\n` +
     `                         that way" is answered.\n` +
     `  .dhruva/chats/*.json - past conversations in this project.\n\n` +
+    `These files are LARGE - one run audit is routinely 50-100KB, far more than a single\n` +
+    `question is worth. SEARCH FIRST: grep those directories for the object, class,\n` +
+    `requirement id or phrase in question, then open only the file and section the match\n` +
+    `points at. Never read a whole run file to answer a narrow question.\n\n` +
     `The most recent deliveries are summarised below, a chain's phases grouped as one. If a ` +
     `question concerns something NOT listed here - older work, a decision made months ago, a ` +
-    `specific finding, what a step actually said, why something failed - LIST those directories ` +
-    `and read the relevant file. Do that rather than guessing or replying that you do not know; ` +
-    `the answer is almost certainly recorded.\n` +
+    `specific finding, what a step actually said, why something failed - search those ` +
+    `directories and read the matching part. Do that rather than guessing or replying that you ` +
+    `do not know; the answer is almost certainly recorded.\n` +
     `${blocks.join("\n")}\n\n`
   );
 }
