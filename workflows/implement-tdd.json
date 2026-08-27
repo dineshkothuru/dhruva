@@ -118,7 +118,7 @@
       "autoRevise": {
         "target": "implement",
         "trigger": "VERDICT:\\s*BLOCKED",
-        "maxRounds": 1
+        "maxRounds": 3
       },
       "prompt": "Review ONLY the changes listed below against the team standards AND against the TDD at {inputs.tddPath} (the changes must implement what the TDD specifies - flag deviations). Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nReport each finding in this exact shape (severity in parentheses):\nF<n> (critical | important | nit) [refs: <the REQ-/UX-/task ids this finding concerns, comma-separated - the SAME ids used in the design/plan under review; '-' only for a truly global finding>]: <short title>\n  Where: <file / component / section>\n  Problem: <what is wrong>\n  Fix: <the concrete change to make>\ncritical = would break in production or violates a blocking standard; important = should be fixed before deploy; nit = style/polish, never blocks.\nFor each critical/important finding that belongs to a build-plan task, ALSO output one line:\nREOPEN T-<n>: <what to fix and why>\n(the engine reopens exactly those tasks for rework; never REOPEN for a nit). Then end with exactly one line:\nVERDICT: READY - or - VERDICT: BLOCKED, followed by the critical/important finding ids.\nnit-only findings never block."
     },
