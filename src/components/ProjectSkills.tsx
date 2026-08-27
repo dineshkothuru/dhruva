@@ -172,45 +172,38 @@ export default function ProjectSkills({
         {injected > 0 && (
           <span className="text-[10px] text-slate-300">~{(injected / 1000).toFixed(1)}k chars injected</span>
         )}
-        <button
-          onClick={() => setAdding((v) => !v)}
-          className="ml-auto rounded px-1.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          title="Add project knowledge - injected into every agent prompt for this project"
-        >
-          {adding ? "✕" : "＋"}
-        </button>
       </div>
 
-      {skills.length === 0 && !adding && (
+      {skills.length === 0 && (
         <p className="mt-1 text-[10px] text-slate-300">
           org-specific knowledge for agents - conventions, landmines, facts
         </p>
       )}
 
-      <div className="mt-1 space-y-0.5">
+      {/* skills as compact boxes: click opens the editor, ✕ always visible */}
+      <div className="mt-2 flex flex-wrap gap-2">
         {skills.map((s) => (
-          <div key={s.name} className="group flex items-center gap-1.5 rounded px-1 py-0.5 text-xs hover:bg-slate-50">
+          <div
+            key={s.name}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 py-1 pl-2.5 pr-1 text-xs hover:border-slate-300"
+          >
             <button
               onClick={() => onOpenFile?.(`.sfharness/skills/${s.name}.md`)}
-              className="flex-1 truncate text-left text-slate-600 hover:text-slate-900"
-              title="Open in the editor"
+              className="font-medium text-slate-600 hover:text-slate-900"
+              title={`open in the editor · ${(s.chars / 1000).toFixed(1)}k chars${s.applyTo ? ` · applies to ${s.applyTo}` : ""}`}
             >
               📘 {s.name}
             </button>
             {s.applyTo && (
-              <span
-                className="max-w-24 truncate rounded bg-sky-50 px-1 font-mono text-[8px] text-sky-600"
-                title={`scoped: injected only for steps touching ${s.applyTo}`}
-              >
-                {s.applyTo}
+              <span className="rounded bg-sky-100 px-1 text-[8px] font-semibold uppercase text-sky-600" title={s.applyTo}>
+                scoped
               </span>
             )}
             {s.truncated && (
-              <span className="text-[9px] font-semibold text-amber-600" title="exceeds the per-skill injection budget - trim it">
+              <span className="rounded bg-amber-100 px-1 text-[8px] font-semibold uppercase text-amber-600" title="exceeds the injection budget - trim it">
                 truncated
               </span>
             )}
-            <span className="text-[9px] text-slate-300">{(s.chars / 1000).toFixed(1)}k</span>
             <button
               onClick={async () => {
                 if (!confirm(`Delete skill "${s.name}"?`)) return;
@@ -221,16 +214,33 @@ export default function ProjectSkills({
                 });
                 await refresh();
               }}
-              className="invisible rounded px-1 text-[10px] text-slate-300 hover:text-red-500 group-hover:visible"
+              className="rounded px-1 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-500"
+              title="Delete this skill"
             >
               ✕
             </button>
           </div>
         ))}
+        <button
+          onClick={() => setAdding(true)}
+          className="rounded-lg border border-dashed border-slate-300 px-2.5 py-1 text-xs text-slate-400 hover:border-slate-400 hover:text-slate-600"
+        >
+          ＋ Add skill
+        </button>
       </div>
 
       {adding && (
-        <div className="mt-2 rounded-lg border border-dashed border-slate-300 p-2">
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-8"
+          onClick={(e) => e.target === e.currentTarget && setAdding(false)}
+        >
+          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+            <div className="flex items-center">
+              <h3 className="text-sm font-semibold">Add a project skill</h3>
+              <button onClick={() => setAdding(false)} className="ml-auto rounded px-2 text-slate-400 hover:text-slate-700">
+                ✕
+              </button>
+            </div>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -294,6 +304,7 @@ export default function ProjectSkills({
               className="hidden"
               onChange={(e) => void upload(e.target.files?.[0])}
             />
+            </div>
           </div>
         </div>
       )}
@@ -302,35 +313,27 @@ export default function ProjectSkills({
         <summary className="cursor-pointer text-[10px] font-medium uppercase tracking-widest text-slate-300 hover:text-slate-500">
           Team standards (read-only)
         </summary>
-        <div className="mt-1 space-y-0.5">
+        <div className="mt-2">
           {!lib && <p className="text-[10px] text-slate-300">loading…</p>}
           {lib && (
             <>
-              <button
-                onClick={() => setViewing({ title: "baseline", body: lib.baseline.body })}
-                className="block w-full truncate rounded px-1 py-0.5 text-left text-xs text-slate-500 hover:bg-slate-50"
-              >
-                📕 baseline
-              </button>
-              {lib.modules.map((m) => (
-                <button
-                  key={m.name}
-                  onClick={() => setViewing({ title: m.name, body: m.body })}
-                  className="block w-full truncate rounded px-1 py-0.5 text-left text-xs text-slate-500 hover:bg-slate-50"
-                >
-                  📕 {m.name}
-                </button>
-              ))}
-              {lib.personas.map((p) => (
-                <button
-                  key={p.name}
-                  onClick={() => setViewing({ title: `${p.name} (persona)`, body: p.body })}
-                  className="block w-full truncate rounded px-1 py-0.5 text-left text-xs text-slate-400 hover:bg-slate-50"
-                >
-                  🎭 {p.name}
-                </button>
-              ))}
-              <p className="pt-0.5 text-[9px] text-slate-300">
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { title: "baseline", body: lib.baseline.body, icon: "📕" },
+                  ...lib.modules.map((m) => ({ title: m.name, body: m.body, icon: "📕" })),
+                  ...lib.personas.map((p) => ({ title: `${p.name} (persona)`, body: p.body, icon: "🎭" })),
+                ].map((x) => (
+                  <button
+                    key={x.title}
+                    onClick={() => setViewing({ title: x.title, body: x.body })}
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                    title="view (read-only)"
+                  >
+                    {x.icon} {x.title.replace(" (persona)", "")}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[9px] text-slate-300">
                 shipped with Dhruva - same for every project, not editable here
               </p>
             </>
