@@ -535,6 +535,14 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
       const ok = await runStep(run, stepDef, step);
       step.endedAt = Date.now();
       if (!ok) {
+        // WHICH KIND of step failed - never the message, which routinely
+        // carries file paths and code
+        void track("step_failed", {
+          workflow_id: run.workflowId,
+          step_type: stepDef.type,
+          step_role: stepDef.role,
+          agent: run.agent,
+        });
         if (step.status === "running") step.status = "failed";
         if ((run.status as string) !== "aborted") run.status = "failed";
         await persist(run);

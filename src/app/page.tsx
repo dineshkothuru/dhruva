@@ -7,6 +7,7 @@ import FileTree from "@/components/FileTree";
 import ProjectSkills from "@/components/ProjectSkills";
 import ProjectSettingsPanel from "@/components/ProjectSettingsPanel";
 import TeamStandards from "@/components/TeamStandards";
+import { trackUi } from "@/lib/track";
 import FolderPicker from "@/components/FolderPicker";
 import PreviewPanel from "@/components/PreviewPanel";
 import EditorPane from "@/components/EditorPane";
@@ -46,6 +47,19 @@ export default function Home() {
   const [result, setResult] = useState<DetectionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("chat");
+
+  // app_opened is the denominator for every other number: without it an
+  // install that never finishes a workflow is invisible. Once per browser
+  // session, so a reload during a long run does not inflate the count.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("sfdh.opened")) return;
+      sessionStorage.setItem("sfdh.opened", "1");
+    } catch {
+      /* private mode - reporting once per mount is acceptable */
+    }
+    trackUi("app_opened");
+  }, []);
   const [loginMsg, setLoginMsg] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [panelWidth, setPanelWidth] = useState(380);
@@ -211,6 +225,7 @@ export default function Home() {
       localStorage.setItem("sfdh.lastPath", target);
       setLoading(false);
       if (det.status !== "connected") return;
+      trackUi("project_attached"); // activation: got past setup into real use
 
       // Restore this project's workspace (tabs) from a previous session.
       if (!openFiles.length || switching) {
@@ -562,7 +577,10 @@ export default function Home() {
           {([...(openFiles.length ? (["editor"] as Tab[]) : []), "chat", "workflows", "setup"] as Tab[]).map((t) => (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => {
+                setTab(t);
+                trackUi("feature_used", { feature: t });
+              }}
               className={`relative rounded-lg px-3.5 py-1 text-sm font-medium capitalize transition ${
                 tab === t
                   ? "bg-white text-slate-900 shadow-sm"

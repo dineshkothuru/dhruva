@@ -69,6 +69,15 @@ const SHIPPED_WORKFLOWS = new Set([
   "scratch-org",
 ]);
 
+/** Events the UI may ask the server to send. A fixed vocabulary: the browser
+ * never gets to invent an event name, and the payload still passes through
+ * the same allowlist as everything else. */
+export const CLIENT_EVENTS = new Set([
+  "app_opened", // the app was launched - the denominator for every other number
+  "project_attached", // a Salesforce project was connected (activation)
+  "feature_used", // a tab or tool was opened, from the `feature` vocabulary
+]);
+
 export type TelemetryProps = Record<string, string | number | boolean | undefined>;
 
 /** Persisted state is one random id - the minimum needed to count installs

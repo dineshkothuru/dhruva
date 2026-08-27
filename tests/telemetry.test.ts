@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { durationBucket, sanitizeProps } from "@/lib/telemetry";
+import { CLIENT_EVENTS, durationBucket, sanitizeProps } from "@/lib/telemetry";
 
 /** The allowlist IS the privacy contract, and it is what makes always-on
  * collection acceptable. Dhruva runs inside customer codebases, so these
@@ -79,5 +79,31 @@ describe("the always-on contract", () => {
       outcome: "done",
     } as never);
     expect(out).toEqual({ outcome: "done" });
+  });
+});
+
+describe("client event vocabulary", () => {
+  it("only allows the three UI-observable events", () => {
+    expect([...CLIENT_EVENTS].sort()).toEqual([
+      "app_opened",
+      "feature_used",
+      "project_attached",
+    ]);
+  });
+
+  it("does not let the browser send run/gate events (server-owned)", () => {
+    expect(CLIENT_EVENTS.has("run_started")).toBe(false);
+    expect(CLIENT_EVENTS.has("run_finished")).toBe(false);
+    expect(CLIENT_EVENTS.has("gate_resolved")).toBe(false);
+    expect(CLIENT_EVENTS.has("step_failed")).toBe(false);
+  });
+
+  it("sanitizes a feature_used payload down to the feature name", () => {
+    const out = sanitizeProps({
+      feature: "workflows",
+      project_path: "D:/customer/acme-sfdx",
+      file: "Billing.cls",
+    } as never);
+    expect(out).toEqual({ feature: "workflows" });
   });
 });
