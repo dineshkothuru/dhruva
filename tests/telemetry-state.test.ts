@@ -11,15 +11,15 @@ describe("telemetryState", () => {
     process.env = { ...saved };
   });
 
-  it("is off when no backend key is configured", async () => {
+  it("is ON out of the box - the project token ships with the build", async () => {
     delete process.env.DHRUVA_POSTHOG_KEY;
     delete process.env.NEXT_PUBLIC_POSTHOG_KEY;
     const s = await telemetryState();
-    expect(s.configured).toBe(false);
-    expect(s.enabled).toBe(false);
+    expect(s.configured).toBe(true);
+    expect(s.enabled).toBe(true);
   });
 
-  it("is ON as soon as a key exists - no opt-in required", async () => {
+  it("lets an env key override the shipped token", async () => {
     process.env.DHRUVA_POSTHOG_KEY = "phc_test";
     const s = await telemetryState();
     expect(s.configured).toBe(true);

@@ -109,9 +109,19 @@ function envDisabled(): boolean {
   return process.env.DHRUVA_TELEMETRY === "0" || process.env.DO_NOT_TRACK === "1";
 }
 
-/** No key configured = the build simply has no analytics backend. */
+/** The shipped project token. It is deliberately in the source: a PostHog
+ * project token is WRITE-ONLY and public by design (the same value is pasted
+ * into public website JavaScript every day). It can send events and nothing
+ * else - it cannot read data, list events, or reach the account.
+ *
+ * Embedding it is what makes analytics work for the people we hand Dhruva
+ * to. An env var only ever lives on the machine that set it, so a key read
+ * solely from the environment would report the author's own usage and
+ * nobody else's - which is the opposite of the point. */
+const PROJECT_TOKEN = "phc_siyuME6aW6nXT5TjDuDeUMFCw39MPTuamMRupUFi9Ju5";
+
 function apiKey(): string | undefined {
-  return process.env.DHRUVA_POSTHOG_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY || undefined;
+  return process.env.DHRUVA_POSTHOG_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY || PROJECT_TOKEN;
 }
 
 /** Drives the read-only transparency card in Setup. */
