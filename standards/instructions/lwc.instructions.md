@@ -16,6 +16,10 @@ When editing Lightning Web Components:
 - Surface user feedback with standard Salesforce UX patterns (toasts/spinners/errors).
 - Follow SLDS and accessibility requirements (labels, keyboard support, aria attributes).
 - No custom CSS: compose from lightning base components and SLDS utility classes only. Adding a component `.css` file requires a documented justification in the PR/design; prefer restructuring the markup instead.
+- Navigate with `NavigationMixin` and page references only - never `window.location` or hardcoded URLs (they break in Experience Cloud and app contexts).
+- Every `@wire` gets an error branch (`{ error, data }`) and every imperative Apex call a `catch`; surface failures to the user via `ShowToastEvent` with a safe message - no silent empty states.
+- Do not use `@track` (legacy) - fields are reactive by default; reassign objects/arrays to trigger rerenders.
+- Put user-facing text in Custom Labels, not hardcoded strings, so the org stays translatable.
 - Validate input on client side and re-validate on server side in Apex.
 - Keep API contracts (`@api`) minimal and stable.
 - Keep events explicit and documented via clear event names/payload shapes.

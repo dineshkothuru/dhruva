@@ -20,6 +20,9 @@ When editing Salesforce Apex classes:
 - Keep SOQL selective and query only fields actually required.
 - Keep DML operations batched and outside loops.
 - Keep exceptions explicit and meaningful; do not silently swallow errors.
+- Choose DML failure semantics deliberately: plain `insert/update` when the operation must roll back as one; `Database.insert(records, false)` when per-record failure is acceptable - and then HANDLE the `SaveResult`s (report failures), never discard them.
+- When several DML steps form one logical operation, protect the invariant with `Database.setSavepoint()`/`Database.rollback()` so a mid-sequence failure cannot leave half-applied state.
+- Design for testability: pass collaborating services/selectors in (constructor or parameter) rather than constructing them inline everywhere; use `@TestVisible` sparingly for seams, never to bypass business rules in tests.
 - Document only non-obvious business rules or constraints with concise comments.
 
 For performance and reliability:
