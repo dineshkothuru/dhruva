@@ -95,7 +95,7 @@
       "autoRevise": {
         "target": "write-doc",
         "trigger": "COVERAGE:\\s*INCOMPLETE",
-        "maxRounds": 3
+        "maxRounds": 1
       },
       "prompt": "Coverage verification. Do not modify any files.\nRead dhruva-docs/designs/{inputs.docName}-{runId}-ux.md and dhruva-docs/designs/{inputs.docName}-{runId}-tasks.json in full.\nApproved UX design:\n{steps.ux-design.output}\n\nFor EVERY UX-n block report one line:\n  UX-n - COVERED (spec section + task id) | MISSING FROM SPEC | NO TASK | DIVERGES (quote it)\nAlso flag spec content or tasks with no approved UX block behind them (scope creep). End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE - items <UX ids>."
     },

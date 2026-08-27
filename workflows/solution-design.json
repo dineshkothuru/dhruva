@@ -141,7 +141,7 @@
       "autoRevise": {
         "target": "write-doc",
         "trigger": "COVERAGE:\\s*INCOMPLETE",
-        "maxRounds": 3
+        "maxRounds": 1
       },
       "prompt": "Design coverage verification. Do not modify any files.\nRead IN FULL: (1) the original requirement text below and every attached document it references, (2) dhruva-docs/designs/{inputs.docName}-{runId}-hld.md, (3) dhruva-docs/designs/{inputs.docName}-{runId}-tdd.md.\nRequirement:\n{inputs.requirement}\n\nApproved per-requirement design:\n{steps.analyse.output}\n\nFor EVERY REQ item, report one line:\n  REQ-xxx - COVERED (HLD section N / TDD section M) | MISSING FROM DOCS | DIVERGES (the docs say something different from the approved design - quote it)\nAlso flag anything in the docs that has no approved requirement behind it (scope creep), any REQ with pending work that no Acceptance Criterion traces ([traces: REQ-xxx]), and any Build Plan task in the TDD that traces to nothing.\nBe strict: no section reference = not covered. End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE - items <REQ-ids>.\nIf an approved UX design exists (below), ALSO report one line per UX-n: covered in the TDD's UI section + a task traces to it, or MISSING.\nApproved UX design (may be empty):\n{steps.ux-design.output}"
     },
