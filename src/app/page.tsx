@@ -568,6 +568,9 @@ export default function Home() {
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
+              <span className="mr-1" aria-hidden>
+                {t === "editor" ? "📝" : t === "chat" ? "💬" : t === "workflows" ? "⚡" : "⚙️"}
+              </span>
               {t}
               {t === "workflows" && pendingGates > 0 && (
                 <span
