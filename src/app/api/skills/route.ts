@@ -52,6 +52,12 @@ export async function POST(req: Request) {
     } else {
       return NextResponse.json({ error: `unsupported type ${ext} - md, txt, docx, pdf` }, { status: 400 });
     }
+    // optional scoping from the UI dropdown - written into the file's
+    // frontmatter so the file itself carries its scope
+    const applyTo = String(form.get("applyTo") ?? "").trim();
+    if (applyTo && /^[\w*/{},.\- ]{1,150}$/.test(applyTo) && !content.startsWith("---")) {
+      content = `---\napplyTo: "${applyTo}"\n---\n\n${content}`;
+    }
     try {
       await saveSkill(root, name, content);
     } catch (e) {

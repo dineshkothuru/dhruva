@@ -2,7 +2,6 @@
 mode: agent
 description: Scaffold or update LWC with SLDS, accessibility, and Apex integration patterns.
 # No tools list: inherits your full default tool set so editing and terminal
-# access always resolve. VS Code silently ignores unrecognized tool names.
 ---
 
 You are implementing a Lightning Web Component in a Salesforce DX repo.

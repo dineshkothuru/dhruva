@@ -1,4 +1,4 @@
-# Copilot Instructions for This Salesforce DX Repository
+# Team Standards for This Salesforce DX Repository
 
 Follow Salesforce-first patterns and keep changes production-safe.
 

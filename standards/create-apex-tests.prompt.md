@@ -2,7 +2,6 @@
 mode: agent
 description: Create or update Apex tests with bulk, positive, and negative assertions.
 # No tools list: inherits your full default tool set so editing and terminal
-# access always resolve. VS Code silently ignores unrecognized tool names.
 ---
 
 You are working in a Salesforce DX repository.

@@ -17,9 +17,28 @@ interface SkillMeta {
 const COVERED_HINT =
   "Already covered by the team standards: Apex (classes, triggers, async, tests), LWC, flows, " +
   "security & FLS, naming, logging, metadata, deployments. Write only what is TRUE OF THIS ORG " +
-  "and not derivable from code - conventions, landmines, org facts. Optional scoping: start the " +
-  'file with ---\\napplyTo: "force-app/main/default/lwc/**"\\n--- to inject it only for steps ' +
-  "touching matching files (analysis steps always get everything).";
+  "and not derivable from code - conventions, landmines, org facts.";
+
+/** Friendly scoping choices - the glob is written into the file's frontmatter
+ * on save; "Everything" writes none. Mirrors the areas the standards cover. */
+const SCOPES: { label: string; glob: string }[] = [
+  { label: "Everything (always injected)", glob: "" },
+  { label: "Apex classes", glob: "force-app/main/default/classes/**/*.cls" },
+  { label: "Apex triggers", glob: "force-app/main/default/triggers/**" },
+  { label: "LWC", glob: "force-app/main/default/lwc/**" },
+  { label: "Aura", glob: "force-app/main/default/aura/**" },
+  { label: "Flows", glob: "force-app/main/default/flows/**" },
+  { label: "Objects & fields", glob: "force-app/main/default/objects/**" },
+  { label: "Permissions (perm sets/profiles)", glob: "force-app/main/default/{permissionsets,profiles}/**" },
+  { label: "Metadata XML", glob: "force-app/main/default/**/*-meta.xml" },
+  { label: "Custom glob…", glob: "__custom__" },
+];
+
+function withScope(content: string, glob: string): string {
+  const g = glob.trim();
+  if (!g) return content;
+  return `---\napplyTo: "${g}"\n---\n\n${content}`;
+}
 
 export default function ProjectSkills({
   root,
@@ -34,6 +53,9 @@ export default function ProjectSkills({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [content, setContent] = useState("");
+  const [scope, setScope] = useState("");
+  const [customGlob, setCustomGlob] = useState("");
+  const effectiveGlob = scope === "__custom__" ? customGlob : scope;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -88,7 +110,7 @@ export default function ProjectSkills({
       const r = await fetch("/api/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", root, name: slug, content }),
+        body: JSON.stringify({ action: "save", root, name: slug, content: withScope(content, effectiveGlob) }),
       });
       const d = await r.json();
       if (!r.ok) setError(String(d.error ?? "could not save"));
@@ -117,6 +139,7 @@ export default function ProjectSkills({
       fd.append("root", root);
       fd.append("name", slug);
       fd.append("file", f);
+      if (effectiveGlob.trim()) fd.append("applyTo", effectiveGlob.trim());
       const r = await fetch("/api/skills", { method: "POST", body: fd });
       const d = await r.json();
       if (!r.ok) setError(String(d.error ?? "could not upload"));
@@ -222,6 +245,30 @@ export default function ProjectSkills({
             placeholder="Paste plain text - saved as an .md file and injected into every agent prompt for this project."
             className="mt-1.5 w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-400"
           />
+          <label className="mt-1.5 block text-[10px] font-medium text-slate-500">
+            Applies to (optional - steps not touching matching files skip this skill; analysis
+            steps always get everything)
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+              className="mt-0.5 block w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-400"
+            >
+              {SCOPES.map((s) => (
+                <option key={s.label} value={s.glob}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {scope === "__custom__" && (
+            <input
+              value={customGlob}
+              onChange={(e) => setCustomGlob(e.target.value)}
+              placeholder="glob, e.g. force-app/main/default/classes/**/*Batch*.cls"
+              spellCheck={false}
+              className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 font-mono text-[11px] outline-none focus:border-slate-400"
+            />
+          )}
           <p className="mt-1 text-[9px] leading-relaxed text-slate-400">{COVERED_HINT}</p>
           {error && <p className="mt-1 text-[10px] text-red-600">{error}</p>}
           <div className="mt-1.5 flex items-center gap-1.5">
