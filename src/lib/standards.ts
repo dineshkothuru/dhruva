@@ -8,7 +8,6 @@
  * (or human) wrote the code.
  */
 
-export const STANDARDS_VERSION = "1";
 
 /** Injected into every code-writing agent step. Keep tight - rules, not prose. */
 export const STANDARDS_PROMPT = `SALESFORCE DEVELOPMENT STANDARDS (mandatory):

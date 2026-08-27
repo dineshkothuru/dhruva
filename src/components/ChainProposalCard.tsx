@@ -29,7 +29,7 @@ export interface ChainSlot {
 
 /** A phase's face, picked from its workflow id and title. Shared with the
  * catalog so the same workflow looks the same everywhere. */
-export function chainIcon(id: string, title: string): IconType {
+function chainIcon(id: string, title: string): IconType {
   return wfIconFor(id, title);
 }
 

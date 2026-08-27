@@ -10,6 +10,7 @@ import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import { skillsPrompt } from "@/lib/projectSkills";
+import { OUTCOME_INSTRUCTION } from "@/lib/outcome";
 import { parseFindings } from "@/lib/findings";
 import { costBucket, countBucket, durationBucket, tokensBucket, track } from "@/lib/telemetry";
 import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
@@ -766,7 +767,11 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         skills.block +
         `\n` +
         template(def.prompt ?? "", run) +
-        feedbackBlock;
+        feedbackBlock +
+        // one source of truth for the outcome contract: the engine appends it
+        // so every agent step gets it, INCLUDING user-authored custom
+        // workflows, and the prompt can never drift from the parser
+        OUTCOME_INSTRUCTION;
       // Model resolution, most specific wins:
       // 1. the user's per-ROLE model for this run (the Models-by-role setting)
       // 2. the role's tier through the agent's shipped tiers map
