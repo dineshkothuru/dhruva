@@ -13,6 +13,22 @@ import RequirementCards, { parseRequirements, ReqBody } from "@/components/workf
 import { parseFindings, type Finding } from "@/lib/findings";
 
 
+
+/** Workflow identity for catalog cards - same house style as the role cards. */
+const WF_META: Record<string, { icon: string; tint: string }> = {
+  "bug-fix": { icon: "🐞", tint: "bg-rose-100 text-rose-700" },
+  "feature-dev": { icon: "✨", tint: "bg-indigo-100 text-indigo-700" },
+  "solution-design": { icon: "📐", tint: "bg-indigo-100 text-indigo-700" },
+  "ux-design": { icon: "🎨", tint: "bg-fuchsia-100 text-fuchsia-700" },
+  "implement-tdd": { icon: "🛠️", tint: "bg-slate-200 text-slate-700" },
+  "test-gen": { icon: "🧪", tint: "bg-emerald-100 text-emerald-700" },
+  "run-tests": { icon: "▶️", tint: "bg-emerald-100 text-emerald-700" },
+  "retrieve-sync": { icon: "🔄", tint: "bg-amber-100 text-amber-700" },
+  "deploy-preview": { icon: "👁️", tint: "bg-amber-100 text-amber-700" },
+  "validate-deploy": { icon: "🛡️", tint: "bg-amber-100 text-amber-700" },
+  "scratch-org": { icon: "🌱", tint: "bg-emerald-100 text-emerald-700" },
+};
+
 /** Visual identity per role - icon tile tint, what it means, which steps use it. */
 const ROLE_META: Record<string, { icon: string; tint: string; blurb: string; steps: string[] }> = {
   read: { icon: "🔍", tint: "bg-sky-100 text-sky-700", blurb: "investigates code and documents before anything changes", steps: ["locate", "plan", "assess"] },
@@ -1403,15 +1419,51 @@ export default function WorkflowsPane({
                   }`}
                 >
                   <button onClick={() => pick(w)} className="w-full p-4 text-left">
-                    <div className="flex items-center gap-2 text-sm font-semibold">
-                      {w.title}
-                      {w.custom && (
-                        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-600">
-                          {w.scope === "project" ? "custom · this project" : "custom · all projects"}
-                        </span>
-                      )}
+                    <div className="flex items-start gap-2.5">
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base ${
+                          (WF_META[w.id] ?? { tint: "bg-violet-100 text-violet-700" }).tint
+                        }`}
+                      >
+                        {(WF_META[w.id] ?? { icon: "🧩" }).icon}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
+                          {w.title}
+                          {w.custom && (
+                            <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-violet-600">
+                              {w.scope === "project" ? "custom · this project" : "custom · all projects"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{w.description}</p>
+                      </div>
                     </div>
-                    <p className="mt-1 line-clamp-3 text-xs text-slate-500">{w.description}</p>
+                    {Array.isArray(w.steps) && w.steps.length > 0 && (
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
+                        <span className="rounded bg-slate-100 px-1.5 py-px text-[9px] font-semibold text-slate-500">
+                          {w.steps.length} steps
+                        </span>
+                        {(() => {
+                          const gates = w.steps!.filter((st) => (st as { type?: string }).type === "gate").length;
+                          const agents = w.steps!.filter((st) => (st as { type?: string }).type === "agent").length;
+                          return (
+                            <>
+                              {agents > 0 && (
+                                <span className="rounded bg-indigo-50 px-1.5 py-px text-[9px] font-semibold text-indigo-600">
+                                  {agents} agent
+                                </span>
+                              )}
+                              {gates > 0 && (
+                                <span className="rounded bg-amber-50 px-1.5 py-px text-[9px] font-semibold text-amber-700">
+                                  🙋 {gates} human gate{gates === 1 ? "" : "s"}
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </button>
                   <span className="absolute right-2 top-2 flex gap-0.5">
                     <button
