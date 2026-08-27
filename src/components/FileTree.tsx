@@ -7,24 +7,45 @@ interface Entry {
   type: "dir" | "file";
 }
 
-const FILE_ICONS: Record<string, string> = {
-  cls: "🟦",
-  trigger: "⚡",
-  js: "🟨",
-  ts: "🟦",
-  html: "🌐",
-  css: "🎨",
-  xml: "📄",
-  json: "🧾",
-  md: "📘",
-  apex: "🟦",
-  soql: "🔍",
+/** File badges: a tinted letter tile per type - reads like an IDE, not a chat. */
+const FILE_BADGES: Record<string, { l: string; c: string }> = {
+  cls: { l: "A", c: "bg-sky-100 text-sky-700" },
+  trigger: { l: "T", c: "bg-amber-100 text-amber-700" },
+  js: { l: "J", c: "bg-yellow-100 text-yellow-700" },
+  ts: { l: "TS", c: "bg-sky-100 text-sky-700" },
+  html: { l: "<>", c: "bg-orange-100 text-orange-700" },
+  css: { l: "#", c: "bg-violet-100 text-violet-700" },
+  xml: { l: "X", c: "bg-slate-100 text-slate-500" },
+  json: { l: "{}", c: "bg-slate-100 text-slate-500" },
+  md: { l: "M", c: "bg-indigo-100 text-indigo-700" },
+  soql: { l: "Q", c: "bg-emerald-100 text-emerald-700" },
+  txt: { l: "≡", c: "bg-slate-100 text-slate-400" },
+  log: { l: "≡", c: "bg-slate-100 text-slate-400" },
 };
 
-function iconFor(name: string, type: Entry["type"], open: boolean) {
-  if (type === "dir") return open ? "📂" : "📁";
+/** Salesforce metadata folders get a typed chip so the tree explains the org. */
+const DIR_CHIPS: Record<string, { chip: string; c: string }> = {
+  classes: { chip: "Apex", c: "bg-sky-100 text-sky-700" },
+  triggers: { chip: "Triggers", c: "bg-amber-100 text-amber-700" },
+  lwc: { chip: "LWC", c: "bg-indigo-100 text-indigo-700" },
+  aura: { chip: "Aura", c: "bg-violet-100 text-violet-700" },
+  objects: { chip: "Objects", c: "bg-emerald-100 text-emerald-700" },
+  flows: { chip: "Flows", c: "bg-fuchsia-100 text-fuchsia-700" },
+  permissionsets: { chip: "Perms", c: "bg-rose-100 text-rose-700" },
+  profiles: { chip: "Profiles", c: "bg-rose-100 text-rose-700" },
+  layouts: { chip: "Layouts", c: "bg-slate-100 text-slate-500" },
+  flexipages: { chip: "Pages", c: "bg-slate-100 text-slate-500" },
+  staticresources: { chip: "Static", c: "bg-slate-100 text-slate-500" },
+};
+
+function FileBadge({ name }: { name: string }) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  return FILE_ICONS[ext] ?? "📄";
+  const b = FILE_BADGES[ext] ?? { l: "·", c: "bg-slate-100 text-slate-400" };
+  return (
+    <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-[5px] text-[7.5px] font-bold ${b.c}`}>
+      {b.l}
+    </span>
+  );
 }
 
 async function listDir(root: string, dir: string): Promise<Entry[]> {
@@ -82,35 +103,60 @@ function Node({
 
   const isSelected = entry.type === "file" && selected === rel;
 
+  const dirChip = entry.type === "dir" ? DIR_CHIPS[entry.name.toLowerCase()] : undefined;
+
   return (
-    <div>
+    <div className="relative">
       <button
         onClick={toggle}
-        className={`flex w-full items-center gap-1.5 rounded px-1.5 py-[3px] text-left text-xs hover:bg-slate-100 ${
-          isSelected ? "bg-slate-200 font-medium" : ""
+        className={`group flex w-full items-center gap-1.5 rounded-md px-1.5 py-[3px] text-left text-xs transition-colors ${
+          isSelected
+            ? "bg-indigo-50 font-medium text-indigo-900 shadow-[inset_2px_0_0_#6366f1]"
+            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
         }`}
-        style={{ paddingLeft: `${6 + depth * 14}px` }}
+        style={{ paddingLeft: `${6 + depth * 13}px` }}
         title={rel}
       >
-        <span className="shrink-0 text-[11px]">{iconFor(entry.name, entry.type, open)}</span>
-        <span className="truncate">{entry.name}</span>
+        {entry.type === "dir" ? (
+          <span
+            className={`inline-block w-3 shrink-0 text-center text-[9px] text-slate-400 transition-transform ${open ? "rotate-90" : ""}`}
+          >
+            ▶
+          </span>
+        ) : (
+          <FileBadge name={entry.name} />
+        )}
+        <span className={`truncate ${entry.type === "dir" ? "font-medium" : ""}`}>{entry.name}</span>
+        {dirChip && (
+          <span className={`ml-auto rounded px-1 py-px text-[8px] font-semibold ${dirChip.c}`}>
+            {dirChip.chip}
+          </span>
+        )}
         {open && children === null && (
           <span className="ml-auto text-[10px] text-slate-400">…</span>
         )}
       </button>
-      {open &&
-        children?.map((c) => (
-          <Node
-            key={c.name}
-            root={root}
-            rel={rel ? `${rel}/${c.name}` : c.name}
-            entry={c}
-            depth={depth + 1}
-            onOpenFile={onOpenFile}
-            selected={selected}
-            autoOpenPath={autoOpenPath}
+      {open && children && children.length > 0 && (
+        <div className="relative">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute bottom-0 top-0 w-px bg-slate-200/70"
+            style={{ left: `${11 + depth * 13}px` }}
           />
-        ))}
+          {children.map((c) => (
+            <Node
+              key={c.name}
+              root={root}
+              rel={rel ? `${rel}/${c.name}` : c.name}
+              entry={c}
+              depth={depth + 1}
+              onOpenFile={onOpenFile}
+              selected={selected}
+              autoOpenPath={autoOpenPath}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -209,9 +255,7 @@ export default function FileTree({
                 }`}
                 title={r}
               >
-                <span className="shrink-0 text-[11px]">
-                  {iconFor(r.split("/").pop() ?? r, "file", false)}
-                </span>
+                <FileBadge name={r.split("/").pop() ?? r} />
                 <span className="truncate font-medium">{r.split("/").pop()}</span>
                 <span className="ml-1 truncate text-[10px] text-slate-400">
                   {r.split("/").slice(0, -1).join("/")}
