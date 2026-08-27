@@ -5,6 +5,7 @@ import pkg from "../../package.json";
 import type { DetectionResult } from "@/lib/types";
 import FileTree from "@/components/FileTree";
 import ProjectSkills from "@/components/ProjectSkills";
+import ProjectSettingsPanel from "@/components/ProjectSettingsPanel";
 import FolderPicker from "@/components/FolderPicker";
 import PreviewPanel from "@/components/PreviewPanel";
 import EditorPane from "@/components/EditorPane";
@@ -502,6 +503,7 @@ export default function Home() {
                 }
               />
               <ProjectSkills key={`skills-${result.path}`} root={result.path} onOpenFile={openFile} />
+              <ProjectSettingsPanel key={`pset-${result.path}`} root={result.path} />
             </div>
           )}
 

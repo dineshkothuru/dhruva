@@ -258,21 +258,6 @@ export default function WorkflowsPane({
   const [designing, setDesigning] = useState(false);
   // duplicate-to-customize: the workflow the builder is seeded from
   const [seed, setSeed] = useState<CatalogItem | null>(null);
-  // per-project settings (.sfharness/settings.json) — UX design config
-  const [pset, setPset] = useState<{
-    ux?: { enabled: boolean; designDir: string; rules: string };
-  } | null>(null);
-  const [psetSaved, setPsetSaved] = useState(false);
-  async function savePset(next: { ux: { enabled: boolean; designDir: string; rules: string } }) {
-    setPset(next);
-    setPsetSaved(false);
-    const res = await fetch("/api/project-settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ root, settings: next }),
-    });
-    if (res.ok) setPsetSaved(true);
-  }
   const [runFilter, setRunFilter] = useState("");
 
   /** Filter runs by anything a human would search on: title, status, agent,
@@ -361,16 +346,6 @@ export default function WorkflowsPane({
       if (!cancelled && ok) setCatalog(data.workflows as CatalogItem[]);
       const runsRes = await api({ action: "runs", root });
       if (!cancelled && runsRes.ok) setHistory((runsRes.data.runs as RunState[]) ?? []);
-      try {
-        const ps = await fetch("/api/project-settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ root }),
-        }).then((r) => r.json());
-        if (!cancelled) setPset(ps.settings ?? {});
-      } catch {
-        /* settings unavailable — panel shows defaults */
-      }
     })();
     return () => {
       cancelled = true;
@@ -949,56 +924,6 @@ export default function WorkflowsPane({
             write-doc · Implement = implement (all workflows) · Review = design-review, code review ·
             Trace/coverage = coverage-check, traceability.
           </p>
-        </div>
-      </details>
-
-      <details className="mt-4 rounded-xl border border-slate-200 bg-white">
-        <summary className="cursor-pointer px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
-          Project settings — UX design{pset?.ux?.enabled ? " (on)" : " (off)"}
-        </summary>
-        <div className="space-y-3 border-t border-slate-100 p-4">
-          <p className="text-[11px] text-slate-400">
-            Per-project (.sfharness/settings.json). When ON, Solution design adds UX steps for the
-            UI-scoped requirements — designed under the rules below, critiqued, gated, and carried
-            into the TDD + build-plan tasks. When OFF, Solution design is unchanged.
-          </p>
-          {(() => {
-            const ux = pset?.ux ?? { enabled: false, designDir: "docs/design", rules: "" };
-            return (
-              <>
-                <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={ux.enabled}
-                    onChange={(e) => savePset({ ux: { ...ux, enabled: e.target.checked } })}
-                  />
-                  Include UX design in Solution design runs
-                </label>
-                <label className="block text-[11px] font-medium text-slate-500">
-                  Standing design folder (style guides, conventions — read on every UX design)
-                  <input
-                    value={ux.designDir}
-                    onChange={(e) => setPset({ ux: { ...ux, designDir: e.target.value } })}
-                    onBlur={() => savePset({ ux: { ...ux, designDir: ux.designDir.trim() || "docs/design" } })}
-                    spellCheck={false}
-                    className="mt-1 block w-72 rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[11px] outline-none focus:border-slate-400"
-                  />
-                </label>
-                <label className="block text-[11px] font-medium text-slate-500">
-                  Project UX rules (injected into every UX design prompt)
-                  <textarea
-                    value={ux.rules}
-                    onChange={(e) => setPset({ ux: { ...ux, rules: e.target.value } })}
-                    onBlur={() => savePset({ ux })}
-                    rows={4}
-                    placeholder={"e.g. SLDS only, no custom CSS. Tables use lightning-datatable. Forms are two-column. Record pages use standard layouts."}
-                    className="mt-1 block w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs outline-none focus:border-slate-400"
-                  />
-                </label>
-                {psetSaved && <p className="text-[10px] text-emerald-600">saved</p>}
-              </>
-            );
-          })()}
         </div>
       </details>
 
