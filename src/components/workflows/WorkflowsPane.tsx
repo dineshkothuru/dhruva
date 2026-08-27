@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
+import { parseOutcome, stripOutcome } from "@/lib/outcome";
 import type { RunState } from "@/lib/workflows/schema";
 import { Icon, ROLE_ICON, WF_ICON, wfIconFor, type IconType } from "@/components/icons";
 import CliResult from "@/components/workflows/CliResult";
@@ -213,7 +214,7 @@ function fmtCost(c: number): string {
 /** Structured step-output view: agent narration as prose, tool calls as
  * rows, exit/engine/error lines as badges; auto-follows while streaming. */
 function StepBody({
-  output,
+  output: rawOutput,
   type,
   running,
 }: {
@@ -221,6 +222,12 @@ function StepBody({
   type: string;
   running: boolean;
 }) {
+  // The agent states its own outcome in a fixed block when the workflow asks
+  // for one. That is authoritative; the pattern-counting further down stays
+  // as the fallback for older runs and customs that have not adopted it.
+  const stated = parseOutcome(rawOutput);
+  const output = stated ? stripOutcome(rawOutput) : rawOutput;
+
   const boxRef = useRef<HTMLDivElement>(null);
   // structured view by default; the toggle shows the untouched raw trace
   const [raw, setRaw] = useState(false);
@@ -502,6 +509,9 @@ function StepBody({
   if (filesLine) produced.push(`${filesLine[1].split(",").length} file(s) named for retrieval`);
   const uxBlocks = (output.match(/^UX-\d+/gm) ?? []).length;
   if (uxBlocks > 0) produced.push(`${uxBlocks} UX component designs`);
+  // whatever the agent stated replaces the guesses entirely - mixing the two
+  // would double-count the same work in different words
+  const producedFinal = stated?.produced.length ? stated.produced : produced;
 
   // ---- two-section layout (activity vs output): while the agent runs, WHAT
   // IT IS READING is the story; once done, WHAT IT PRODUCED is. Activity =
@@ -897,10 +907,10 @@ function StepBody({
             strokeWidth={2}
             className={`shrink-0 ${tab === "result" ? "text-emerald-600" : ""}`}
           />
-          <span className="shrink-0">{produced.length > 0 ? "Outcome" : "Result"}</span>
-          {produced.length > 0 && (
+          <span className="shrink-0">{producedFinal.length > 0 || stated?.summary ? "Outcome" : "Result"}</span>
+          {(stated?.summary || producedFinal.length > 0) && (
             <span className="hidden truncate font-normal text-emerald-900/60 lg:inline">
-              {produced.join(" · ")}
+              {stated?.summary || producedFinal.join(" · ")}
             </span>
           )}
         </button>
@@ -920,6 +930,42 @@ function StepBody({
           activitySegs.map((seg, i) => renderSeg(seg, i))
         ) : (
           <>
+            {stated && (stated.summary || stated.produced.length > 0) && (
+              <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
+                {stated.summary && (
+                  <p className="text-xs leading-relaxed text-slate-800">{stated.summary}</p>
+                )}
+                {stated.produced.length > 0 && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {stated.produced.map((x, k) => (
+                      <li key={k} className="flex items-start gap-1.5 text-[11px] text-slate-600">
+                        <Icon.check
+                          size={11}
+                          strokeWidth={2.5}
+                          className="mt-0.5 shrink-0 text-emerald-600"
+                        />
+                        <span className="min-w-0">{inlineCode(x)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {stated.confidence && stated.confidence !== "high" && (
+                  <p
+                    className={`mt-1.5 flex items-start gap-1.5 rounded-md px-2 py-1 text-[11px] ${
+                      stated.confidence === "low"
+                        ? "bg-red-50 text-red-700"
+                        : "bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    <Icon.warn size={11} strokeWidth={2} className="mt-0.5 shrink-0" />
+                    <span>
+                      <span className="font-semibold uppercase">{stated.confidence}</span>{" "}
+                      confidence{stated.confidenceNote ? ` - ${stated.confidenceNote}` : ""}
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
             {!running && (verdict || coverage) && (
               <div
                 className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
