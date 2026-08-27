@@ -487,9 +487,11 @@ export default function ChatPane({
       if (inp.default !== undefined && !inp.hidden) out[inp.key] = inp.default;
     }
     if (workflowId === "implement-tdd") {
-      // the chain handoff: read the doc + build plan Solution design writes
-      out.tddPath = "docs/designs/solution-design-tdd.md";
-      out.tasksPath = "docs/designs/solution-design-tasks.json";
+      // The chain handoff. Design outputs are stamped with the run that made
+      // them, so this points at the PREVIOUS phase - the engine substitutes
+      // its id when the handoff fires.
+      out.tddPath = "docs/designs/solution-design-{prevRunId}-tdd.md";
+      out.tasksPath = "docs/designs/solution-design-{prevRunId}-tasks.json";
       out.deploy = false;
       return out;
     }

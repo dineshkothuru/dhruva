@@ -379,6 +379,13 @@ async function fireChain(run: RunState) {
     return;
   }
   const inputs = { ...(nextLink.inputs ?? {}) };
+  // the next phase consumes what this one produced, and those filenames are
+  // stamped with THIS run's id - resolve that before handing over
+  for (const [k, v] of Object.entries(inputs)) {
+    if (typeof v === "string" && v.includes("{prevRunId}")) {
+      inputs[k] = v.replaceAll("{prevRunId}", run.runId);
+    }
+  }
   // same server-side injection a route-started run gets (project UX settings)
   if (def.inputs.some((i) => i.key === "uxEnabled")) {
     const { readProjectSettings } = await import("@/lib/projectSettings");
@@ -1012,6 +1019,9 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
 const TEMPLATE_REF_CAP = 48_000;
 function template(text: string, run: RunState): string {
   return text
+    // {runId} lets a workflow stamp its outputs, so running the same workflow
+    // twice produces two designs instead of silently overwriting the first
+    .replace(/\{runId\}/g, run.runId)
     .replace(/\{inputs\.([\w-]+)\}/g, (_, k) => String(run.inputs[k] ?? ""))
     .replace(/\{steps\.([\w-]+)\.output\}/g, (_, id) => {
       const s = run.steps.find((x) => x.id === id);

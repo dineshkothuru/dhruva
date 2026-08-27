@@ -5,15 +5,15 @@
   "inputs": [
     {
       "key": "tddPath",
-      "label": "TDD path in the project (e.g. docs/designs/solution-design-tdd.md)",
+      "label": "TDD path (from a Solution design run - see docs/designs/)",
       "kind": "text",
-      "default": "docs/designs/solution-design-tdd.md"
+      "default": ""
     },
     {
       "key": "tasksPath",
-      "label": "Build-plan tasks file (from Solution design; blank/missing = single-pass build)",
+      "label": "Build-plan tasks file from the same run (blank = single-pass build)",
       "kind": "text",
-      "default": "docs/designs/solution-design-tasks.json"
+      "default": ""
     },
     {
       "key": "scope",
