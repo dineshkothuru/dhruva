@@ -690,7 +690,12 @@ export default function Home() {
             </p>
             <div className="mt-4 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-white">
-                <ProjectSkills key={`skills-${result.path}`} root={result.path} onOpenFile={openFile} />
+                <ProjectSkills
+                  key={`skills-${result.path}`}
+                  root={result.path}
+                  onOpenFile={openFile}
+                  active={tab === "setup"}
+                />
               </div>
               <div className="rounded-xl border border-slate-200 bg-white">
                 <ProjectSettingsPanel key={`pset-${result.path}`} root={result.path} />

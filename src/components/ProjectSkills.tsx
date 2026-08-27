@@ -21,18 +21,24 @@ const COVERED_HINT =
 
 /** Friendly scoping choices - the glob is written into the file's frontmatter
  * on save; "Everything" writes none. Mirrors the areas the standards cover. */
-const SCOPES: { label: string; glob: string }[] = [
-  { label: "Everything (always injected)", glob: "" },
-  { label: "Apex classes", glob: "force-app/main/default/classes/**/*.cls" },
-  { label: "Apex triggers", glob: "force-app/main/default/triggers/**" },
-  { label: "LWC", glob: "force-app/main/default/lwc/**" },
-  { label: "Aura", glob: "force-app/main/default/aura/**" },
-  { label: "Flows", glob: "force-app/main/default/flows/**" },
-  { label: "Objects & fields", glob: "force-app/main/default/objects/**" },
-  { label: "Permissions (perm sets/profiles)", glob: "force-app/main/default/{permissionsets,profiles}/**" },
-  { label: "Metadata XML", glob: "force-app/main/default/**/*-meta.xml" },
-  { label: "Custom glob…", glob: "__custom__" },
+const SCOPES: { label: string; short: string; glob: string }[] = [
+  { label: "Everything (always injected)", short: "everything", glob: "" },
+  { label: "Apex classes", short: "apex classes", glob: "force-app/main/default/classes/**/*.cls" },
+  { label: "Apex triggers", short: "triggers", glob: "force-app/main/default/triggers/**" },
+  { label: "LWC", short: "lwc", glob: "force-app/main/default/lwc/**" },
+  { label: "Aura", short: "aura", glob: "force-app/main/default/aura/**" },
+  { label: "Flows", short: "flows", glob: "force-app/main/default/flows/**" },
+  { label: "Objects & fields", short: "objects & fields", glob: "force-app/main/default/objects/**" },
+  { label: "Permissions (perm sets/profiles)", short: "permissions", glob: "force-app/main/default/{permissionsets,profiles}/**" },
+  { label: "Metadata XML", short: "metadata xml", glob: "force-app/main/default/**/*-meta.xml" },
+  { label: "Custom glob…", short: "", glob: "__custom__" },
 ];
+
+/** Friendly display for known scopes; custom globs show as-is. */
+function scopeLabel(glob: string | null): string {
+  if (!glob) return "everything";
+  return SCOPES.find((s) => s.glob === glob)?.short || glob;
+}
 
 function withScope(content: string, glob: string): string {
   const g = glob.trim();
@@ -43,10 +49,14 @@ function withScope(content: string, glob: string): string {
 export default function ProjectSkills({
   root,
   onOpenFile,
+  active = true,
 }: {
   root: string;
   /** Open a project-relative file in the built-in editor. */
   onOpenFile?: (rel: string) => void;
+  /** True while the hosting tab is visible - each activation re-fetches, so
+   * files added by other means (folder drops, other sessions) show up. */
+  active?: boolean;
 }) {
   const [skills, setSkills] = useState<SkillMeta[]>([]);
   const [injected, setInjected] = useState(0);
@@ -81,6 +91,7 @@ export default function ProjectSkills({
   }, [root]);
 
   useEffect(() => {
+    if (!active) return;
     let cancelled = false;
     (async () => {
       try {
@@ -100,7 +111,7 @@ export default function ProjectSkills({
     return () => {
       cancelled = true;
     };
-  }, [root]);
+  }, [root, active]);
 
   async function save() {
     setError(null);
@@ -216,8 +227,8 @@ export default function ProjectSkills({
                 ✕
               </button>
             </div>
-            <p className="mt-0.5 max-w-56 truncate font-mono text-[9px] text-sky-600" title={s.applyTo ?? undefined}>
-              {s.applyTo ? `applies to: ${s.applyTo}` : "applies to: everything"}
+            <p className="mt-0.5 max-w-56 truncate text-[9px] text-sky-600" title={s.applyTo ?? "always injected"}>
+              applies to: {scopeLabel(s.applyTo)}
             </p>
           </div>
         ))}
