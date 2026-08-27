@@ -25,6 +25,42 @@ if (process.argv[2] === "update") {
   });
   process.exit(r.status ?? 1);
 }
+// `dhruva app` — fetch the latest desktop installer from GitHub Releases and
+// launch it: one command from npm-land to the self-updating desktop app,
+// no browser download needed.
+if (process.argv[2] === "app") {
+  (async () => {
+    console.log("[dhruva] fetching the latest desktop installer...");
+    const base = "https://github.com/dineshkothuru/dhruva/releases/latest/download/";
+    const yml = await (await fetch(base + "latest.yml")).text();
+    const name = (yml.match(/^path:\s*(.+)$/m) || [])[1]?.trim();
+    if (!name || !/^[\w.-]+\.exe$/.test(name)) {
+      console.error("[dhruva] could not resolve the installer from the release feed");
+      process.exit(1);
+    }
+    const res = await fetch(base + name);
+    if (!res.ok) {
+      console.error(`[dhruva] download failed: HTTP ${res.status}`);
+      process.exit(1);
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    const dest = path.join(require("node:os").tmpdir(), name);
+    await require("node:fs/promises").writeFile(dest, buf);
+    console.log(
+      `[dhruva] downloaded ${(buf.length / 1048576).toFixed(0)} MB - launching the installer` +
+        ` (unsigned build: if SmartScreen appears, choose More info -> Run anyway)`,
+    );
+    if (process.platform === "win32") {
+      spawnSync("cmd", ["/c", "start", "", dest], { shell: false });
+    } else {
+      console.log(`[dhruva] installer saved to ${dest} - run it to install`);
+    }
+  })().catch((e) => {
+    console.error("[dhruva] " + (e && e.message ? e.message : e));
+    process.exit(1);
+  });
+  return;
+}
 if (process.argv[2] === "version" || process.argv[2] === "--version") {
   console.log(`dhruva ${require(path.join(appRoot, "package.json")).version}`);
   process.exit(0);
