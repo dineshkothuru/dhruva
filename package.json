@@ -87,7 +87,11 @@
     "start": "next start -p 3005",
     "lint": "eslint src",
     "app": "electron .",
-    "app:dist": "set DHRUVA_STANDALONE=1&& next build && electron-builder --win"
+    "app:dist": "set DHRUVA_STANDALONE=1&& next build && electron-builder --win",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "npm run lint && npm run typecheck && npm run test"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -109,7 +113,8 @@
     "eslint": "^9",
     "eslint-config-next": "^16.0.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   },
   "license": "MIT",
   "repository": {
