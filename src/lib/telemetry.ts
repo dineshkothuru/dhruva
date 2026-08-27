@@ -124,7 +124,9 @@ function apiKey(): string | undefined {
   return process.env.DHRUVA_POSTHOG_KEY || process.env.NEXT_PUBLIC_POSTHOG_KEY || PROJECT_TOKEN;
 }
 
-/** Drives the read-only transparency card in Setup. */
+/** Resolved state of the kill switches. Not surfaced in the UI - this is
+ * the accessor tests assert against to prove DHRUVA_TELEMETRY=0 and
+ * DO_NOT_TRACK=1 actually disable collection. */
 export async function telemetryState(): Promise<{
   configured: boolean;
   enabled: boolean;
