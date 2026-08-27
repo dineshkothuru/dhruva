@@ -16,7 +16,7 @@ function Table({ head, rows }: { head: string[]; rows: Row[] }) {
     <div className="overflow-x-auto rounded-lg border border-slate-200">
       <table className="w-full text-left text-xs">
         <thead>
-          <tr className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
+          <tr className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-400">
             {head.map((h) => (
               <th key={h} className="px-2.5 py-1.5 font-medium">
                 {h}
@@ -55,7 +55,7 @@ function Chip({ label, tone }: { label: string; tone: "ok" | "bad" | "info" }) {
         ? "bg-red-100 text-red-700"
         : "bg-slate-100 text-slate-600";
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${cls}`}>{label}</span>
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${cls}`}>{label}</span>
   );
 }
 
@@ -100,7 +100,7 @@ export default function CliResult({ output }: { output: string }) {
     if (Array.isArray(arr) && arr.length > 0) {
       sections.push(
         <div key={key}>
-          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
             {label} ({arr.length})
           </p>
           <Table
@@ -119,7 +119,7 @@ export default function CliResult({ output }: { output: string }) {
   if (Array.isArray(result.files) && result.files.length > 0) {
     sections.push(
       <div key="files">
-        <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+        <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">
           Files ({result.files.length})
         </p>
         <Table
@@ -154,7 +154,7 @@ export default function CliResult({ output }: { output: string }) {
     if (failed.length > 0) {
       sections.push(
         <div key="testfails">
-          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-red-500">
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-red-500">
             Failed tests ({failed.length})
           </p>
           <Table
@@ -211,7 +211,7 @@ export default function CliResult({ output }: { output: string }) {
     if (failures.length > 0) {
       sections.push(
         <div key="compfail">
-          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-red-500">
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-red-500">
             Component failures ({failures.length})
           </p>
           <Table
@@ -229,7 +229,7 @@ export default function CliResult({ output }: { output: string }) {
     if (tf.length > 0) {
       sections.push(
         <div key="testfail">
-          <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-red-500">
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-red-500">
             Test failures ({tf.length})
           </p>
           <Table
@@ -250,10 +250,10 @@ export default function CliResult({ output }: { output: string }) {
     <div className="space-y-3 border-t border-slate-100 px-4 py-3">
       {sections}
       <details>
-        <summary className="cursor-pointer text-[10px] text-slate-400 hover:text-slate-600">
+        <summary className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">
           raw output
         </summary>
-        <pre className="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded bg-slate-50 p-2 font-mono text-[10px] text-slate-500">
+        <pre className="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-slate-50 p-2 font-mono text-[11px] text-slate-500">
           {output}
         </pre>
       </details>

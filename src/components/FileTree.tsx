@@ -42,7 +42,7 @@ export function FileBadge({ name }: { name: string }) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   const b = FILE_BADGES[ext] ?? { l: "·", c: "bg-slate-100 text-slate-400" };
   return (
-    <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-[5px] text-[7.5px] font-bold ${b.c}`}>
+    <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-[5px] text-[10px] font-bold ${b.c}`}>
       {b.l}
     </span>
   );
@@ -119,7 +119,7 @@ function Node({
       >
         {entry.type === "dir" ? (
           <span
-            className={`inline-block w-3 shrink-0 text-center text-[9px] text-slate-400 transition-transform ${open ? "rotate-90" : ""}`}
+            className={`inline-block w-3 shrink-0 text-center text-[11px] text-slate-400 transition-transform ${open ? "rotate-90" : ""}`}
           >
             ▶
           </span>
@@ -128,12 +128,12 @@ function Node({
         )}
         <span className={`truncate ${entry.type === "dir" ? "font-medium" : ""}`}>{entry.name}</span>
         {dirChip && (
-          <span className={`ml-auto rounded px-1 py-px text-[8px] font-semibold ${dirChip.c}`}>
+          <span className={`ml-auto rounded-md px-1 py-px text-[10px] font-semibold ${dirChip.c}`}>
             {dirChip.chip}
           </span>
         )}
         {open && children === null && (
-          <span className="ml-auto text-[10px] text-slate-400">…</span>
+          <span className="ml-auto text-[11px] text-slate-400">…</span>
         )}
       </button>
       {open && children && children.length > 0 && (
@@ -251,14 +251,14 @@ export default function FileTree({
               <button
                 key={r}
                 onClick={() => onOpenFile(r)}
-                className={`flex w-full items-center gap-1.5 rounded px-1.5 py-[3px] text-left text-xs hover:bg-slate-100 ${
+                className={`flex w-full items-center gap-1.5 rounded-md px-1.5 py-[3px] text-left text-xs hover:bg-slate-100 ${
                   selected === r ? "bg-slate-200 font-medium" : ""
                 }`}
                 title={r}
               >
                 <FileBadge name={r.split("/").pop() ?? r} />
                 <span className="truncate font-medium">{r.split("/").pop()}</span>
-                <span className="ml-1 truncate text-[10px] text-slate-400">
+                <span className="ml-1 truncate text-[11px] text-slate-400">
                   {r.split("/").slice(0, -1).join("/")}
                 </span>
               </button>

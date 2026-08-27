@@ -86,7 +86,7 @@ export default function ChainProposalCard({
   );
 
   return (
-    <div className="rounded-2xl bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300 p-[1.5px] shadow-sm">
+    <div className="rounded-xl bg-gradient-to-r from-indigo-300 via-sky-300 to-emerald-300 p-[1.5px] shadow-sm">
       <div className="rounded-[14px] bg-white px-4 py-3.5">
         {/* header */}
         <div className="flex items-start gap-2.5">
@@ -113,7 +113,7 @@ export default function ChainProposalCard({
                       <line x1="0" y1="5" x2="22" y2="5" stroke="currentColor" strokeWidth="2" strokeDasharray="3 3" />
                       <path d="M21 1 L29 5 L21 9 Z" fill="currentColor" />
                     </svg>
-                    <span className="mt-1 animate-pulse rounded-full bg-indigo-100 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-indigo-500">
+                    <span className="mt-1 animate-pulse rounded-full bg-indigo-100 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-indigo-500">
                       auto
                     </span>
                   </div>
@@ -122,7 +122,7 @@ export default function ChainProposalCard({
                   {slots.length > 1 && !resolved && (
                     <button
                       onClick={() => removeSlot(i)}
-                      className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded text-[10px] text-slate-300 hover:bg-red-50 hover:text-red-500"
+                      className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-md text-[11px] text-slate-300 hover:bg-red-50 hover:text-red-500"
                       title="Remove this phase"
                     >
                       ✕
@@ -132,7 +132,7 @@ export default function ChainProposalCard({
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-base shadow-sm">
                       {chainIcon(s.workflow, s.title)}
                     </span>
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
                       Phase {i + 1}
                     </span>
                   </div>
@@ -166,7 +166,7 @@ export default function ChainProposalCard({
                       )}
                     </select>
                   )}
-                  <p className="mt-1.5 text-[10px] text-slate-400">
+                  <p className="mt-1.5 text-[11px] text-slate-400">
                     {def ? (
                       <>
                         {steps.length} steps
@@ -187,7 +187,7 @@ export default function ChainProposalCard({
               title="Add another phase to the chain"
             >
               <span className="text-lg leading-none">+</span>
-              <span className="text-[9px] font-medium uppercase tracking-wide">phase</span>
+              <span className="text-[11px] font-medium uppercase tracking-wide">phase</span>
             </button>
           )}
         </div>
@@ -237,7 +237,7 @@ export default function ChainProposalCard({
               >
                 Just ask the agent
               </button>
-              <span className="ml-auto text-[10px] text-slate-400">
+              <span className="ml-auto text-[11px] text-slate-400">
                 {auto
                   ? "every gatekeeper decision is written into the run audit"
                   : "the next phase starts only after a clean finish"}

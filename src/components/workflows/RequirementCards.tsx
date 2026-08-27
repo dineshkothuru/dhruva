@@ -39,7 +39,7 @@ const FIELD_RE = /^(BRD-REF|STATUS|EVIDENCE|ALREADY-PRESENT|PENDING|DESIGN|EFFOR
 export function inlineCode(v: string) {
   return v.split("`").map((part, i) =>
     i % 2 ? (
-      <code key={i} className="rounded bg-slate-100 px-1 py-px font-mono text-[10px] text-slate-700">
+      <code key={i} className="rounded-md bg-slate-100 px-1 py-px font-mono text-[11px] text-slate-700">
         {part}
       </code>
     ) : (
@@ -73,7 +73,7 @@ export function ReqBody({ body }: { body: string }) {
           const none = f.value.trim() === "-" || f.value.trim() === "";
           return (
             <div key={f.label} className="flex gap-2.5">
-              <dt className="w-28 shrink-0 pt-0.5 text-right text-[9px] font-bold uppercase tracking-wider text-slate-400">
+              <dt className="w-28 shrink-0 pt-0.5 text-right text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 {f.label.replace(/-/g, " ")}
               </dt>
               <dd
@@ -161,7 +161,7 @@ export default function RequirementCards({
               <span className="font-mono text-[11px] text-slate-400">{i.id}</span>
               <span className="text-sm font-semibold">{i.title}</span>
               <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ${
                   STATUS_STYLE[i.status.toUpperCase()] ?? "bg-slate-100 text-slate-500"
                 }`}
               >
@@ -194,7 +194,7 @@ export default function RequirementCards({
             </div>
             {(critique?.[i.id]?.length ?? 0) > 0 && (
               <div className="mt-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
                   reviewer objects
                 </p>
                 {critique![i.id].map((c, n) => (
@@ -208,7 +208,7 @@ export default function RequirementCards({
               <summary className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">
                 design details
               </summary>
-              <div className="mt-1 rounded bg-slate-50 p-2.5">
+              <div className="mt-1 rounded-md bg-slate-50 p-2.5">
                 <ReqBody body={i.body} />
               </div>
             </details>

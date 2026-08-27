@@ -135,7 +135,7 @@ export default function PreviewPanel({ root }: { root: string }) {
             </span>
             <button
               onClick={stop}
-              className="ml-auto rounded border border-sky-300 bg-white px-2 py-0.5 text-[11px] font-medium text-sky-700 hover:bg-sky-100"
+              className="ml-auto rounded-md border border-sky-300 bg-white px-2 py-0.5 text-[11px] font-medium text-sky-700 hover:bg-sky-100"
             >
               Stop
             </button>
@@ -167,8 +167,8 @@ export default function PreviewPanel({ root }: { root: string }) {
           )}
           {status.logs && (
             <details className="mt-1">
-              <summary className="cursor-pointer text-[10px] text-sky-600">server log</summary>
-              <pre className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-[10px] text-slate-600">
+              <summary className="cursor-pointer text-[11px] text-sky-600">server log</summary>
+              <pre className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-words text-[11px] text-slate-600">
                 {status.logs}
               </pre>
             </details>
@@ -183,14 +183,14 @@ export default function PreviewPanel({ root }: { root: string }) {
           className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-6"
           onClick={(e) => e.target === e.currentTarget && setChoices(null)}
         >
-          <div className="mt-16 flex max-h-[60vh] w-full max-w-md flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+          <div className="mt-16 flex max-h-[60vh] w-full max-w-md flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-2xl">
             <div className="flex items-center">
               <h3 className="text-sm font-semibold">
                 {choices.kind === "app" ? "Pick a Lightning app to preview" : "Pick a site to preview"}
               </h3>
               <button
                 onClick={() => setChoices(null)}
-                className="ml-auto rounded px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="ml-auto rounded-md px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               >
                 ✕
               </button>
@@ -216,12 +216,12 @@ export default function PreviewPanel({ root }: { root: string }) {
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate text-xs font-medium">{i.label}</span>
                       {i.label !== i.name && (
-                        <span className="truncate font-mono text-[10px] text-slate-400">{i.name}</span>
+                        <span className="truncate font-mono text-[11px] text-slate-400">{i.name}</span>
                       )}
                     </span>
                     {choices.kind === "site" && (
                       <span
-                        className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                        className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ${
                           i.lwr === true
                             ? "bg-emerald-50 text-emerald-600"
                             : i.lwr === false

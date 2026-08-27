@@ -50,11 +50,11 @@ export default function ProjectSettingsPanel({ root }: { root: string }) {
   return (
     <div className="border-t border-slate-100 px-5 py-3">
       <details>
-        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-widest text-slate-400 hover:text-slate-600">
+        <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-widest text-slate-400 hover:text-slate-600">
           ⚙ Project settings - UX design {ux.enabled ? "(on)" : "(off)"}
         </summary>
         <div className="mt-2 space-y-2.5">
-          <p className="text-[10px] leading-relaxed text-slate-400">
+          <p className="text-[11px] leading-relaxed text-slate-400">
             Per-project (.dhruva/settings.json). When ON, Solution design adds UX steps for the
             UI-scoped requirements - designed under the rules below, critiqued, gated, and carried
             into the TDD + build-plan tasks. When OFF, Solution design is unchanged.
@@ -67,7 +67,7 @@ export default function ProjectSettingsPanel({ root }: { root: string }) {
             />
             Include UX design in Solution design runs
           </label>
-          <label className="block text-[10px] font-medium text-slate-500">
+          <label className="block text-[11px] font-medium text-slate-500">
             Standing design folder (style guides, conventions)
             <input
               value={ux.designDir}
@@ -77,7 +77,7 @@ export default function ProjectSettingsPanel({ root }: { root: string }) {
               className="mt-1 block w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[11px] outline-none focus:border-slate-400"
             />
           </label>
-          <label className="block text-[10px] font-medium text-slate-500">
+          <label className="block text-[11px] font-medium text-slate-500">
             Project UX rules (injected into every UX design prompt)
             <textarea
               value={ux.rules}
@@ -88,7 +88,7 @@ export default function ProjectSettingsPanel({ root }: { root: string }) {
               className="mt-1 block w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs outline-none focus:border-slate-400"
             />
           </label>
-          {saved && <p className="text-[10px] text-emerald-600">saved</p>}
+          {saved && <p className="text-[11px] text-emerald-600">saved</p>}
         </div>
       </details>
     </div>

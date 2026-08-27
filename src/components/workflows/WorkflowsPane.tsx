@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
 import type { RunState } from "@/lib/workflows/schema";
+import { Icon, ROLE_ICON, WF_ICON, wfIconFor, type IconType } from "@/components/icons";
 import CliResult from "@/components/workflows/CliResult";
 import { loadRoles, saveRoles, rolesFor, type RoleConfig } from "@/lib/roleStore";
 import { STEP_ROLES, ROLE_LABEL, ROLE_TIER } from "@/lib/workflows/schema";
@@ -14,52 +15,54 @@ import { parseFindings, type Finding } from "@/lib/findings";
 
 
 
-/** Workflow identity for catalog cards - same house style as the role cards. */
-const WF_META: Record<string, { icon: string; tint: string }> = {
-  "bug-fix": { icon: "🐞", tint: "bg-rose-100 text-rose-700" },
-  "feature-dev": { icon: "✨", tint: "bg-indigo-100 text-indigo-700" },
-  "solution-design": { icon: "📐", tint: "bg-indigo-100 text-indigo-700" },
-  "ux-design": { icon: "🎨", tint: "bg-fuchsia-100 text-fuchsia-700" },
-  "implement-tdd": { icon: "🛠️", tint: "bg-slate-200 text-slate-700" },
-  "test-gen": { icon: "🧪", tint: "bg-emerald-100 text-emerald-700" },
-  "run-tests": { icon: "▶️", tint: "bg-emerald-100 text-emerald-700" },
-  "retrieve-sync": { icon: "🔄", tint: "bg-amber-100 text-amber-700" },
-  "deploy-preview": { icon: "👁️", tint: "bg-amber-100 text-amber-700" },
-  "validate-deploy": { icon: "🛡️", tint: "bg-amber-100 text-amber-700" },
-  "scratch-org": { icon: "🌱", tint: "bg-emerald-100 text-emerald-700" },
+/** Workflow identity for catalog cards - same house style as the role cards.
+ * Icons are components from the shared vocabulary, so they inherit color and
+ * stay optically consistent instead of depending on the OS emoji font. */
+const WF_META: Record<string, { icon: IconType; tint: string }> = {
+  "bug-fix": { icon: WF_ICON.bug, tint: "bg-red-100 text-red-700" },
+  "feature-dev": { icon: WF_ICON.feature, tint: "bg-indigo-100 text-indigo-700" },
+  "solution-design": { icon: WF_ICON.design, tint: "bg-indigo-100 text-indigo-700" },
+  "ux-design": { icon: WF_ICON.ux, tint: "bg-violet-100 text-violet-700" },
+  "implement-tdd": { icon: WF_ICON.build, tint: "bg-slate-200 text-slate-700" },
+  "test-gen": { icon: WF_ICON.test, tint: "bg-emerald-100 text-emerald-700" },
+  "run-tests": { icon: WF_ICON.run, tint: "bg-emerald-100 text-emerald-700" },
+  "retrieve-sync": { icon: WF_ICON.sync, tint: "bg-amber-100 text-amber-700" },
+  "deploy-preview": { icon: WF_ICON.preview, tint: "bg-amber-100 text-amber-700" },
+  "validate-deploy": { icon: WF_ICON.validate, tint: "bg-amber-100 text-amber-700" },
+  "scratch-org": { icon: WF_ICON.scratch, tint: "bg-emerald-100 text-emerald-700" },
 };
-
 
 /** Custom workflows auto-pick a fitting identity from their title/description
  * keywords - deterministic, so the same workflow always gets the same face. */
-function wfIdentity(w: { id: string; title: string; description: string }) {
+function wfIdentity(w: { id: string; title: string; description: string }): {
+  icon: IconType;
+  tint: string;
+} {
   const known = WF_META[w.id];
   if (known) return known;
-  const t = `${w.title} ${w.description}`.toLowerCase();
-  const rules: [RegExp, { icon: string; tint: string }][] = [
-    [/bug|fix|defect|issue/, { icon: "🐞", tint: "bg-rose-100 text-rose-700" }],
-    [/deploy|release|ship/, { icon: "🚀", tint: "bg-amber-100 text-amber-700" }],
-    [/test|coverage|quality/, { icon: "🧪", tint: "bg-emerald-100 text-emerald-700" }],
-    [/review|critique|audit/, { icon: "🧐", tint: "bg-amber-100 text-amber-700" }],
-    [/design|architect|spec/, { icon: "📐", tint: "bg-indigo-100 text-indigo-700" }],
-    [/ux|ui|screen|component/, { icon: "🎨", tint: "bg-fuchsia-100 text-fuchsia-700" }],
-    [/doc|report|summar/, { icon: "📄", tint: "bg-sky-100 text-sky-700" }],
-    [/sync|retrieve|refresh|pull/, { icon: "🔄", tint: "bg-amber-100 text-amber-700" }],
-    [/data|migrat|load|import/, { icon: "🗃️", tint: "bg-emerald-100 text-emerald-700" }],
-    [/secur|permission|fls|sharing/, { icon: "🛡️", tint: "bg-rose-100 text-rose-700" }],
-    [/clean|refactor|tidy/, { icon: "🧹", tint: "bg-violet-100 text-violet-700" }],
-  ];
-  for (const [re, m] of rules) if (re.test(t)) return m;
-  return { icon: "🧩", tint: "bg-violet-100 text-violet-700" };
+  const icon = wfIconFor(w.id, `${w.title} ${w.description}`);
+  const TINT = new Map<IconType, string>([
+    [WF_ICON.bug, "bg-red-100 text-red-700"],
+    [WF_ICON.deploy, "bg-amber-100 text-amber-700"],
+    [WF_ICON.test, "bg-emerald-100 text-emerald-700"],
+    [WF_ICON.review, "bg-amber-100 text-amber-700"],
+    [WF_ICON.ux, "bg-violet-100 text-violet-700"],
+    [WF_ICON.design, "bg-indigo-100 text-indigo-700"],
+    [WF_ICON.doc, "bg-sky-100 text-sky-700"],
+    [WF_ICON.build, "bg-slate-200 text-slate-700"],
+    [WF_ICON.sync, "bg-amber-100 text-amber-700"],
+    [WF_ICON.scratch, "bg-emerald-100 text-emerald-700"],
+  ]);
+  return { icon, tint: TINT.get(icon) ?? "bg-violet-100 text-violet-700" };
 }
 
 /** Visual identity per role - icon tile tint, what it means, which steps use it. */
-const ROLE_META: Record<string, { icon: string; tint: string; blurb: string; steps: string[] }> = {
-  read: { icon: "🔍", tint: "bg-sky-100 text-sky-700", blurb: "investigates code and documents before anything changes", steps: ["locate", "plan", "assess"] },
-  design: { icon: "📐", tint: "bg-indigo-100 text-indigo-700", blurb: "authors designs, specs, and documents", steps: ["analyse", "spec", "write-doc"] },
-  implement: { icon: "🛠️", tint: "bg-slate-200 text-slate-700", blurb: "writes the code and tests", steps: ["implement"] },
-  review: { icon: "🧐", tint: "bg-amber-100 text-amber-700", blurb: "adversarially critiques designs and diffs", steps: ["design-review", "review"] },
-  trace: { icon: "🎯", tint: "bg-emerald-100 text-emerald-700", blurb: "verifies every requirement is covered", steps: ["coverage-check", "traceability"] },
+const ROLE_META: Record<string, { icon: IconType; tint: string; blurb: string; steps: string[] }> = {
+  read: { icon: ROLE_ICON.read, tint: "bg-sky-100 text-sky-700", blurb: "investigates code and documents before anything changes", steps: ["locate", "plan", "assess"] },
+  design: { icon: ROLE_ICON.design, tint: "bg-indigo-100 text-indigo-700", blurb: "authors designs, specs, and documents", steps: ["analyse", "spec", "write-doc"] },
+  implement: { icon: ROLE_ICON.implement, tint: "bg-slate-200 text-slate-700", blurb: "writes the code and tests", steps: ["implement"] },
+  review: { icon: ROLE_ICON.review, tint: "bg-amber-100 text-amber-700", blurb: "adversarially critiques designs and diffs", steps: ["design-review", "review"] },
+  trace: { icon: ROLE_ICON.trace, tint: "bg-emerald-100 text-emerald-700", blurb: "verifies every requirement is covered", steps: ["coverage-check", "traceability"] },
 };
 
 const SEV_STYLE: Record<Finding["severity"], { border: string; chip: string }> = {
@@ -75,12 +78,12 @@ function FindingCard({ f }: { f: Finding }) {
     <div className={`overflow-hidden rounded-lg border border-l-4 border-slate-200 bg-white ${sev.border}`}>
       {/* header band: id + severity + refs + title on a gray strip */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-slate-100/80 px-3 py-2">
-        <span className="font-mono text-[10px] font-bold text-slate-500">{f.id}</span>
-        <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${sev.chip}`}>
+        <span className="font-mono text-[11px] font-bold text-slate-500">{f.id}</span>
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ${sev.chip}`}>
           {f.severity}
         </span>
         {f.refs.map((r) => (
-          <span key={r} className="rounded-full bg-sky-100 px-2 py-0.5 font-mono text-[9px] text-sky-700">
+          <span key={r} className="rounded-full bg-sky-100 px-2 py-0.5 font-mono text-[11px] text-sky-700">
             {r}
           </span>
         ))}
@@ -90,8 +93,8 @@ function FindingCard({ f }: { f: Finding }) {
       {(f.where || f.problem) && (
         <div className="px-3 py-2">
           {f.where && (
-            <p className="truncate font-mono text-[10px] text-slate-400" title={f.where}>
-              📍 {f.where}
+            <p className="truncate font-mono text-[11px] text-slate-400" title={f.where}>
+              {<Icon.info size={11} strokeWidth={1.75} className="inline shrink-0 text-slate-400" />} {f.where}
             </p>
           )}
           {f.problem && (
@@ -105,7 +108,7 @@ function FindingCard({ f }: { f: Finding }) {
       {f.fix && (
         <div className="border-t border-emerald-100 bg-emerald-50 px-3 py-2">
           <p className="text-xs leading-relaxed text-emerald-800">
-            <span className="mr-1 rounded bg-emerald-600 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">
+            <span className="mr-1 rounded-md bg-emerald-600 px-1.5 py-px text-[11px] font-bold uppercase tracking-wide text-white">
               Fix
             </span>{" "}
             {f.fix}
@@ -356,10 +359,10 @@ function StepBody({
               {reqItems.map((r) => (
                 <details key={r.id} className="rounded-lg border border-slate-200 bg-white">
                   <summary className="flex cursor-pointer flex-wrap items-center gap-1.5 px-3 py-1.5">
-                    <span className="font-mono text-[10px] text-slate-400">{r.id}</span>
+                    <span className="font-mono text-[11px] text-slate-400">{r.id}</span>
                     <span className="text-xs font-semibold text-slate-800">{r.title}</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ${
                         r.status.toUpperCase() === "ALREADY IMPLEMENTED"
                           ? "bg-emerald-50 text-emerald-700"
                           : r.status.toUpperCase() === "PARTIAL"
@@ -381,7 +384,7 @@ function StepBody({
         if (seg.kind === "summary") {
           return (
             <div key={`sum-${i}`} className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
                 Step summary
               </p>
               {did && (
@@ -402,7 +405,7 @@ function StepBody({
           return (
             <div key={`exit-${i}`} className="pt-1">
               <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                   ok ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
                 }`}
               >
@@ -417,7 +420,7 @@ function StepBody({
           return (
             <p
               key={`eng-${i}-${seg.lines[0].slice(0, 24)}`}
-              className={`rounded px-2 py-1 text-[11px] ${
+              className={`rounded-md px-2 py-1 text-[11px] ${
                 bad ? "bg-red-50 text-red-700" : "bg-slate-50 text-slate-500"
               }`}
             >
@@ -440,9 +443,9 @@ function StepBody({
           return (
             <details key={`tool-${i}-${seg.lines[0].slice(0, 24)}`} open={running} className="rounded-lg border border-slate-100 bg-slate-50">
               <summary className="cursor-pointer px-2 py-1 text-[11px] text-slate-400 hover:text-slate-600">
-                🔧 {summary}
+                {<Icon.tool size={12} strokeWidth={1.75} className="inline shrink-0 text-slate-400" />} {summary}
                 {denials.length > 0 && (
-                  <span className="ml-2 rounded bg-amber-100 px-1.5 text-[9px] font-semibold text-amber-700">
+                  <span className="ml-2 rounded-md bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-700">
                     {denials.length} blocked by read-only rules
                   </span>
                 )}
@@ -451,7 +454,7 @@ function StepBody({
                 {seg.lines.map((l, n) => (
                   <p
                     key={n}
-                    className={`whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed ${
+                    className={`whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed ${
                       /denied/i.test(l)
                         ? "text-amber-700"
                         : /^[●⚙]/.test(l)
@@ -472,11 +475,11 @@ function StepBody({
           if (task) {
             return (
               <div key={`${i}-${n}`} className="mt-2 flex items-center gap-2 border-t border-slate-200 pt-2">
-                <span className="rounded-full bg-slate-800 px-2 py-0.5 font-mono text-[10px] font-semibold text-white">
+                <span className="rounded-full bg-slate-800 px-2 py-0.5 font-mono text-[11px] font-semibold text-white">
                   {task[1]}
                 </span>
                 <span className="text-xs font-semibold text-slate-700">{task[4]}</span>
-                <span className="ml-auto text-[10px] text-slate-400">
+                <span className="ml-auto text-[11px] text-slate-400">
                   task {task[2]} of {task[3]}
                 </span>
               </div>
@@ -494,9 +497,9 @@ function StepBody({
                   : "bg-red-100 text-red-700";
             return (
               <p key={`${i}-${n}`} className="flex flex-wrap items-baseline gap-1.5 text-xs leading-relaxed text-slate-700">
-                <span className="font-mono text-[10px] font-semibold text-slate-500">{cov[1].replace(/\.$/, "")}</span>
+                <span className="font-mono text-[11px] font-semibold text-slate-500">{cov[1].replace(/\.$/, "")}</span>
                 <span>{cov[2]}</span>
-                <span className={`rounded-full px-1.5 py-px text-[9px] font-semibold ${chip}`}>{st}</span>
+                <span className={`rounded-full px-1.5 py-px text-[11px] font-semibold ${chip}`}>{st}</span>
                 {cov[4] && <span className="text-slate-500">{cov[4].trim()}</span>}
               </p>
             );
@@ -530,7 +533,7 @@ function StepBody({
   const toggleBtn = (
     <button
       onClick={() => setRaw((v) => !v)}
-      className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+      className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium ${
         raw
           ? "border-slate-400 bg-slate-700 text-white"
           : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
@@ -545,7 +548,7 @@ function StepBody({
       {raw ? (
         <div ref={boxRef} className="max-h-80 overflow-y-auto px-4 py-3">
           <div className="flex items-center">
-            <span className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
               Raw agent trace
             </span>
             <span className="ml-auto">{toggleBtn}</span>
@@ -575,7 +578,7 @@ function StepBody({
       {activitySegs.length > 0 &&
         (running ? (
           <div className="space-y-1">
-            <p className="flex items-center gap-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+            <p className="flex items-center gap-1.5 pb-0.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
               <span className="inline-block animate-pulse text-sky-500">●</span>
               Activity - what it is reading and doing
             </p>
@@ -584,7 +587,7 @@ function StepBody({
         ) : (
           <details className="rounded-lg border border-slate-100 bg-slate-50/60">
             <summary className="cursor-pointer px-2.5 py-1.5 text-[11px] text-slate-400 hover:text-slate-600">
-              📖 <span className="font-semibold text-slate-500">Activity</span> - what it did
+              {<Icon.activity size={12} strokeWidth={1.75} className="inline shrink-0 text-slate-400" />} <span className="font-semibold text-slate-500">Activity</span> - what it did
               {did && <span className="ml-1">· {did}</span>}
             </summary>
             <div className="space-y-1 border-t border-slate-100 px-2.5 py-2">
@@ -598,8 +601,8 @@ function StepBody({
       {!running &&
         activitySegs.length > 0 &&
         (postToolSegs.length > 0 || findingsCount > 0 || reqItems.length > 0) && (
-          <p className="pt-1.5 text-[9px] font-semibold uppercase tracking-widest text-slate-400">
-            📦 Output
+          <p className="pt-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            {<Icon.output size={12} strokeWidth={1.75} className="inline shrink-0 text-slate-400" />} Output
           </p>
         )}
       {[
@@ -932,7 +935,7 @@ export default function WorkflowsPane({
           </button>
           <h2 className="text-sm font-semibold">{run.workflowTitle}</h2>
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
               run.status === "done"
                 ? "bg-emerald-100 text-emerald-700"
                 : run.status === "failed" || run.status === "aborted"
@@ -944,13 +947,13 @@ export default function WorkflowsPane({
           </span>
           {run.autoGate && (
             <span
-              className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+              className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700"
               title="Unattended mode: an AI gatekeeper clears the human gates (every decision + reasoning is recorded in the gate's log) and escalates to you only when unsure"
             >
-              🤖 unattended
+              {<Icon.robot size={12} strokeWidth={1.75} className="inline shrink-0 text-violet-500" />} unattended
             </span>
           )}
-          <span className="ml-auto font-mono text-[10px] text-slate-400">run {run.runId}</span>
+          <span className="ml-auto font-mono text-[11px] text-slate-400">run {run.runId}</span>
           {(run.status === "running" || run.status === "waiting_gate") && (
             <button
               onClick={async () => {
@@ -984,7 +987,7 @@ export default function WorkflowsPane({
           )}
         </div>
         <p className="mb-3 text-[11px] text-slate-500">
-          <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 font-medium">
+          <span className="mr-2 rounded-md bg-slate-100 px-1.5 py-0.5 font-medium">
             {run.agent}
             {run.model ? ` · ${run.model}` : " · default model"}
           </span>
@@ -1000,8 +1003,8 @@ export default function WorkflowsPane({
         {run.chain && run.chain.length > 1 && (
           <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-white to-white px-3.5 py-2.5">
             <div className="flex items-center gap-2 overflow-x-auto">
-              <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-indigo-400">
-                ⛓️ Chain
+              <span className="shrink-0 text-[11px] font-bold uppercase tracking-widest text-indigo-400">
+                {<Icon.chain size={12} strokeWidth={1.75} className="inline shrink-0 text-indigo-400" />} Chain
               </span>
               {run.chain.map((c, ci) => {
                 const idx = run.chainIndex ?? 0;
@@ -1058,13 +1061,13 @@ export default function WorkflowsPane({
                       </span>
                       {c.title}
                       {state === "started" && (
-                        <span className="text-[9px] font-semibold uppercase">live</span>
+                        <span className="text-[11px] font-semibold uppercase">live</span>
                       )}
                     </button>
                   </span>
                 );
               })}
-              <span className="ml-auto hidden shrink-0 pl-3 text-[10px] text-slate-400 lg:inline">
+              <span className="ml-auto hidden shrink-0 pl-3 text-[11px] text-slate-400 lg:inline">
                 phase {(run.chainIndex ?? 0) + 1} of {run.chain.length} · the next phase
                 auto-starts on a clean finish; fail or abort pauses the chain
               </span>
@@ -1074,8 +1077,8 @@ export default function WorkflowsPane({
 
         {(run.manualSteps?.length ?? 0) > 0 && (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-700">
-              🖐 Manual steps for a human · {run.manualSteps!.length}
+            <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-amber-700">
+              {<Icon.humanGate size={12} strokeWidth={1.75} className="inline shrink-0 text-amber-600" />} Manual steps for a human · {run.manualSteps!.length}
               {run.chain && run.chain.length > 1 && (
                 <span className="font-medium normal-case tracking-normal text-amber-600">
                   (collected across the chain&apos;s phases)
@@ -1089,12 +1092,12 @@ export default function WorkflowsPane({
             <ol className="mt-2 space-y-1.5">
               {run.manualSteps!.map((m, mi) => (
                 <li key={mi} className="flex items-start gap-2 text-xs text-amber-900">
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-200 text-[9px] font-bold text-amber-800">
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-200 text-[11px] font-bold text-amber-800">
                     {mi + 1}
                   </span>
                   <span className="min-w-0">
                     {m.text}
-                    <span className="ml-1.5 rounded bg-white/70 px-1.5 py-px text-[9px] font-medium text-amber-600">
+                    <span className="ml-1.5 rounded-md bg-white/70 px-1.5 py-px text-[11px] font-medium text-amber-600">
                       {m.phase && m.phase !== run.workflowTitle ? `${m.phase} · ` : ""}
                       {m.stepId}
                     </span>
@@ -1108,7 +1111,7 @@ export default function WorkflowsPane({
         {Object.keys(run.inputs ?? {}).length > 0 && (
           <details className="mb-3 rounded-xl border border-slate-200 bg-white">
             <summary className="cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-400 hover:text-slate-700">
-              🧾 Run inputs - what this run was asked to do
+              {<Icon.inputs size={12} strokeWidth={1.75} className="inline shrink-0 text-slate-400" />} Run inputs - what this run was asked to do
             </summary>
             <dl className="grid grid-cols-1 gap-x-8 gap-y-2 border-t border-slate-100 px-4 py-3 sm:grid-cols-2 xl:grid-cols-3">
               {Object.entries(run.inputs).map(([k, v]) => {
@@ -1116,7 +1119,7 @@ export default function WorkflowsPane({
                 const long = val.length > 90 || val.includes("\n");
                 return (
                   <div key={k} className={long ? "sm:col-span-2 xl:col-span-3" : ""}>
-                    <dt className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{k}</dt>
+                    <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{k}</dt>
                     <dd className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-700">
                       {val || <span className="text-slate-300">empty</span>}
                     </dd>
@@ -1134,7 +1137,7 @@ export default function WorkflowsPane({
               <span key={s.id} className="flex items-center">
                 {i > 0 && <span className="mx-1 h-px w-3 bg-slate-200" />}
                 <span
-                  className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                  className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
                     s.status === "done"
                       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                       : s.status === "running"
@@ -1163,8 +1166,8 @@ export default function WorkflowsPane({
               if (run.status === "failed" || run.status === "aborted")
                 return "Run stopped - use Resume to continue from the first incomplete step.";
               if (cur?.status === "waiting_gate")
-                return `🙋 YOUR decision: "${cur.title}" - the run is paused until you act (${doneN}/${run.steps.length} steps done).`;
-              if (cur) return `Working: "${cur.title}" (${doneN}/${run.steps.length} steps done). 🙋 marks where you decide.`;
+        return ` YOUR decision: "${cur.title}" - the run is paused until you act (${doneN}/${run.steps.length} steps done).`;
+       if (cur) return `Working: "${cur.title}" (${doneN}/${run.steps.length} steps done). marks where you decide.`;
               return `${doneN}/${run.steps.length} steps done.`;
             })()}
           </p>
@@ -1189,14 +1192,14 @@ export default function WorkflowsPane({
                 <span className="ml-auto flex items-center gap-1.5">
                   {s.type === "agent" && s.model && s.model !== "default" && (
                     <span
-                      className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] text-slate-500"
+                      className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500"
                       title={s.modelFrom ? `model source: ${s.modelFrom}` : undefined}
                     >
                       {s.model}
                     </span>
                   )}
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${
                       TYPE_CHIP[s.type] ?? "bg-slate-100 text-slate-500"
                     }`}
                   >
@@ -1242,7 +1245,7 @@ export default function WorkflowsPane({
                             ))}
                           </div>
                         ) : (
-                          <pre className="mt-1.5 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded bg-white/60 p-2 text-xs text-slate-700">
+                          <pre className="mt-1.5 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-white/60 p-2 text-xs text-slate-700">
                             {findings}
                           </pre>
                         )}
@@ -1376,11 +1379,11 @@ export default function WorkflowsPane({
                       disabled={explaining !== null}
                       className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40"
                     >
-                      {explaining === `${run.runId}:${s.id}` ? "Diagnosing…" : "🛟 Explain & suggest fix"}
+           {explaining === `${run.runId}:${s.id}` ? "Diagnosing…" : " Explain & suggest fix"}
                     </button>
                   ) : (
                     <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-sky-600">
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-sky-600">
                         Diagnosis ({agent})
                       </p>
                       <pre className="whitespace-pre-wrap break-words text-xs text-slate-700">
@@ -1391,9 +1394,9 @@ export default function WorkflowsPane({
                 </div>
               )}
               {s.usage && (
-                <p className="border-t border-slate-100 px-4 py-1.5 text-[10px] text-slate-400">
+                <p className="border-t border-slate-100 px-4 py-1.5 text-[11px] text-slate-400">
                   {s.model && (
-                    <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5" title={s.modelFrom ? `model source: ${s.modelFrom}` : undefined}>
+                    <span className="mr-2 rounded-md bg-slate-100 px-1.5 py-0.5" title={s.modelFrom ? `model source: ${s.modelFrom}` : undefined}>
                       {s.model}
                       {s.modelFrom && <span className="ml-1 text-slate-400">· {s.modelFrom}</span>}
                     </span>
@@ -1418,10 +1421,10 @@ export default function WorkflowsPane({
                             : undefined,
                         )
                       }
-                      className="block w-full truncate rounded px-2 py-1 text-left font-mono text-xs hover:bg-slate-100"
+                      className="block w-full truncate rounded-md px-2 py-1 text-left font-mono text-xs hover:bg-slate-100"
                       title="Open diff"
                     >
-                      <span className="mr-2 text-[10px] font-semibold uppercase text-amber-600">
+                      <span className="mr-2 text-[11px] font-semibold uppercase text-amber-600">
                         {c.status}
                       </span>
                       {c.file}
@@ -1455,7 +1458,7 @@ export default function WorkflowsPane({
 
       <details className="mt-4 rounded-xl border border-slate-200 bg-white">
         <summary className="cursor-pointer px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
-          🎛 Models by role - which model plays each role, per agent
+          {<Icon.models size={12} strokeWidth={1.75} className="inline shrink-0 text-slate-400" />} Models by role - which model plays each role, per agent
         </summary>
         <div className="space-y-4 border-t border-slate-100 p-4">
           <p className="text-[11px] text-slate-400">
@@ -1477,7 +1480,7 @@ export default function WorkflowsPane({
                 }`}
               >
                 {a.label}
-                {defaultAgent === a.id && <span className="ml-1.5 text-[10px]">★ default</span>}
+                {defaultAgent === a.id && <span className="ml-1.5 text-[11px]">★ default</span>}
               </button>
             ))}
           </div>
@@ -1517,10 +1520,12 @@ export default function WorkflowsPane({
                     return (
                       <div key={role} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md">
                         <div className="flex items-center gap-2">
-                          <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-sm ${rm.tint}`}>{rm.icon}</span>
+                          <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${rm.tint}`}>
+                            <rm.icon size={14} strokeWidth={1.75} />
+                          </span>
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-slate-800">{ROLE_LABEL[role]}</p>
-                            <p className="truncate text-[10px] text-slate-400">{rm.blurb}</p>
+                            <p className="truncate text-[11px] text-slate-400">{rm.blurb}</p>
                           </div>
                         </div>
                         <input
@@ -1551,7 +1556,7 @@ export default function WorkflowsPane({
                             invalid ? "border-red-400 bg-red-50/50" : set ? "border-sky-200 bg-sky-50/40" : "border-slate-200"
                           }`}
                         />
-                        <p className="mt-1 text-[9px] text-slate-400">
+                        <p className="mt-1 text-[11px] text-slate-400">
                           {invalid ? (
                             <span className="font-semibold text-red-600">not a model id (no spaces) - would be IGNORED</span>
                           ) : set ? (
@@ -1562,7 +1567,7 @@ export default function WorkflowsPane({
                         </p>
                         <div className="mt-2 flex flex-wrap gap-1 border-t border-slate-100 pt-1.5">
                           {rm.steps.map((st) => (
-                            <span key={st} className="rounded bg-slate-100 px-1.5 py-px font-mono text-[9px] text-slate-500">{st}</span>
+                            <span key={st} className="rounded-md bg-slate-100 px-1.5 py-px font-mono text-[11px] text-slate-500">{st}</span>
                           ))}
                         </div>
                       </div>
@@ -1579,7 +1584,7 @@ export default function WorkflowsPane({
       {history.length > 0 && (
         <details className="mt-4 rounded-xl border border-slate-200 bg-white">
           <summary className="flex cursor-pointer items-center px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
-            🕘 Recent runs ({history.length})
+            {<Icon.history size={12} strokeWidth={1.75} className="inline shrink-0 text-slate-400" />} Recent runs ({history.length})
             <span className="ml-auto font-normal normal-case tracking-normal text-slate-400">
               total {fmtCost(history.reduce((n, r) => n + runCost(r), 0))} at API rates
             </span>
@@ -1610,22 +1615,22 @@ export default function WorkflowsPane({
                 <span className="font-medium">{r.workflowTitle}</span>
                 {r.chain && r.chain.length > 1 && (
                   <span
-                    className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-500"
+                    className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-500"
                     title={`chain: ${r.chain.map((c) => c.title).join(" → ")}`}
                   >
-                    ⛓️ {(r.chainIndex ?? 0) + 1}/{r.chain.length}
+                    {<Icon.chain size={12} strokeWidth={1.75} className="inline shrink-0 text-indigo-400" />} {(r.chainIndex ?? 0) + 1}/{r.chain.length}
                   </span>
                 )}
                 <span className="text-slate-400">{new Date(r.createdAt).toLocaleString()}</span>
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
                   {r.agent}
                   {r.model ? ` · ${r.model}` : ""}
                 </span>
                 {runCost(r) > 0 && (
-                  <span className="text-[10px] text-slate-400">{fmtCost(runCost(r))}</span>
+                  <span className="text-[11px] text-slate-400">{fmtCost(runCost(r))}</span>
                 )}
                 <span
-                  className={`ml-auto text-[10px] font-semibold uppercase ${
+                  className={`ml-auto text-[11px] font-semibold uppercase ${
                     r.status === "done"
                       ? "text-emerald-600"
                       : r.status === "running" || r.status === "waiting_gate"
@@ -1682,15 +1687,18 @@ export default function WorkflowsPane({
                   <button onClick={() => pick(w)} className="w-full p-4 text-left">
                     <div className="flex items-start gap-2.5">
                       <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base ${wfIdentity(w).tint}`}
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${wfIdentity(w).tint}`}
                       >
-                        {wfIdentity(w).icon}
+                        {(() => {
+                          const I = wfIdentity(w).icon;
+                          return <I size={16} strokeWidth={1.75} />;
+                        })()}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
                           {w.title}
                           {w.custom && (
-                            <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-violet-600">
+                            <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-violet-600">
                               {w.scope === "project" ? "custom · this project" : "custom · all projects"}
                             </span>
                           )}
@@ -1700,7 +1708,7 @@ export default function WorkflowsPane({
                     </div>
                     {Array.isArray(w.steps) && w.steps.length > 0 && (
                       <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
-                        <span className="rounded bg-slate-100 px-1.5 py-px text-[9px] font-semibold text-slate-500">
+                        <span className="rounded-md bg-slate-100 px-1.5 py-px text-[11px] font-semibold text-slate-500">
                           {w.steps.length} steps
                         </span>
                         {(() => {
@@ -1709,13 +1717,13 @@ export default function WorkflowsPane({
                           return (
                             <>
                               {agents > 0 && (
-                                <span className="rounded bg-indigo-50 px-1.5 py-px text-[9px] font-semibold text-indigo-600">
+                                <span className="rounded-md bg-indigo-50 px-1.5 py-px text-[11px] font-semibold text-indigo-600">
                                   {agents} agent
                                 </span>
                               )}
                               {gates > 0 && (
-                                <span className="rounded bg-amber-50 px-1.5 py-px text-[9px] font-semibold text-amber-700">
-                                  🙋 {gates} human gate{gates === 1 ? "" : "s"}
+                                <span className="rounded-md bg-amber-50 px-1.5 py-px text-[11px] font-semibold text-amber-700">
+                                  {<Icon.humanGate size={12} strokeWidth={1.75} className="inline shrink-0 text-amber-500" />} {gates} human gate{gates === 1 ? "" : "s"}
                                 </span>
                               )}
                             </>
@@ -1730,7 +1738,7 @@ export default function WorkflowsPane({
                         setSeed(w);
                         setDesigning(true);
                       }}
-                      className="rounded px-1.5 text-xs text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100"
+                      className="rounded-md px-1.5 text-xs text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100"
                       title="Duplicate to customize - copy this workflow and add/remove steps on top"
                     >
                       ⧉
@@ -1742,7 +1750,7 @@ export default function WorkflowsPane({
                           if (selected?.id === w.id) setSelected(null);
                           refreshCatalog();
                         }}
-                        className="rounded px-1.5 text-xs text-slate-300 hover:bg-red-50 hover:text-red-500"
+                        className="rounded-md px-1.5 text-xs text-slate-300 hover:bg-red-50 hover:text-red-500"
                         title="Delete this custom workflow"
                       >
                         ✕
@@ -1795,7 +1803,7 @@ export default function WorkflowsPane({
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-6"
           onClick={(e) => e.target === e.currentTarget && !starting && setSelected(null)}
         >
-          <div className="mt-10 w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+          <div className="mt-10 w-full max-w-xl rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold">{selected.title}</h3>
@@ -1803,7 +1811,7 @@ export default function WorkflowsPane({
               </div>
               <button
                 onClick={() => !starting && setSelected(null)}
-                className="rounded px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="rounded-md px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 title="Close"
               >
                 ✕

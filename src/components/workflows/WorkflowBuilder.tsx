@@ -203,7 +203,7 @@ export default function WorkflowBuilder({
           <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Inputs</span>
           <button
             onClick={() => setInputs((v) => [...v, { key: `input${v.length + 1}`, label: "", kind: "text" }])}
-            className="rounded border border-slate-300 px-2 py-0.5 text-[11px] hover:bg-slate-50"
+            className="rounded-md border border-slate-300 px-2 py-0.5 text-[11px] hover:bg-slate-50"
           >
             + add input
           </button>
@@ -227,7 +227,7 @@ export default function WorkflowBuilder({
           <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Steps (run top to bottom)</span>
           <button
             onClick={() => setSteps((v) => [...v, { id: `step-${v.length + 1}`, title: "", type: "agent" }])}
-            className="rounded border border-slate-300 px-2 py-0.5 text-[11px] hover:bg-slate-50"
+            className="rounded-md border border-slate-300 px-2 py-0.5 text-[11px] hover:bg-slate-50"
           >
             + add step
           </button>
@@ -246,12 +246,12 @@ export default function WorkflowBuilder({
                 </select>
                 <input value={s.onlyIf ?? ""} onChange={(e) => updStep(i, { onlyIf: e.target.value })} placeholder="onlyIf input-key" spellCheck={false} className={`${inputCls} w-36 font-mono`} title="Skip this step unless this boolean input is checked" />
                 <span className="ml-auto flex gap-1">
-                  <button onClick={() => move(i, -1)} className="rounded border border-slate-200 px-1.5 text-[11px] hover:bg-slate-50">↑</button>
-                  <button onClick={() => move(i, 1)} className="rounded border border-slate-200 px-1.5 text-[11px] hover:bg-slate-50">↓</button>
-                  <button onClick={() => setSteps((v) => v.filter((_, n) => n !== i))} className="rounded border border-slate-200 px-1.5 text-[11px] text-red-500 hover:bg-red-50">✕</button>
+                  <button onClick={() => move(i, -1)} className="rounded-md border border-slate-200 px-1.5 text-[11px] hover:bg-slate-50">↑</button>
+                  <button onClick={() => move(i, 1)} className="rounded-md border border-slate-200 px-1.5 text-[11px] hover:bg-slate-50">↓</button>
+                  <button onClick={() => setSteps((v) => v.filter((_, n) => n !== i))} className="rounded-md border border-slate-200 px-1.5 text-[11px] text-red-500 hover:bg-red-50">✕</button>
                 </span>
               </div>
-              <p className="mt-1 text-[10px] text-slate-400">{STEP_HINTS[s.type]}</p>
+              <p className="mt-1 text-[11px] text-slate-400">{STEP_HINTS[s.type]}</p>
               {s.type === "agent" && (
                 <div className="mt-2 space-y-2">
                   <textarea value={s.prompt ?? ""} onChange={(e) => updStep(i, { prompt: e.target.value })} rows={3} placeholder="Prompt for the agent… use {inputs.key} and {steps.step-id.output}" className={`${inputCls} w-full`} />

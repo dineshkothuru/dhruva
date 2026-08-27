@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Icon } from "@/components/icons";
 
 /** Project skills - per-project knowledge (.dhruva/skills/*.md) with a
  * read-only browser of the SHIPPED standards library alongside, so authors
@@ -179,11 +180,11 @@ export default function ProjectSkills({
         </div>
         {skills.length > 0 && (
           <div className="shrink-0 text-right">
-            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-indigo-600">
+            <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-600">
               {skills.length} {skills.length === 1 ? "skill" : "skills"}
             </span>
             {injected > 0 && (
-              <p className="mt-1 text-[9px] text-slate-400">
+              <p className="mt-1 text-[11px] text-slate-400">
                 ~{(injected / 1000).toFixed(1)}k chars injected
               </p>
             )}
@@ -222,22 +223,22 @@ export default function ProjectSkills({
                 className="font-medium text-slate-600 hover:text-slate-900"
                 title={`open in the editor · ${(s.chars / 1000).toFixed(1)}k chars`}
               >
-                📘 {s.name}
+                {<Icon.skill size={12} strokeWidth={1.75} className="inline shrink-0 text-indigo-500" />} {s.name}
               </button>
               {s.truncated && (
-                <span className="rounded bg-amber-100 px-1 text-[8px] font-semibold uppercase text-amber-600" title="exceeds the injection budget - trim it">
+                <span className="rounded-md bg-amber-100 px-1 text-[10px] font-semibold uppercase text-amber-600" title="exceeds the injection budget - trim it">
                   truncated
                 </span>
               )}
               <button
                 onClick={() => setDeleting(s.name)}
-                className="rounded px-1 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-500"
+                className="rounded-md px-1 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-500"
                 title="Delete this skill"
               >
                 ✕
               </button>
             </div>
-            <p className="mt-0.5 max-w-56 truncate text-[9px] text-sky-600" title={s.applyTo ?? "always injected"}>
+            <p className="mt-0.5 max-w-56 truncate text-[11px] text-sky-600" title={s.applyTo ?? "always injected"}>
               applies to: {scopeLabel(s.applyTo)}
             </p>
           </div>
@@ -260,7 +261,7 @@ export default function ProjectSkills({
           <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
             <div className="flex items-center">
               <h3 className="text-sm font-semibold">Add a project skill</h3>
-              <button onClick={() => setAdding(false)} className="ml-auto rounded px-2 text-slate-400 hover:text-slate-700">
+              <button onClick={() => setAdding(false)} className="ml-auto rounded-md px-2 text-slate-400 hover:text-slate-700">
                 ✕
               </button>
             </div>
@@ -288,7 +289,7 @@ export default function ProjectSkills({
               ＋
             </button>
           </div>
-          <label className="mt-1.5 block text-[10px] font-medium text-slate-500">
+          <label className="mt-1.5 block text-[11px] font-medium text-slate-500">
             Applies to (optional - steps not touching matching files skip this skill; analysis
             steps always get everything)
             <select
@@ -312,8 +313,8 @@ export default function ProjectSkills({
               className="mt-1 w-full rounded-md border border-slate-200 px-2 py-1 font-mono text-[11px] outline-none focus:border-slate-400"
             />
           )}
-          <p className="mt-1 text-[9px] leading-relaxed text-slate-400">{COVERED_HINT}</p>
-          {error && <p className="mt-1 text-[10px] text-red-600">{error}</p>}
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{COVERED_HINT}</p>
+          {error && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
           <div className="mt-1.5 flex items-center gap-1.5">
             <button
               onClick={save}

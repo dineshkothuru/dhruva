@@ -206,11 +206,11 @@ export default function EditorPane({ root, file }: { root: string; file: string 
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
         <PathCrumb file={file} />
-        <span className="hidden shrink-0 rounded bg-slate-100 px-1.5 py-px text-[9px] font-semibold uppercase text-slate-400 sm:inline">
+        <span className="hidden shrink-0 rounded-md bg-slate-100 px-1.5 py-px text-[11px] font-semibold uppercase text-slate-400 sm:inline">
           {lang}
         </span>
         {content !== null && (
-          <span className="hidden shrink-0 text-[10px] text-slate-300 md:inline">
+          <span className="hidden shrink-0 text-[11px] text-slate-300 md:inline">
             {content.split("\n").length} lines
           </span>
         )}

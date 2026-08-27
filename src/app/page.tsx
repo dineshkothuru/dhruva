@@ -14,6 +14,7 @@ import EditorPane from "@/components/EditorPane";
 import ChatPane from "@/components/ChatPane";
 import DiffPane from "@/components/DiffPane";
 import WorkflowsPane from "@/components/workflows/WorkflowsPane";
+import { Icon } from "@/components/icons";
 
 type Tab = "chat" | "workflows" | "editor" | "setup";
 
@@ -322,7 +323,7 @@ export default function Home() {
               <circle cx="32" cy="32" r="3.4" fill="#fbbf24" />
             </svg>
             Dhruva
-            <span className="mt-0.5 align-middle text-[9px] font-medium uppercase tracking-[0.18em] text-slate-400">
+            <span className="mt-0.5 align-middle text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
               Salesforce delivery
             </span>
           </h1>
@@ -344,7 +345,7 @@ export default function Home() {
               />
               <button
                 onClick={() => setPicking(true)}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-1 py-0.5 text-sm hover:bg-slate-100"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md px-1 py-0.5 text-sm hover:bg-slate-100"
                 title="Pick a folder on this machine"
               >
                 📁
@@ -385,7 +386,7 @@ export default function Home() {
                   />
                   <span className="ml-auto text-xs text-slate-400">{detailsOpen ? "▾" : "▸"}</span>
                 </span>
-                <span className="truncate pl-[18px] font-mono text-[10px] text-slate-400">
+                <span className="truncate pl-[18px] font-mono text-[11px] text-slate-400">
                   {result.org?.connected
                     ? result.org.instanceUrl?.replace(/^https?:\/\//, "")
                     : "no org authorized"}
@@ -397,13 +398,13 @@ export default function Home() {
 
               {/* project facts as a compact chip row - labels are noise here */}
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600" title="source API version">
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600" title="source API version">
                   API {result.sourceApiVersion ?? "?"}
                 </span>
                 {result.packageDirectories?.map((d) => (
                   <span
                     key={d.path}
-                    className={`rounded-md px-2 py-0.5 font-mono text-[10px] font-medium ${
+                    className={`rounded-md px-2 py-0.5 font-mono text-[11px] font-medium ${
                       d.default ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-500"
                     }`}
                     title={d.default ? "default package directory" : "package directory"}
@@ -413,7 +414,7 @@ export default function Home() {
                   </span>
                 ))}
                 <span
-                  className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                  className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
                     result.isGitRepo ? "bg-slate-100 text-slate-600" : "bg-slate-50 text-slate-300"
                   }`}
                 >
@@ -423,7 +424,7 @@ export default function Home() {
 
               <dl className="mt-3 text-sm">
                 <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                  <dt className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                  <dt className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">
                     <span
                       className={`inline-flex h-1.5 w-1.5 rounded-full ${
                         result.org?.connected ? "bg-emerald-500" : "bg-slate-300"
@@ -437,7 +438,7 @@ export default function Home() {
                         <span className="truncate font-semibold text-slate-800" title={result.org.username}>
                           {result.org.username}
                         </span>
-                        <span className="truncate font-mono text-[10px] text-slate-400" title={result.org.instanceUrl}>
+                        <span className="truncate font-mono text-[11px] text-slate-400" title={result.org.instanceUrl}>
                           {result.org.instanceUrl?.replace(/^https?:\/\//, "")}
                         </span>
                       </span>
@@ -478,7 +479,7 @@ export default function Home() {
                             </button>
                             <button
                               onClick={() => authorizeOrg("https://login.salesforce.com")}
-                              className="text-left text-[10px] text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline"
+                              className="text-left text-[11px] text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline"
                             >
                               production org instead?
                             </button>
@@ -537,7 +538,7 @@ export default function Home() {
           )}
         </div>
         {/* attribution footer - version + author, pinned to the panel bottom */}
-        <div className="border-t border-slate-100 px-5 py-2.5 text-[10px] text-slate-400">
+        <div className="border-t border-slate-100 px-5 py-2.5 text-[11px] text-slate-400">
           Dhruva v{pkg.version} · built by{" "}
           <a
             href="https://www.linkedin.com/in/dinesh-kumar-kothuru/"
@@ -588,7 +589,7 @@ export default function Home() {
               }`}
             >
               <span className="mr-1" aria-hidden>
-                {t === "editor" ? "📝" : t === "chat" ? "💬" : t === "workflows" ? "⚡" : "⚙️"}
+        {t === "editor" ? "" : t === "chat" ? "{<Icon.chat size={13} strokeWidth={1.75} />}" : t === "workflows" ? "{<Icon.workflows size={13} strokeWidth={1.75} />}" : "{<Icon.setup size={13} strokeWidth={1.75} />}"}
               </span>
               {t}
               {t === "workflows" && pendingGates > 0 && (
@@ -628,7 +629,7 @@ export default function Home() {
                   </button>
                   <button
                     onClick={() => closeFile(f)}
-                    className="rounded px-0.5 text-slate-400 hover:bg-slate-300 hover:text-slate-700"
+                    className="rounded-md px-0.5 text-slate-400 hover:bg-slate-300 hover:text-slate-700"
                     title="Close"
                   >
                     ✕
@@ -669,8 +670,8 @@ export default function Home() {
         ) : (
           <div className={`flex-1 items-center justify-center px-8 ${tab === "chat" ? "flex" : "hidden"}`}>
             <div className="max-w-md text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-200 text-xl">
-                💬
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-200 text-xl">
+                {<Icon.chat size={13} strokeWidth={1.75} />}
               </div>
               <h2 className="mt-4 text-base font-semibold">Agent chat</h2>
               <p className="mt-1.5 text-sm text-slate-500">
