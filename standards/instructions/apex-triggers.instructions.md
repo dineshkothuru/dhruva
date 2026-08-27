@@ -11,7 +11,9 @@ When editing Salesforce Apex triggers:
 - Prevent recursive updates deliberately: use context-aware handler design or a narrowly scoped recursion guard. Do NOT use a static Boolean that suppresses later batches — the trigger re-fires per 200-record chunk in the same transaction, and a transaction-wide Boolean silently skips every chunk after the first.
 - Prefer `before` triggers for setting values on the triggering records (no DML needed); use `after` triggers only when record IDs or persisted state is required.
 - Keep trigger behavior deterministic and order-independent across insert, update, delete, and undelete contexts. Compare old and new values before performing update-specific work.
-- Avoid callouts anywhere in the trigger path; offload to async patterns (queueable/platform events) where required.
+- Avoid callouts anywhere in the trigger path; offload to async patterns (queueable/platform events) where required — and aggregate first: enqueue ONE async job per transaction for the affected records, never one per record.
+- Recursion sources include the platform itself: workflow field updates, processes, and record-triggered flows re-fire the trigger within the same save. Design guards against re-entry from those, not only from your own DML.
+- Surface record-level failures with `addError()` on the offending records (keeps partial success working for bulk loads); throw exceptions only for invariant violations where the whole transaction must roll back.
 - Follow naming conventions:
   - Trigger name: `<ObjectName>Trigger`, dropping the `__c` suffix for custom objects (`Invoice__c` becomes `InvoiceTrigger`).
   - Handler name: `<ObjectName>TriggerHandler` using the same convention.
