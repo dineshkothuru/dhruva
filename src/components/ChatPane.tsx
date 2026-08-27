@@ -7,6 +7,7 @@ import { estimateUsage, formatUsage } from "@/lib/pricing";
 import { classifyChain, classifyIntake, matchCatalog } from "@/lib/intake";
 import { rolesFor } from "@/lib/roleStore";
 import ChainProposalCard, { type ChainSlot, type WfLite } from "@/components/ChainProposalCard";
+import { Icon } from "@/components/icons";
 
 interface Msg {
   role: "user" | "agent" | "system" | "changes" | "proposal" | "chain";
@@ -691,9 +692,7 @@ export default function ChatPane({
                   onClick={() => setAttachments((x) => x.filter((y) => y.rel !== a.rel))}
                   className="text-slate-400 hover:text-slate-700"
                   title="Remove"
-                >
-                  ✕
-                </button>
+                ><Icon.close size={12} strokeWidth={2.25} /></button>
               </span>
             ))}
           </div>

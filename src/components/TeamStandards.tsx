@@ -175,9 +175,7 @@ export default function TeamStandards({ active }: { active: boolean }) {
               <button
                 onClick={() => setViewing(null)}
                 className="ml-auto rounded-md px-2 text-slate-400 hover:text-slate-700"
-              >
-                ✕
-              </button>
+              ><Icon.close size={12} strokeWidth={2.25} /></button>
             </div>
             <pre className="mt-3 max-h-[70vh] overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
               {viewing.body}

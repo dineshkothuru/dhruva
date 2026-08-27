@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/components/icons";
 
 /** UI designer for custom workflows - builds the same WorkflowDef shape as
  * built-ins; the engine runs them identically. Saved per project into
@@ -216,7 +217,7 @@ export default function WorkflowBuilder({
               <option value="text">text</option>
               <option value="boolean">boolean</option>
             </select>
-            <button onClick={() => setInputs((v) => v.filter((_, n) => n !== i))} className="text-slate-400 hover:text-red-500">✕</button>
+            <button onClick={() => setInputs((v) => v.filter((_, n) => n !== i))} className="text-slate-400 hover:text-red-500"><Icon.close size={12} strokeWidth={2.25} /></button>
           </div>
         ))}
       </div>
@@ -248,7 +249,7 @@ export default function WorkflowBuilder({
                 <span className="ml-auto flex gap-1">
                   <button onClick={() => move(i, -1)} className="rounded-md border border-slate-200 px-1.5 text-[11px] hover:bg-slate-50">↑</button>
                   <button onClick={() => move(i, 1)} className="rounded-md border border-slate-200 px-1.5 text-[11px] hover:bg-slate-50">↓</button>
-                  <button onClick={() => setSteps((v) => v.filter((_, n) => n !== i))} className="rounded-md border border-slate-200 px-1.5 text-[11px] text-red-500 hover:bg-red-50">✕</button>
+                  <button onClick={() => setSteps((v) => v.filter((_, n) => n !== i))} className="rounded-md border border-slate-200 px-1.5 text-[11px] text-red-500 hover:bg-red-50"><Icon.close size={12} strokeWidth={2.25} /></button>
                 </span>
               </div>
               <p className="mt-1 text-[11px] text-slate-400">{STEP_HINTS[s.type]}</p>

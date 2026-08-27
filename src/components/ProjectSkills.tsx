@@ -196,7 +196,7 @@ export default function ProjectSkills({
       {skills.length === 0 ? (
         /* empty state: a real invitation, not a button floating in whitespace */
         <div className="flex flex-col items-center rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-4 py-6 text-center">
-          <span className="text-2xl opacity-40">📘</span>
+          <Icon.skill size={22} strokeWidth={1.5} className="text-slate-300" />
           <p className="mt-2 text-xs font-medium text-slate-600">No project skills yet</p>
           <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-slate-400">
             Add what an agent could not work out from the code alone - naming a team follows, an
@@ -234,9 +234,7 @@ export default function ProjectSkills({
                 onClick={() => setDeleting(s.name)}
                 className="rounded-md px-1 text-[11px] text-slate-400 hover:bg-red-50 hover:text-red-500"
                 title="Delete this skill"
-              >
-                ✕
-              </button>
+              ><Icon.close size={12} strokeWidth={2.25} /></button>
             </div>
             <p className="mt-0.5 max-w-56 truncate text-[11px] text-sky-600" title={s.applyTo ?? "always injected"}>
               applies to: {scopeLabel(s.applyTo)}
@@ -261,9 +259,7 @@ export default function ProjectSkills({
           <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
             <div className="flex items-center">
               <h3 className="text-sm font-semibold">Add a project skill</h3>
-              <button onClick={() => setAdding(false)} className="ml-auto rounded-md px-2 text-slate-400 hover:text-slate-700">
-                ✕
-              </button>
+              <button onClick={() => setAdding(false)} className="ml-auto rounded-md px-2 text-slate-400 hover:text-slate-700"><Icon.close size={12} strokeWidth={2.25} /></button>
             </div>
           <input
             value={name}

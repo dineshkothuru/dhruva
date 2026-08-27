@@ -154,13 +154,15 @@ const AGENT_OPTIONS: { id: AgentId; label: string }[] = [
   { id: "cursor", label: "Cursor" },
 ];
 
-const STATUS_ICON: Record<string, string> = {
-  pending: "◻",
-  running: "⏳",
-  waiting_gate: "✋",
-  done: "✅",
-  failed: "❌",
-  skipped: "⤼",
+/** Status face per step. Components, so they inherit the status color and
+ * stay aligned with the text beside them. */
+const STATUS_ICON: Record<string, IconType> = {
+  pending: Icon.pending,
+  running: Icon.running,
+  waiting_gate: Icon.humanGate,
+  done: Icon.ok,
+  failed: Icon.failed,
+  skipped: Icon.skipped,
 };
 
 /** Colored left edge per step status - the run's frontier at a glance. */
@@ -1152,7 +1154,19 @@ export default function WorkflowsPane({
                   }`}
                   title={`${s.title} (${s.type}) - ${s.status}`}
                 >
-                  {s.type === "gate" ? "🙋" : s.status === "done" ? "✓" : s.status === "failed" ? "✗" : s.status === "running" ? "●" : "○"}
+                  {(() => {
+                    const I =
+                      s.type === "gate"
+                        ? Icon.humanGate
+                        : s.status === "done"
+                          ? Icon.check
+                          : s.status === "failed"
+                            ? Icon.failed
+                            : s.status === "running"
+                              ? Icon.running
+                              : Icon.pending;
+                    return <I size={11} strokeWidth={2} className={s.status === "running" ? "animate-pulse" : ""} />;
+                  })()}
                   <span className="max-w-24 truncate">{s.id}</span>
                 </span>
               </span>
@@ -1185,7 +1199,20 @@ export default function WorkflowsPane({
               }`}
             >
               <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm">
-                <span>{STATUS_ICON[s.status]}</span>
+                {(() => {
+                  const I = STATUS_ICON[s.status] ?? Icon.pending;
+                  const tone =
+                    s.status === "done"
+                      ? "text-emerald-600"
+                      : s.status === "failed"
+                        ? "text-red-500"
+                        : s.status === "waiting_gate"
+                          ? "text-amber-500"
+                          : s.status === "running"
+                            ? "text-sky-500 animate-pulse"
+                            : "text-slate-300";
+                  return <I size={15} strokeWidth={2} className={`shrink-0 ${tone}`} />;
+                })()}
                 <span className={s.status === "skipped" ? "text-slate-400" : "font-medium"}>
                   {s.title}
                 </span>
@@ -1480,7 +1507,7 @@ export default function WorkflowsPane({
                 }`}
               >
                 {a.label}
-                {defaultAgent === a.id && <span className="ml-1.5 text-[11px]">★ default</span>}
+                {defaultAgent === a.id && <span className="ml-1.5 inline-flex items-center gap-0.5 text-[11px]"><Icon.star size={10} strokeWidth={2} className="fill-current" /> default</span>}
               </button>
             ))}
           </div>
@@ -1753,8 +1780,8 @@ export default function WorkflowsPane({
                         className="rounded-md px-1.5 text-xs text-slate-300 hover:bg-red-50 hover:text-red-500"
                         title="Delete this custom workflow"
                       >
-                        ✕
-                      </button>
+                <Icon.close size={12} strokeWidth={2.25} />
+              </button>
                     )}
                   </span>
                 </div>
@@ -1814,7 +1841,7 @@ export default function WorkflowsPane({
                 className="rounded-md px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 title="Close"
               >
-                ✕
+                <Icon.close size={12} strokeWidth={2.25} />
               </button>
             </div>
             <div className="mt-4 space-y-3">
@@ -1884,8 +1911,8 @@ export default function WorkflowsPane({
                             onClick={() => setAttachments((x) => x.filter((y) => y.rel !== a.rel))}
                             className="text-slate-400 hover:text-slate-700"
                           >
-                            ✕
-                          </button>
+                <Icon.close size={12} strokeWidth={2.25} />
+              </button>
                         </span>
                       ))}
                     </div>
@@ -1911,7 +1938,7 @@ export default function WorkflowsPane({
                 {AGENT_OPTIONS.map((a) => (
                   <option key={a.id} value={a.id} disabled={status?.[a.id]?.installed === false}>
                     {a.label}
-                    {defaultAgent === a.id ? " ★ (default)" : ""}
+                    {defaultAgent === a.id ? " (default)" : ""}
                     {status?.[a.id]?.installed === false ? " - not installed" : ""}
                   </option>
                 ))}

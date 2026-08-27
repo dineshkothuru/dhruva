@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "@/components/icons";
 
 /** Local Dev preview control - replaces the raw console: pick the app/site
  * in a modal, the dev server runs hidden, status + logs stream here, Stop
@@ -106,7 +107,7 @@ export default function PreviewPanel({ root }: { root: string }) {
             className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm hover:border-slate-300 hover:text-slate-900 disabled:opacity-40"
             title="Local Dev: your LOCAL UI files rendered against real org data (no deploy). Apex is not previewed."
           >
-            {loadingChoices === "app" ? "Loading…" : "🖥 App"}
+            {loadingChoices === "app" ? "Loading…" : (<><Icon.monitor size={12} strokeWidth={1.75} className="inline" /> App</>)}
           </button>
           <button
             onClick={() => pick("site")}
@@ -114,7 +115,7 @@ export default function PreviewPanel({ root }: { root: string }) {
             className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm hover:border-slate-300 hover:text-slate-900 disabled:opacity-40"
             title="Local Dev for an LWR Experience Cloud site (Aura sites are not supported by the platform)"
           >
-            {loadingChoices === "site" ? "Loading…" : "🌐 Site"}
+            {loadingChoices === "site" ? "Loading…" : (<><Icon.globe size={12} strokeWidth={1.75} className="inline" /> Site</>)}
           </button>
           <button
             onClick={async () => {
@@ -191,9 +192,7 @@ export default function PreviewPanel({ root }: { root: string }) {
               <button
                 onClick={() => setChoices(null)}
                 className="ml-auto rounded-md px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                ✕
-              </button>
+              ><Icon.close size={12} strokeWidth={2.25} /></button>
             </div>
             {choices.kind === "site" && (
               <p className="mt-1 text-[11px] text-amber-600">

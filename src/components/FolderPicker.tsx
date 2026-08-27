@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Icon } from "@/components/icons";
 
 /** Modal folder picker backed by /api/browse - navigates the local machine's
  * drives so users never type a path by hand. */
@@ -64,9 +65,7 @@ export default function FolderPicker({
       <div className="mt-10 flex max-h-[70vh] w-full max-w-lg flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-2xl">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">Choose a project folder</h3>
-          <button onClick={onCancel} className="ml-auto rounded-md px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
-            ✕
-          </button>
+          <button onClick={onCancel} className="ml-auto rounded-md px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Icon.close size={12} strokeWidth={2.25} /></button>
         </div>
 
         <div className="mt-2 flex items-center gap-2">
@@ -92,7 +91,7 @@ export default function FolderPicker({
               onClick={() => load(dir === "" ? name : join(name))}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-slate-50"
             >
-              📁 <span className="truncate">{name}</span>
+              <Icon.folder size={12} strokeWidth={1.75} className="shrink-0 text-slate-400" /> <span className="truncate">{name}</span>
             </button>
           ))}
           {entries.length === 0 && <p className="px-3 py-2 text-xs text-slate-400">no subfolders</p>}
@@ -101,7 +100,7 @@ export default function FolderPicker({
         <div className="mt-3 flex items-center gap-2">
           {isProject && (
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-              Salesforce project ✓
+              Salesforce project
             </span>
           )}
           <button

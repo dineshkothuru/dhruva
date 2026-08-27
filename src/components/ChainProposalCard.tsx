@@ -1,5 +1,7 @@
 "use client";
 
+import { Icon, wfIconFor, type IconType } from "@/components/icons";
+
 /** Interactive chain proposal - rendered in chat when the intake detects a
  * multi-phase request ("design and implement"). The user reshapes the chain
  * (any standard or custom workflow per phase, add/remove phases) and starts
@@ -25,17 +27,10 @@ export interface ChainSlot {
   title: string;
 }
 
-export function chainIcon(id: string, title: string): string {
-  const s = `${id} ${title}`.toLowerCase();
-  if (/design|architect|erd|hld|blueprint/.test(s)) return "📐";
-  if (/ux|ui\b|screen|visual/.test(s)) return "🎨";
-  if (/implement|tdd|build|develop/.test(s)) return "🛠️";
-  if (/test|qa\b/.test(s)) return "🧪";
-  if (/bug|fix|hotfix/.test(s)) return "🩹";
-  if (/deploy|release|ship/.test(s)) return "🚀";
-  if (/review|audit/.test(s)) return "🔍";
-  if (/doc\b|docs|document/.test(s)) return "📄";
-  return "⚙️";
+/** A phase's face, picked from its workflow id and title. Shared with the
+ * catalog so the same workflow looks the same everywhere. */
+export function chainIcon(id: string, title: string): IconType {
+  return wfIconFor(id, title);
 }
 
 export default function ChainProposalCard({
@@ -90,8 +85,8 @@ export default function ChainProposalCard({
       <div className="rounded-[14px] bg-white px-4 py-3.5">
         {/* header */}
         <div className="flex items-start gap-2.5">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-base">
-            ⛓️
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+            <Icon.chain size={15} strokeWidth={1.75} />
           </span>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-800">Delivery chain proposed</p>
@@ -125,12 +120,15 @@ export default function ChainProposalCard({
                       className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-md text-[11px] text-slate-300 hover:bg-red-50 hover:text-red-500"
                       title="Remove this phase"
                     >
-                      ✕
+                      <Icon.close size={11} strokeWidth={2.25} />
                     </button>
                   )}
                   <div className="flex items-center gap-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-base shadow-sm">
-                      {chainIcon(s.workflow, s.title)}
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm">
+                      {(() => {
+                        const I = chainIcon(s.workflow, s.title);
+                        return <I size={16} strokeWidth={1.75} />;
+                      })()}
                     </span>
                     <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
                       Phase {i + 1}
@@ -170,7 +168,13 @@ export default function ChainProposalCard({
                     {def ? (
                       <>
                         {steps.length} steps
-                        {gates > 0 && <> · {gates} 🙋 {gates === 1 ? "gate" : "gates"}</>}
+                        {gates > 0 && (
+                      <span className="inline-flex items-center gap-0.5">
+                        {" · "}
+                        <Icon.humanGate size={10} strokeWidth={1.75} className="text-amber-500" />
+                        {gates} {gates === 1 ? "gate" : "gates"}
+                      </span>
+                    )}
                       </>
                     ) : (
                       "…"
@@ -194,7 +198,7 @@ export default function ChainProposalCard({
 
         {designToImplement && (
           <p className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
-            <span>📄</span> The TDD and build plan written by Solution design are wired into Implement from TDD automatically.
+            <Icon.inputs size={12} strokeWidth={1.75} className="shrink-0 text-slate-400" /> The TDD and build plan written by Solution design are wired into Implement from TDD automatically.
           </p>
         )}
 
@@ -218,7 +222,8 @@ export default function ChainProposalCard({
                 className="h-3.5 w-3.5 accent-violet-600"
               />
               <span>
-                🤖 <span className="font-semibold">Unattended</span> - an AI gatekeeper clears the
+                <Icon.robot size={12} strokeWidth={1.75} className="inline text-violet-500" />{" "}
+                <span className="font-semibold">Unattended</span> - an AI gatekeeper clears the
                 human gates (audited; escalates to you when unsure)
               </span>
             </label>

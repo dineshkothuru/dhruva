@@ -410,7 +410,7 @@ export default function Home() {
                     title={d.default ? "default package directory" : "package directory"}
                   >
                     {d.path}
-                    {d.default && " ★"}
+                    {d.default && <Icon.star size={9} strokeWidth={2} className="ml-0.5 inline fill-current" />}
                   </span>
                 ))}
                 <span
@@ -582,15 +582,23 @@ export default function Home() {
                 setTab(t);
                 trackUi("feature_used", { feature: t });
               }}
-              className={`relative rounded-lg px-3.5 py-1 text-sm font-medium capitalize transition ${
+              className={`relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition ${
                 tab === t
                   ? "bg-white text-slate-900 shadow-sm"
                   : "text-slate-500 hover:text-slate-800"
               }`}
             >
-              <span className="mr-1" aria-hidden>
-        {t === "editor" ? "" : t === "chat" ? "{<Icon.chat size={13} strokeWidth={1.75} />}" : t === "workflows" ? "{<Icon.workflows size={13} strokeWidth={1.75} />}" : "{<Icon.setup size={13} strokeWidth={1.75} />}"}
-              </span>
+              {(() => {
+                const I =
+                  t === "editor"
+                    ? Icon.editor
+                    : t === "chat"
+                      ? Icon.chat
+                      : t === "workflows"
+                        ? Icon.workflows
+                        : Icon.setup;
+                return <I size={14} strokeWidth={1.75} className="shrink-0" aria-hidden />;
+              })()}
               {t}
               {t === "workflows" && pendingGates > 0 && (
                 <span
@@ -631,9 +639,7 @@ export default function Home() {
                     onClick={() => closeFile(f)}
                     className="rounded-md px-0.5 text-slate-400 hover:bg-slate-300 hover:text-slate-700"
                     title="Close"
-                  >
-                    ✕
-                  </button>
+                  ><Icon.close size={12} strokeWidth={2.25} /></button>
                 </span>
               ))}
             </div>

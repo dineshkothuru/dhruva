@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Icon } from "@/components/icons";
 
 /** Per-project settings (.dhruva/settings.json) - lives in the LEFT
  * project panel with the rest of the per-project configuration (skills,
@@ -51,7 +52,7 @@ export default function ProjectSettingsPanel({ root }: { root: string }) {
     <div className="border-t border-slate-100 px-5 py-3">
       <details>
         <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-widest text-slate-400 hover:text-slate-600">
-          ⚙ Project settings - UX design {ux.enabled ? "(on)" : "(off)"}
+          <Icon.setup size={12} strokeWidth={1.75} className="mr-1 inline" /> Project settings - UX design {ux.enabled ? "(on)" : "(off)"}
         </summary>
         <div className="mt-2 space-y-2.5">
           <p className="text-[11px] leading-relaxed text-slate-400">

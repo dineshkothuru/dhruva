@@ -11,6 +11,11 @@
 
 import {
   Ban,
+  Globe,
+  Monitor,
+  CircleDashed,
+  CircleSlash,
+  CircleX,
   Bot,
   Bug,
   Check,
@@ -126,10 +131,15 @@ export const Icon = {
   blocked: Ban,
   info: Info,
   running: CircleDot,
+  pending: CircleDashed,
+  failed: CircleX,
+  skipped: CircleSlash,
   stop: Square,
   resume: RefreshCw,
   star: Star,
   terminal: Terminal,
+  monitor: Monitor,
+  globe: Globe,
   help: LifeBuoy,
   verified: UserCheck,
 } as const;

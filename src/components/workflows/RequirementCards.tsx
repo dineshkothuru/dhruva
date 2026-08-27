@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Icon } from "@/components/icons";
 
 /** Itemized design review: parses "### REQ-xxx" blocks from the analyse
  * step's output into cards with per-item Approve / Reject + comment. The
@@ -177,7 +178,7 @@ export default function RequirementCards({
                       : "border-slate-300 bg-white text-slate-500 hover:bg-slate-50"
                   }`}
                 >
-                  ✓ Approve
+                  <Icon.check size={11} strokeWidth={2.25} className="inline" /> Approve
                 </button>
                 <button
                   onClick={() => setDecisions((v) => ({ ...v, [i.id]: "reject" }))}
@@ -188,7 +189,7 @@ export default function RequirementCards({
                       : "border-slate-300 bg-white text-slate-500 hover:bg-slate-50"
                   }`}
                 >
-                  ✗ Reject
+                  <Icon.close size={11} strokeWidth={2.25} className="inline" /> Reject
                 </button>
               </span>
             </div>
