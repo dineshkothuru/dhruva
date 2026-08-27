@@ -5,7 +5,7 @@ import { isAttachableRoot, resolveInside, MAX_FILE_BYTES } from "@/lib/fsguard";
 import { baselineContent, changesSince, contentAt, isCommitHash } from "@/lib/snapshot";
 
 /** Deterministic review of what changed since the last snapshot (taken
- * automatically before each agent run). Git-server-independent — works for
+ * automatically before each agent run). Git-server-independent - works for
  * projects with no git at all (the org-sourced folders).
  * POST {root} → {changes: [{file, status}]}
  * POST {root, file} → {before, after} for the diff view; optional pinned

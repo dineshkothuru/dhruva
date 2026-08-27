@@ -17,7 +17,7 @@
     },
     {
       "key": "scope",
-      "label": "Scope note (optional \u2014 e.g. only components 1-3)",
+      "label": "Scope note (optional - e.g. only components 1-3)",
       "kind": "text",
       "default": "",
       "attachTo": true
@@ -53,7 +53,7 @@
       "type": "agent",
       "role": "read",
       "readOnly": true,
-      "prompt": "Read the approved Technical Design Document at {inputs.tddPath} in this project. DO NOT modify any files in this step.\nScope note from the requester (may narrow the work): {inputs.scope}\nCross-check the TDD against the current codebase (components it references, reuse it assumes). If the TDD has a Build Plan section (task table T-1, T-2\u2026 with depends_on), use ITS order as the checklist; otherwise produce the implementation checklist in dependency order yourself. Either way: each component to create or modify, and flag anything in the TDD that no longer matches the codebase.\nEnd with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls"
+      "prompt": "Read the approved Technical Design Document at {inputs.tddPath} in this project. DO NOT modify any files in this step.\nScope note from the requester (may narrow the work): {inputs.scope}\nCross-check the TDD against the current codebase (components it references, reuse it assumes). If the TDD has a Build Plan section (task table T-1, T-2… with depends_on), use ITS order as the checklist; otherwise produce the implementation checklist in dependency order yourself. Either way: each component to create or modify, and flag anything in the TDD that no longer matches the codebase.\nEnd with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls"
     },
     {
       "id": "approve-plan",
@@ -89,13 +89,13 @@
     },
     {
       "id": "implement",
-      "title": "Implement per TDD (agent \u2014 one bounded run per build-plan task)",
+      "title": "Implement per TDD (agent - one bounded run per build-plan task)",
       "type": "agent",
       "role": "implement",
       "taskLoop": true,
       "tasksFile": "{inputs.tasksPath}",
       "timeoutMinutes": 30,
-      "prompt": "Implement the approved plan. The Technical Design Document at {inputs.tddPath} is the specification \u2014 follow its component designs, API names, and test strategy exactly.\nApproved build checklist:\n{steps.plan.output}\n\nOrg-refresh delta since planning:\n{steps.retrieve-delta.output}\nIf files are listed in that delta, re-read them before changing them.\nWrite or update the Apex tests the TDD's test strategy specifies. Never create a parallel implementation of something that exists. Do not deploy."
+      "prompt": "Implement the approved plan. The Technical Design Document at {inputs.tddPath} is the specification - follow its component designs, API names, and test strategy exactly.\nApproved build checklist:\n{steps.plan.output}\n\nOrg-refresh delta since planning:\n{steps.retrieve-delta.output}\nIf files are listed in that delta, re-read them before changing them.\nWrite or update the Apex tests the TDD's test strategy specifies. Never create a parallel implementation of something that exists. Do not deploy."
     },
     {
       "id": "changes",
@@ -120,7 +120,7 @@
         "trigger": "VERDICT:\\s*BLOCKED",
         "maxRounds": 1
       },
-      "prompt": "Review ONLY the changes listed below against the team standards AND against the TDD at {inputs.tddPath} (the changes must implement what the TDD specifies \u2014 flag deviations). Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nReport each finding in this exact shape (severity in parentheses):\nF<n> (critical | important | nit) [refs: <the REQ-/UX-/task ids this finding concerns, comma-separated \u2014 the SAME ids used in the design/plan under review; '-' only for a truly global finding>]: <short title>\n  Where: <file / component / section>\n  Problem: <what is wrong>\n  Fix: <the concrete change to make>\ncritical = would break in production or violates a blocking standard; important = should be fixed before deploy; nit = style/polish, never blocks.\nFor each critical/important finding that belongs to a build-plan task, ALSO output one line:\nREOPEN T-<n>: <what to fix and why>\n(the engine reopens exactly those tasks for rework; never REOPEN for a nit). Then end with exactly one line:\nVERDICT: READY \u2014 or \u2014 VERDICT: BLOCKED, followed by the critical/important finding ids.\nnit-only findings never block."
+      "prompt": "Review ONLY the changes listed below against the team standards AND against the TDD at {inputs.tddPath} (the changes must implement what the TDD specifies - flag deviations). Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nReport each finding in this exact shape (severity in parentheses):\nF<n> (critical | important | nit) [refs: <the REQ-/UX-/task ids this finding concerns, comma-separated - the SAME ids used in the design/plan under review; '-' only for a truly global finding>]: <short title>\n  Where: <file / component / section>\n  Problem: <what is wrong>\n  Fix: <the concrete change to make>\ncritical = would break in production or violates a blocking standard; important = should be fixed before deploy; nit = style/polish, never blocks.\nFor each critical/important finding that belongs to a build-plan task, ALSO output one line:\nREOPEN T-<n>: <what to fix and why>\n(the engine reopens exactly those tasks for rework; never REOPEN for a nit). Then end with exactly one line:\nVERDICT: READY - or - VERDICT: BLOCKED, followed by the critical/important finding ids.\nnit-only findings never block."
     },
     {
       "id": "traceability",
@@ -128,14 +128,14 @@
       "type": "agent",
       "role": "trace",
       "readOnly": true,
-      "prompt": "Build a requirements traceability matrix. Re-read the ENTIRE TDD at {inputs.tddPath} (chunked reads to the end). Extract every requirement/component/behavior it specifies (respect the scope note: {inputs.scope}). For EACH item, inspect the changed files below and report one line:\n  <n>. <requirement item> \u2014 IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\nChanged files in this run:\n{steps.changes.output}\nDo not modify any files. Be strict: no evidence in the diff = MISSING, even if it seems implied. End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE \u2014 items <numbers>."
+      "prompt": "Build a requirements traceability matrix. Re-read the ENTIRE TDD at {inputs.tddPath} (chunked reads to the end). Extract every requirement/component/behavior it specifies (respect the scope note: {inputs.scope}). For EACH item, inspect the changed files below and report one line:\n  <n>. <requirement item> - IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\nChanged files in this run:\n{steps.changes.output}\nDo not modify any files. Be strict: no evidence in the diff = MISSING, even if it seems implied. End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE - items <numbers>."
     },
     {
       "id": "approve-changes",
       "title": "Approve code changes",
       "type": "gate",
       "reviseTarget": "implement",
-      "message": "HUMAN GATE \u2014 you are shown the diff, the code reviewer's verdict with its findings (reopened tasks already carry the reviewer's work orders), and the traceability matrix. Revise to rework, approve to validate against the org."
+      "message": "HUMAN GATE - you are shown the diff, the code reviewer's verdict with its findings (reopened tasks already carry the reviewer's work orders), and the traceability matrix. Revise to rework, approve to validate against the org."
     },
     {
       "id": "validate",
@@ -174,7 +174,7 @@
     },
     {
       "id": "visual-preview",
-      "title": "Visual test \u2014 local files against live org data (Local Dev)",
+      "title": "Visual test - local files against live org data (Local Dev)",
       "type": "cli",
       "bin": "sf",
       "detached": true,

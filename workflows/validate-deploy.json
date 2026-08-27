@@ -1,7 +1,7 @@
 {
   "id": "validate-deploy",
   "title": "Validate deploy",
-  "description": "Gate, then check-only deploy of a source path with the chosen test level. Works on any org (no source tracking required) — nothing is ever saved to the org.",
+  "description": "Gate, then check-only deploy of a source path with the chosen test level. Works on any org (no source tracking required) - nothing is ever saved to the org.",
   "inputs": [
     {
       "key": "target",

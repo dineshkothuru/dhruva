@@ -1,4 +1,4 @@
-/** Agent adapter registry — each entry describes how to probe and run one
+/** Agent adapter registry - each entry describes how to probe and run one
  * coding-agent CLI inside the attached project. The user's own machine login
  * (GitHub / Claude / ChatGPT) is used; no keys pass through this app. */
 
@@ -9,7 +9,7 @@ export interface AgentDef {
   label: string;
   /** Command probed with --version to detect installation. */
   bin: string;
-  /** Model tiers — the system setting mapping roles to models per agent.
+  /** Model tiers - the system setting mapping roles to models per agent.
    * Workflow steps declare a tier ("best" for architecture/review judgment,
    * "default" for implementation volume, "light" for cheap mechanical work);
    * the engine resolves it here. "" = the CLI's own default model. */
@@ -34,7 +34,7 @@ export interface AgentDef {
   installHint: string;
 }
 
-/** Model ids reach the shell as CLI args — allow only plain token shapes. */
+/** Model ids reach the shell as CLI args - allow only plain token shapes. */
 export function isSafeModelId(v: unknown): v is string {
   return typeof v === "string" && /^[A-Za-z0-9._-]{1,60}$/.test(v);
 }
@@ -57,7 +57,7 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     bin: "copilot",
     tiers: { best: "claude-opus-5", default: "claude-sonnet-5", light: "gemini-3.6-flash" },
     // Slug convention: the picker's display name, lowercased, spaces → hyphens
-    // ("GPT-5.6 Sol" → gpt-5.6-sol — verified against the CLI). An id the CLI
+    // ("GPT-5.6 Sol" → gpt-5.6-sol - verified against the CLI). An id the CLI
     // doesn't know fails instantly at step start with a visible error.
     models: [
       { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
@@ -146,13 +146,13 @@ export const AGENTS: Record<AgentId, AgentDef> = {
     id: "cursor",
     label: "Cursor",
     bin: "cursor-agent",
-    // model ids vary by Cursor version — "" lets the CLI pick; type exact ids
+    // model ids vary by Cursor version - "" lets the CLI pick; type exact ids
     // (they autocomplete once used) in Models-by-role.
     tiers: { best: "", default: "", light: "" },
     models: [{ id: "", label: "Default (Cursor picks)" }],
     // -p print mode reads the prompt from stdin; --force approves file edits
     // in non-interactive mode. readOnly = omit --force (edits stay blocked)
-    // plus the persona instruction — best-effort like copilot.
+    // plus the persona instruction - best-effort like copilot.
     build: (_prompt, model, readOnly) => ({
       args: [
         "-p",
@@ -164,7 +164,7 @@ export const AGENTS: Record<AgentId, AgentDef> = {
       viaStdin: true,
     }),
     installHint:
-      "install the Cursor CLI (cursor.com/cli — or from the Cursor app), then run `cursor-agent login`",
+      "install the Cursor CLI (cursor.com/cli - or from the Cursor app), then run `cursor-agent login`",
   },
 };
 

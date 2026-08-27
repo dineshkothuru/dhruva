@@ -16,9 +16,9 @@ interface CatalogItem {
   title: string;
   description: string;
   custom?: boolean;
-  /** custom workflows: where they live — central (all projects) or project. */
+  /** custom workflows: where they live - central (all projects) or project. */
   scope?: "central" | "project";
-  /** full step list — powers duplicate-to-customize. */
+  /** full step list - powers duplicate-to-customize. */
   steps?: Record<string, unknown>[];
   inputs: {
     key: string;
@@ -31,7 +31,7 @@ interface CatalogItem {
   }[];
 }
 
-/** Catalog grouping — anything unlisted lands in the first group. */
+/** Catalog grouping - anything unlisted lands in the first group. */
 const CATEGORIES: [string, string[]][] = [
   ["Development", ["bug-fix", "feature-dev", "solution-design", "ux-design", "implement-tdd"]],
   ["Testing", ["test-gen", "run-tests"]],
@@ -55,7 +55,7 @@ const STATUS_ICON: Record<string, string> = {
   skipped: "⤼",
 };
 
-/** Colored left edge per step status — the run's frontier at a glance. */
+/** Colored left edge per step status - the run's frontier at a glance. */
 const STATUS_EDGE: Record<string, string> = {
   pending: "border-l-slate-200",
   running: "border-l-sky-400",
@@ -103,7 +103,7 @@ function StepBody({
     return running ? (
       <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
         <span className="mr-1 inline-block animate-pulse text-sky-500">●</span>
-        running — output streams here…
+        running - output streams here…
       </p>
     ) : null;
   }
@@ -216,8 +216,8 @@ export default function WorkflowsPane({
         `A step in a Salesforce delivery workflow failed. Diagnose it. DO NOT modify any files.\n` +
         `Workflow: ${run?.workflowTitle}\nStep: ${stepTitle}\n` +
         `Step output (tail):\n${output.slice(-4000)}\n\n` +
-        `Reply with: (1) the root cause in plain language, (2) the exact resolution — ` +
-        `commands to run, Setup paths, or what to change — for a Salesforce developer, ` +
+        `Reply with: (1) the root cause in plain language, (2) the exact resolution - ` +
+        `commands to run, Setup paths, or what to change - for a Salesforce developer, ` +
         `(3) whether re-running the workflow will then succeed. Be brief and concrete.`;
       const res = await fetch("/api/agent", {
         method: "POST",
@@ -279,7 +279,7 @@ export default function WorkflowsPane({
       .toLowerCase();
     return q.split(/\s+/).every((term) => hay.includes(term));
   }
-  // files attached in the start modal — ride into the run's text inputs so
+  // files attached in the start modal - ride into the run's text inputs so
   // agent steps read them (the engine's full-read rule applies)
   const [attachments, setAttachments] = useState<{ rel: string; name: string }[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -442,7 +442,10 @@ export default function WorkflowsPane({
     if (!run || gating) return;
     setGating(true);
     try {
-      await api({ action: "gate", runId: run.runId, decision, feedback });
+      const { ok, data } = await api({ action: "gate", runId: run.runId, decision, feedback });
+      if (ok && data.resolved === false) {
+        alert("The gate is not waiting right now (a revision is replaying or the run ended) - your click was not applied. The view will refresh.");
+      }
       setGateNote("");
       await fetchRunState(run.runId);
     } finally {
@@ -489,7 +492,7 @@ export default function WorkflowsPane({
                 await fetchRunState(run.runId);
               }}
               className="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-600 hover:bg-red-100"
-              title="Abort the run — kills the running step's process"
+              title="Abort the run - kills the running step's process"
             >
               ■ Stop run
             </button>
@@ -507,7 +510,7 @@ export default function WorkflowsPane({
                 else await fetchRunState(run.runId);
               }}
               className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
-              title="Re-run from the first incomplete step — completed steps and approved gates are kept"
+              title="Re-run from the first incomplete step - completed steps and approved gates are kept"
             >
               ⟳ Resume run
             </button>
@@ -522,7 +525,7 @@ export default function WorkflowsPane({
             <>
               {totalIn.toLocaleString()} in / {totalOut.toLocaleString()} out tokens ·{" "}
               {totalCost < 0.01 ? `$${totalCost.toFixed(4)}` : `$${totalCost.toFixed(2)}`} at API
-              rates (runs on your subscription — not billed)
+              rates (runs on your subscription - not billed)
             </>
           )}
         </p>
@@ -530,7 +533,7 @@ export default function WorkflowsPane({
         {Object.keys(run.inputs ?? {}).length > 0 && (
           <details className="mb-3 rounded-xl border border-slate-200 bg-white">
             <summary className="cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-400 hover:text-slate-700">
-              Run inputs — what this run was asked to do
+              Run inputs - what this run was asked to do
             </summary>
             <dl className="space-y-1.5 border-t border-slate-100 px-4 py-2">
               {Object.entries(run.inputs).map(([k, v]) => (
@@ -582,11 +585,20 @@ export default function WorkflowsPane({
                 <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
                   <p className="whitespace-pre-wrap text-sm text-amber-800">{s.output}</p>
                   {(() => {
-                    // the reviewer's UNRESOLVED objections belong AT the gate —
-                    // the human decides against them, so show them here, not
-                    // buried in a collapsed step card above
+                    // the reviewer's UNRESOLVED objections belong AT the gate -
+                    // the human decides against them, so show them here. Search
+                    // only the steps SINCE THE PREVIOUS GATE: earlier phases'
+                    // blocked reviews were already ruled on at their own gate.
                     const gateIdx = run.steps.findIndex((x) => x.id === s.id);
-                    const reviewer = [...run.steps.slice(0, gateIdx)]
+                    let prevGateIdx = -1;
+                    for (let k = gateIdx - 1; k >= 0; k--) {
+                      if (run.steps[k].type === "gate") {
+                        prevGateIdx = k;
+                        break;
+                      }
+                    }
+                    const segment = run.steps.slice(prevGateIdx + 1, gateIdx);
+                    const reviewer = [...segment]
                       .reverse()
                       .find((x) => x.type === "agent" && /VERDICT:\s*BLOCKED/i.test(x.output));
                     if (!reviewer) return null;
@@ -597,7 +609,7 @@ export default function WorkflowsPane({
                     return (
                       <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-red-600">
-                          Reviewer findings — still BLOCKED after the auto-fix round
+                          Reviewer findings - still BLOCKED after the auto-fix round
                         </p>
                         <pre className="mt-1.5 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded bg-white/60 p-2 text-xs text-slate-700">
                           {findings}
@@ -606,7 +618,7 @@ export default function WorkflowsPane({
                           onClick={() =>
                             gate(
                               "revise",
-                              `Address EVERY blocking finding from the design reviewer, exactly as each Fix line specifies. Do not re-argue a finding — implement its fix or state explicitly why it is impossible:\n\n${findings.slice(0, 11000)}`,
+                              `Address EVERY blocking finding from the design reviewer, exactly as each Fix line specifies. Do not re-argue a finding - implement its fix or state explicitly why it is impossible:\n\n${findings.slice(0, 11000)}`,
                             )
                           }
                           disabled={gating}
@@ -618,11 +630,20 @@ export default function WorkflowsPane({
                     );
                   })()}
                   {(() => {
-                    // itemized review: if the step this gate reviews produced
-                    // REQ blocks, render per-requirement cards (fallback: the
-                    // plain textarea flow below stays untouched)
+                    // itemized review: if a step SINCE THE PREVIOUS GATE
+                    // produced REQ blocks, render per-requirement cards -
+                    // never resurrect an earlier phase's cards at later gates
+                    // (approving them there would masquerade as a design review)
                     const gateIdx = run.steps.findIndex((x) => x.id === s.id);
-                    const source = [...run.steps.slice(0, gateIdx)]
+                    let prevGateIdx = -1;
+                    for (let k = gateIdx - 1; k >= 0; k--) {
+                      if (run.steps[k].type === "gate") {
+                        prevGateIdx = k;
+                        break;
+                      }
+                    }
+                    const segment = run.steps.slice(prevGateIdx + 1, gateIdx);
+                    const source = [...segment]
                       .reverse()
                       .find((x) => x.type === "agent" && x.output.includes("### REQ-"));
                     if (!source) return null;
@@ -630,7 +651,7 @@ export default function WorkflowsPane({
                     if (items.length === 0) return null;
                     // map reviewer findings to the REQ ids they mention, so
                     // each card shows WHY the critic objected to it
-                    const reviewer = [...run.steps.slice(0, gateIdx)]
+                    const reviewer = [...segment]
                       .reverse()
                       .find((x) => x.type === "agent" && /VERDICT:\s*BLOCKED/i.test(x.output));
                     const critique: Record<string, string[]> = {};
@@ -651,7 +672,7 @@ export default function WorkflowsPane({
                         const title = (neu ? neu[4] : old![2]).replace(/\*+/g, "").trim();
                         const problem =
                           p.match(/Problem:\s*([\s\S]{0,300}?)(?:\n\s*Fix:|$)/)?.[1]?.trim() ?? "";
-                        const text = `${id} (${sev}): ${title} — ${problem}`;
+                        const text = `${id} (${sev}): ${title} - ${problem}`;
                         // refs come from the declared [refs:] list when present,
                         // else fall back to scanning the finding body
                         const refs = neu
@@ -676,7 +697,7 @@ export default function WorkflowsPane({
                     value={gateNote}
                     onChange={(e) => setGateNote(e.target.value)}
                     rows={2}
-                    placeholder="Optional instructions — e.g. 'use a flow instead of a trigger', 'split the service class'. Filling this enables Revise: the previous analysis re-runs following your instructions, then gates again."
+                    placeholder="Optional instructions - e.g. 'use a flow instead of a trigger', 'split the service class'. Filling this enables Revise: the previous analysis re-runs following your instructions, then gates again."
                     className="mt-3 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs outline-none focus:border-amber-400"
                   />
                   <div className="mt-2 flex gap-2">
@@ -801,12 +822,12 @@ export default function WorkflowsPane({
 
       <details className="mt-4 rounded-xl border border-slate-200 bg-white">
         <summary className="cursor-pointer px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
-          Models by role — which model plays each role, per agent
+          Models by role - which model plays each role, per agent
         </summary>
         <div className="space-y-4 border-t border-slate-100 p-4">
           <p className="text-[11px] text-slate-400">
             Every workflow step plays one of five roles; set the model per role once and every
-            workflow follows — no per-run input needed. Empty = automatic (the shipped default
+            workflow follows - no per-run input needed. Empty = automatic (the shipped default
             shown as placeholder). A change here applies from the next run.
           </p>
           <div className="flex gap-1.5">
@@ -851,13 +872,13 @@ export default function WorkflowsPane({
                       if (v) setAgent(v);
                     }}
                   />
-                  Default agent — preselected for chat and every new run
+                  Default agent - preselected for chat and every new run
                 </label>
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                   {STEP_ROLES.map((role) => {
                     const val = cfg[role]?.trim() ?? "";
                     const set = !!val;
-                    // must be an exact CLI model slug — the server DROPS
+                    // must be an exact CLI model slug - the server DROPS
                     // anything else, so warn loudly instead of failing silently
                     const invalid = set && !/^[A-Za-z0-9._-]{1,60}$/.test(val);
                     return (
@@ -874,7 +895,7 @@ export default function WorkflowsPane({
                           }}
                           onBlur={(e) => {
                             let v = e.target.value.trim();
-                            // model ids are case-sensitive at the CLI — when the
+                            // model ids are case-sensitive at the CLI - when the
                             // typed value matches a known id except for case,
                             // auto-correct instead of failing at run time
                             const known = [
@@ -908,7 +929,7 @@ export default function WorkflowsPane({
                         />
                         {invalid && (
                           <span className="mt-0.5 block text-[10px] font-medium text-red-600">
-                            not a model id (letters/digits/dots/dashes only — no spaces) — would
+                            not a model id (letters/digits/dots/dashes only - no spaces) - would
                             be IGNORED at run time
                           </span>
                         )}
@@ -939,7 +960,7 @@ export default function WorkflowsPane({
             <input
               value={runFilter}
               onChange={(e) => setRunFilter(e.target.value)}
-              placeholder="Filter runs — text, status, agent, date (e.g. 2026-08-26), or words from the request…"
+              placeholder="Filter runs - text, status, agent, date (e.g. 2026-08-26), or words from the request…"
               spellCheck={false}
               className="mb-1 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs outline-none focus:border-slate-400"
             />
@@ -1029,7 +1050,7 @@ export default function WorkflowsPane({
                         setDesigning(true);
                       }}
                       className="rounded px-1.5 text-xs text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100"
-                      title="Duplicate to customize — copy this workflow and add/remove steps on top"
+                      title="Duplicate to customize - copy this workflow and add/remove steps on top"
                     >
                       ⧉
                     </button>
@@ -1059,7 +1080,7 @@ export default function WorkflowsPane({
                 >
                   <div className="text-sm font-semibold">+ Design a workflow</div>
                   <p className="mt-1 text-xs">
-                    Build your own step sequence — same engine, gates, and audit.
+                    Build your own step sequence - same engine, gates, and audit.
                   </p>
                 </button>
               )}
@@ -1150,7 +1171,7 @@ export default function WorkflowsPane({
                         onClick={() => fileRef.current?.click()}
                         disabled={uploading || starting}
                         className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40"
-                        title="Attach requirement documents, screenshots, or logs — the AI reads them in full"
+                        title="Attach requirement documents, screenshots, or logs - the AI reads them in full"
                       >
                         {uploading ? (
                           <span className="text-xs">…</span>
@@ -1202,7 +1223,7 @@ export default function WorkflowsPane({
                   <option key={a.id} value={a.id} disabled={status?.[a.id]?.installed === false}>
                     {a.label}
                     {defaultAgent === a.id ? " ★ (default)" : ""}
-                    {status?.[a.id]?.installed === false ? " — not installed" : ""}
+                    {status?.[a.id]?.installed === false ? " - not installed" : ""}
                   </option>
                 ))}
               </select>

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
 
-/** Per-PROJECT settings — <project>/.sfharness/settings.json. Today: the UX
+/** Per-PROJECT settings - <project>/.sfharness/settings.json. Today: the UX
  * design configuration. When ux.enabled is set, Solution design runs its
  * conditional UX steps with these rules injected as (hidden, audited) run
  * inputs; when off, those steps are skipped and nothing changes. */

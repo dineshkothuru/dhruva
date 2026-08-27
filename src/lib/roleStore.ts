@@ -2,7 +2,7 @@
 
 import type { StepRole } from "@/lib/workflows/schema";
 
-/** Client-side store for user-configured PER-ROLE models (per agent) — the
+/** Client-side store for user-configured PER-ROLE models (per agent) - the
  * primary model setting. Empty role = automatic (the role's tier resolves it).
  * Sent with each run so the server resolves steps against the user's choice. */
 

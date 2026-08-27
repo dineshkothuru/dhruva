@@ -27,6 +27,6 @@ export interface DetectionResult {
   packageDirectories?: PackageDir[];
   isGitRepo?: boolean;
   org?: OrgStatus;
-  /** Set on "not_salesforce" when the folder has no files — safe to scaffold. */
+  /** Set on "not_salesforce" when the folder has no files - safe to scaffold. */
   isEmptyFolder?: boolean;
 }

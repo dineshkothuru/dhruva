@@ -79,7 +79,7 @@
       "title": "Re-analyse fresh code if needed, then implement fix (agent)",
       "type": "agent",
       "role": "implement",
-      "prompt": "Implement the fix for this bug.\nBug report: {inputs.description}\nApproved plan from the investigation step:\n{steps.locate.output}\n\nThe affected files were re-retrieved from the org after the investigation. This is the exact delta between what the investigation saw and the org's current version:\n{steps.retrieve-delta.output}\nIf that delta says 'no files changed', the plan is based on current code \u2014 implement it directly. If files ARE listed, re-read those files first and re-verify the plan still applies; if the fresh code already contains the fix or differs materially, adapt the plan and say so.\nNever create a new file, class, or method when an existing one should be edited \u2014 search for existing implementations first and modify them. Only change what the plan requires. Do not deploy."
+      "prompt": "Implement the fix for this bug.\nBug report: {inputs.description}\nApproved plan from the investigation step:\n{steps.locate.output}\n\nThe affected files were re-retrieved from the org after the investigation. This is the exact delta between what the investigation saw and the org's current version:\n{steps.retrieve-delta.output}\nIf that delta says 'no files changed', the plan is based on current code - implement it directly. If files ARE listed, re-read those files first and re-verify the plan still applies; if the fresh code already contains the fix or differs materially, adapt the plan and say so.\nNever create a new file, class, or method when an existing one should be edited - search for existing implementations first and modify them. Only change what the plan requires. Do not deploy."
     },
     {
       "id": "changes",
@@ -103,14 +103,14 @@
         "trigger": "VERDICT:\\s*BLOCKED",
         "maxRounds": 1
       },
-      "prompt": "Review ONLY the changes listed below (made in this run) against the team standards. Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nRead each changed file and review the actual change. Report each finding in this exact shape (severity in parentheses):\nF<n> (critical | important | nit) [refs: <the REQ-/UX-/task ids this finding concerns, comma-separated \u2014 the SAME ids used in the design/plan under review; '-' only for a truly global finding>]: <short title>\n  Where: <file / component / section>\n  Problem: <what is wrong>\n  Fix: <the concrete change to make>\ncritical = would break in production or violates a blocking standard; important = should be fixed before deploy; nit = style/polish, never blocks.\nThen end with exactly one line:\nVERDICT: READY \u2014 or \u2014 VERDICT: BLOCKED, followed by the critical/important finding ids.\nnit-only findings never block."
+      "prompt": "Review ONLY the changes listed below (made in this run) against the team standards. Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nRead each changed file and review the actual change. Report each finding in this exact shape (severity in parentheses):\nF<n> (critical | important | nit) [refs: <the REQ-/UX-/task ids this finding concerns, comma-separated - the SAME ids used in the design/plan under review; '-' only for a truly global finding>]: <short title>\n  Where: <file / component / section>\n  Problem: <what is wrong>\n  Fix: <the concrete change to make>\ncritical = would break in production or violates a blocking standard; important = should be fixed before deploy; nit = style/polish, never blocks.\nThen end with exactly one line:\nVERDICT: READY - or - VERDICT: BLOCKED, followed by the critical/important finding ids.\nnit-only findings never block."
     },
     {
       "id": "approve-changes",
       "title": "Approve code changes",
       "type": "gate",
       "reviseTarget": "implement",
-      "message": "HUMAN GATE \u2014 you are shown the diff and the code reviewer's verdict with its findings. Revise to rework, approve to validate and deploy the fix."
+      "message": "HUMAN GATE - you are shown the diff and the code reviewer's verdict with its findings. Revise to rework, approve to validate and deploy the fix."
     },
     {
       "id": "validate",
@@ -149,7 +149,7 @@
     },
     {
       "id": "visual-preview",
-      "title": "Visual test \u2014 local files against live org data (Local Dev)",
+      "title": "Visual test - local files against live org data (Local Dev)",
       "type": "cli",
       "bin": "sf",
       "detached": true,

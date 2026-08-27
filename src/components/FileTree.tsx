@@ -62,7 +62,7 @@ function Node({
   const [open, setOpen] = useState(entry.type === "dir" && autoOpenPath.includes(rel));
   const [children, setChildren] = useState<Entry[] | null>(null);
 
-  // Children load whenever the node is open and not yet loaded — this also
+  // Children load whenever the node is open and not yet loaded - this also
   // powers the auto-expanded chain on first render.
   useEffect(() => {
     if (!open || children !== null) return;
@@ -124,7 +124,7 @@ export default function FileTree({
   root: string;
   onOpenFile: (rel: string) => void;
   selected: string | null;
-  /** The project's default package directory (e.g. "force-app") — expanded
+  /** The project's default package directory (e.g. "force-app") - expanded
    * on load along with its main/default chain. */
   defaultDir?: string;
 }) {
@@ -135,7 +135,7 @@ export default function FileTree({
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryRef = useRef("");
 
-  // Remounted per project (key={root}) — the effect only loads.
+  // Remounted per project (key={root}) - the effect only loads.
   useEffect(() => {
     let cancelled = false;
     listDir(root, "").then((e) => {

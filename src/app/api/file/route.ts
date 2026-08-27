@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     if (Buffer.byteLength(body.content, "utf8") > MAX_FILE_BYTES) {
       return NextResponse.json({ error: "content too large" }, { status: 413 });
     }
-    // Only overwrite existing files — creating files stays with the agent/CLI.
+    // Only overwrite existing files - creating files stays with the agent/CLI.
     const stat = await fs.stat(abs).catch(() => null);
     if (!stat?.isFile()) {
       return NextResponse.json({ error: "file not found" }, { status: 404 });

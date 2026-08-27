@@ -1,10 +1,10 @@
-/** Task-first intake classifier — deterministic, keyword-based.
+/** Task-first intake classifier - deterministic, keyword-based.
  *
  * The user types a requirement/bug in plain language; this proposes the
  * matching workflow. Deliberately NOT an LLM call: the mapping from words to
  * process must be inspectable and stable, and the human confirms the choice
  * anyway (the proposal card). Returns null when the text reads like a plain
- * question — that goes straight to agent chat. */
+ * question - that goes straight to agent chat. */
 
 export interface IntakeProposal {
   workflow: "bug-fix" | "feature-dev" | "solution-design";

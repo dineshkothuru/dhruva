@@ -33,8 +33,8 @@ export async function detectProject(
       path: p,
       isEmptyFolder,
       message: isEmptyFolder
-        ? "Empty folder — you can scaffold a new Salesforce project here."
-        : "No sfdx-project.json found at the folder root — this is not a Salesforce DX project.",
+        ? "Empty folder - you can scaffold a new Salesforce project here."
+        : "No sfdx-project.json found at the folder root - this is not a Salesforce DX project.",
     };
   }
 
@@ -62,7 +62,7 @@ export async function detectProject(
     .then((s) => s.isDirectory())
     .catch(() => false);
 
-  // The sf CLI probe takes seconds — callers can skip it to render the
+  // The sf CLI probe takes seconds - callers can skip it to render the
   // repo-level result instantly and fetch the org badge separately.
   const org = opts?.skipOrg
     ? { connected: false, reason: "checking…" }

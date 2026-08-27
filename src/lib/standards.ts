@@ -1,16 +1,16 @@
-/** Harness-owned Salesforce development standards — LLM-agnostic.
+/** Harness-owned Salesforce development standards - LLM-agnostic.
  *
  * Distilled from the team's ruleset (Salesforce-Copilot-Starter instructions).
  * Delivered deterministically by the ENGINE, never via vendor file
  * conventions: (1) injected verbatim into every agent step's prompt,
  * (2) the checkable subset enforced as post-change verification over the
- * actual changed files — catching violations regardless of which agent
+ * actual changed files - catching violations regardless of which agent
  * (or human) wrote the code.
  */
 
 export const STANDARDS_VERSION = "1";
 
-/** Injected into every code-writing agent step. Keep tight — rules, not prose. */
+/** Injected into every code-writing agent step. Keep tight - rules, not prose. */
 export const STANDARDS_PROMPT = `SALESFORCE DEVELOPMENT STANDARDS (mandatory):
 - Keep all source in SFDX structure under force-app/main/default/.
 - Reuse existing services, selectors, helpers, and components before creating new artifacts. Never duplicate business logic that exists.
@@ -53,60 +53,60 @@ const CHECKS: Check[] = [
     severity: "error",
     files: /\.cls$/i,
     pattern: /SeeAllData\s*=\s*true/i,
-    detail: "SeeAllData=true in tests is forbidden — build data with TestDataFactory.",
+    detail: "SeeAllData=true in tests is forbidden - build data with TestDataFactory.",
   },
   {
     rule: "no-hardcoded-ids",
     severity: "error",
     files: /\.(cls|trigger|js)$/i,
     pattern: /['"](00[15DGQeE][0-9A-Za-z]{12}([0-9A-Za-z]{3})?)['"]/,
-    detail: "Hard-coded Salesforce record/org ID — query or configure it instead.",
+    detail: "Hard-coded Salesforce record/org ID - query or configure it instead.",
   },
   {
     rule: "no-secrets",
     severity: "error",
     files: /\.(cls|trigger|js|xml)$/i,
     pattern: /(password|client_?secret|api_?key|bearer\s+[A-Za-z0-9._-]{16,})\s*[:=]\s*['"][^'"]{6,}['"]/i,
-    detail: "Looks like a credential/secret in source — use Named Credentials or protected custom metadata.",
+    detail: "Looks like a credential/secret in source - use Named Credentials or protected custom metadata.",
   },
   {
     rule: "explicit-sharing-justification",
     severity: "warning",
     files: /\.cls$/i,
     pattern: /\bwithout\s+sharing\b/i,
-    detail: "'without sharing' used — requires a stated justification comment and reviewer attention.",
+    detail: "'without sharing' used - requires a stated justification comment and reviewer attention.",
   },
   {
     rule: "explicit-sharing-declaration",
     severity: "warning",
     files: /\.cls$/i,
     // top-level class declaration (column 0) with no sharing keyword between
-    // the access modifier and `class` — heuristic; indented inner classes and
+    // the access modifier and `class` - heuristic; indented inner classes and
     // test classes are intentionally not matched/exempt
     pattern: /^(?:public|global)\s+(?:virtual\s+|abstract\s+)?class\s+\w+/m,
     detail:
-      "Top-level class declares no sharing mode — the standard requires explicit 'with sharing', 'inherited sharing', or a justified 'without sharing' (test classes exempt).",
+      "Top-level class declares no sharing mode - the standard requires explicit 'with sharing', 'inherited sharing', or a justified 'without sharing' (test classes exempt).",
   },
   {
     rule: "no-soql-in-loop",
     severity: "warning",
     files: /\.(cls|trigger)$/i,
     pattern: /for\s*\([^)]*\)\s*\{[^{}]*\[\s*SELECT\s/is,
-    detail: "SOQL inside a loop (heuristic match) — bulkify: query before the loop.",
+    detail: "SOQL inside a loop (heuristic match) - bulkify: query before the loop.",
   },
   {
     rule: "no-dml-in-loop",
     severity: "warning",
     files: /\.(cls|trigger)$/i,
     pattern: /for\s*\([^)]*\)\s*\{[^{}]*\b(insert|update|delete|upsert)\s+\w/is,
-    detail: "DML inside a loop (heuristic match) — collect records and perform one DML.",
+    detail: "DML inside a loop (heuristic match) - collect records and perform one DML.",
   },
   {
     rule: "no-user-input-soql-concat",
     severity: "warning",
     files: /\.(cls|trigger)$/i,
     pattern: /Database\.query\s*\(\s*['"][^'"]*['"]\s*\+/i,
-    detail: "Dynamic SOQL built by concatenation — bind values or Database.queryWithBinds.",
+    detail: "Dynamic SOQL built by concatenation - bind values or Database.queryWithBinds.",
   },
 ];
 

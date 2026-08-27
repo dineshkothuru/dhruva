@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-/** Modal folder picker backed by /api/browse — navigates the local machine's
+/** Modal folder picker backed by /api/browse - navigates the local machine's
  * drives so users never type a path by hand. */
 export default function FolderPicker({
   initialDir,
@@ -28,7 +28,7 @@ export default function FolderPicker({
       });
       const data = await res.json();
       if (!res.ok) {
-        // an unusable start path must never strand the picker — fall back to
+        // an unusable start path must never strand the picker - fall back to
         // the drive list, like a native Open dialog
         if (target !== "") {
           await load("");
@@ -48,7 +48,7 @@ export default function FolderPicker({
   }
 
   useEffect(() => {
-    // async load on mount — state set only after the fetch resolves
+    // async load on mount - state set only after the fetch resolves
     void load(initialDir ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

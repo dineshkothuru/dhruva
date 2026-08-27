@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       );
     }
     // generous cap: "Revise with ALL findings" passes a full multi-finding
-    // critique as the instruction — truncating it would silently drop findings
+    // critique as the instruction - truncating it would silently drop findings
     const feedback =
       typeof b.feedback === "string" ? b.feedback.trim().slice(0, 12000) : undefined;
     if (decision === "revise" && !feedback) {
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
     const run = await resumeRun(root, b.runId, resumeRoles);
     if (!run) {
       return NextResponse.json(
-        { error: "cannot resume — run is live/finished/unknown, or the workflow definition changed since (start a fresh run)" },
+        { error: "cannot resume - run is live/finished/unknown, or the workflow definition changed since (start a fresh run)" },
         { status: 400 },
       );
     }
@@ -173,7 +173,7 @@ export async function POST(req: Request) {
       if (typeof v === "string" && v.length > 8000) inputs[k] = v.slice(0, 8000);
     }
     // Project-settings injection: when the workflow declares the UX inputs,
-    // fill them from .sfharness/settings.json — server-side, so it's
+    // fill them from .sfharness/settings.json - server-side, so it's
     // deterministic and lands in the run's audited inputs.
     if (def.inputs.some((i) => i.key === "uxEnabled")) {
       const s = await readProjectSettings(root);
@@ -182,13 +182,13 @@ export async function POST(req: Request) {
       inputs.designDir = s.ux?.designDir || "docs/design";
     }
     // binary documents (.docx/.pdf) in the attachments and design folders get
-    // their agent-readable .extracted.md siblings BEFORE any agent runs —
+    // their agent-readable .extracted.md siblings BEFORE any agent runs -
     // covers files dropped into folders that never passed through upload
     const scanDirs = [".sfharness/attachments"];
     if (typeof inputs.designDir === "string" && inputs.designDir) scanDirs.push(inputs.designDir);
     await ensureExtractedIn(root, scanDirs);
     const model = isSafeModelId(b.model) ? b.model : undefined;
-    // per-role model choices — the model setting (role ids fixed)
+    // per-role model choices - the model setting (role ids fixed)
     let roleModels: Partial<Record<StepRole, string>> | undefined;
     if (b.roleModels && typeof b.roleModels === "object") {
       roleModels = {};

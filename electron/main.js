@@ -1,4 +1,4 @@
-/** Dhruva desktop shell — boots the bundled Next server, then opens it in a
+/** Dhruva desktop shell - boots the bundled Next server, then opens it in a
  * native window (the Claude Code-app experience: own window, own icon, no
  * browser). Everything still runs locally with the user's own logins. */
 
@@ -21,7 +21,7 @@ function appRoot() {
 function startServer() {
   const root = appRoot();
   const serverJs = path.join(root, ".next", "standalone", "server.js");
-  // Electron's own binary doubles as node via ELECTRON_RUN_AS_NODE — no
+  // Electron's own binary doubles as node via ELECTRON_RUN_AS_NODE - no
   // system Node required for the UI (sf/agent CLIs still need their installs)
   serverProc = spawn(process.execPath, [serverJs], {
     cwd: path.join(root, ".next", "standalone"),
@@ -30,7 +30,7 @@ function startServer() {
       ELECTRON_RUN_AS_NODE: "1",
       PORT,
       HOSTNAME: "127.0.0.1",
-      // standards/ and workflows/ are resolved from cwd by the app — point
+      // standards/ and workflows/ are resolved from cwd by the app - point
       // them at the bundle
       DHRUVA_STANDARDS_DIR: path.join(root, "standards"),
       DHRUVA_WORKFLOWS_DIR: path.join(root, "workflows"),
@@ -88,7 +88,7 @@ async function createWindow() {
 
 function setupAutoUpdate() {
   // packaged builds check the public GitHub releases, download in the
-  // background, and offer a restart — no manual installer downloads.
+  // background, and offer a restart - no manual installer downloads.
   if (!app.isPackaged) return;
   try {
     const { autoUpdater } = require("electron-updater");
@@ -104,15 +104,15 @@ function setupAutoUpdate() {
       });
       if (choice === 0) autoUpdater.quitAndInstall();
     });
-    autoUpdater.checkForUpdates().catch(() => {/* offline — try next launch */});
+    autoUpdater.checkForUpdates().catch(() => {/* offline - try next launch */});
   } catch {
-    /* updater unavailable — manual installer still works */
+    /* updater unavailable - manual installer still works */
   }
 }
 
 app.whenReady().then(async () => {
   try {
-    // window FIRST — a 5-10s serverless boot with no window feels like a
+    // window FIRST - a 5-10s serverless boot with no window feels like a
     // dead click; the splash appears instantly, the app URL replaces it
     await createWindow();
     startServer();

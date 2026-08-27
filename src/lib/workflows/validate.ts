@@ -14,7 +14,7 @@ const SLUG = /^[a-z0-9][a-z0-9-]{1,40}$/;
 const KEY = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/;
 
 /** Validate an untrusted definition into a clean WorkflowDef (or throw).
- * ONE validator for every source — shipped JSON files and user customs go
+ * ONE validator for every source - shipped JSON files and user customs go
  * through the same contract, so the two can never drift apart.
  * reservedIds: ids the definition may not use (built-ins, for customs). */
 export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): WorkflowDef {
@@ -49,7 +49,7 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
   });
 
   if (!Array.isArray(d.steps) || d.steps.length === 0 || d.steps.length > 30) {
-    throw new Error("1–30 steps required");
+    throw new Error("1-30 steps required");
   }
   const seen = new Set<string>();
   const steps: StepDef[] = d.steps.map((s) => {
@@ -95,7 +95,7 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
     if (s.type === "cli") {
       if (s.bin !== "sf" && s.bin !== "git") throw new Error(`cli step "${s.id}": bin must be sf or git`);
       if (!Array.isArray(s.args) || s.args.length === 0 || s.args.length > 40) {
-        throw new Error(`cli step "${s.id}" needs 1–40 args`);
+        throw new Error(`cli step "${s.id}" needs 1-40 args`);
       }
       step.bin = s.bin;
       step.args = s.args.map((a) => {
@@ -128,7 +128,7 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
   return def;
 }
 
-/** Deterministic semantic validation of a workflow definition — beyond shape:
+/** Deterministic semantic validation of a workflow definition - beyond shape:
  * every reference must resolve, every step must have what it depends on, and
  * a real deploy must sit behind a human gate. Returns a list of human-readable
  * problems; empty = valid. Applied to every custom-workflow save and, in dev,
@@ -148,7 +148,7 @@ export function checkWorkflowSemantics(def: WorkflowDef): string[] {
     if (s.args) texts.push(...s.args);
     const joined = texts.join("\n");
 
-    // {inputs.X} must be a declared input — including inside {opt:} / {flag:}
+    // {inputs.X} must be a declared input - including inside {opt:} / {flag:}
     for (const m of joined.matchAll(/\{inputs\.([\w-]+)\}/g)) {
       if (!inputKeys.has(m[1])) {
         problems.push(`step "${s.id}": references {inputs.${m[1]}} but no such input is declared`);
@@ -221,7 +221,7 @@ export function checkWorkflowSemantics(def: WorkflowDef): string[] {
         `step "${s.id}": uses {affectedSourceDirs} but no agent step runs before it to name files`,
       );
     }
-    // changes/verify diff against a baseline — require a snapshot first
+    // changes/verify diff against a baseline - require a snapshot first
     if ((s.type === "changes" || s.type === "verify") && !seenBefore(idx, (p) => p.type === "snapshot")) {
       problems.push(`step "${s.id}" (${s.type}): needs a "snapshot" step earlier in the workflow`);
     }
@@ -235,7 +235,7 @@ export function checkWorkflowSemantics(def: WorkflowDef): string[] {
       !seenBefore(idx, (p) => p.type === "gate")
     ) {
       problems.push(
-        `step "${s.id}": deploys to the org with no human gate before it — add a gate step`,
+        `step "${s.id}": deploys to the org with no human gate before it - add a gate step`,
       );
     }
   });

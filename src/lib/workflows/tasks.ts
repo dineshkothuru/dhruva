@@ -2,7 +2,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { resolveInside } from "@/lib/fsguard";
 
-/** Machine-readable build plan — the contract between Solution design
+/** Machine-readable build plan - the contract between Solution design
  * (producer), Implement-from-TDD (consumer, one agent spawn per task), and
  * the code reviewer (which REOPENs specific tasks). JSON, validated
  * deterministically by the engine (structure adapted from
@@ -18,7 +18,7 @@ export interface TaskDef {
   test_scenarios?: string[];
   /** REQ/AC ids from the design documents this task serves. */
   traces?: string[];
-  /** The mechanism — what edit, where. */
+  /** The mechanism - what edit, where. */
   change?: string;
   status?: "pending" | "completed";
   /** Reviewer comments appended when the task is reopened. */
@@ -45,7 +45,7 @@ export function validateTasks(raw: unknown): { data: TasksFile | null; errors: s
   if (!d || typeof d !== "object") return { data: null, errors: ["tasks file must be a JSON object"] };
   if (d.version !== 1) errors.push('version must be the integer 1');
   if (!Array.isArray(d.tasks) || d.tasks.length === 0 || d.tasks.length > MAX_TASKS) {
-    errors.push(`tasks must be a list of 1–${MAX_TASKS} items`);
+    errors.push(`tasks must be a list of 1-${MAX_TASKS} items`);
     return { data: null, errors };
   }
   const ids = new Set<string>();
@@ -160,17 +160,27 @@ export async function reopenFromFindings(
   rel: string,
   reviewOutput: string,
 ): Promise<string[]> {
-  const found = [...reviewOutput.matchAll(/^\s*REOPEN\s+((?:T|fix)-\d{1,4})\s*:\s*(.+)$/gim)];
+  // tolerate markdown bold around the marker and comma-separated id lists -
+  // models emit "**REOPEN T-3: …**" and "REOPEN T-3, T-4: …" routinely
+  const found = [
+    ...reviewOutput.matchAll(
+      /^[\s*]*REOPEN\s+((?:(?:T|fix)-\d{1,4})(?:\s*,\s*(?:T|fix)-\d{1,4})*)\s*:\s*(.+)$/gim,
+    ),
+  ];
   if (found.length === 0) return [];
   const { data } = await loadTasks(root, rel);
   if (!data) return [];
   const reopened: string[] = [];
   for (const m of found) {
-    const t = data.tasks.find((x) => x.id === m[1]);
-    if (!t) continue;
-    t.status = "pending";
-    (t.reviews ??= []).push({ at: new Date().toISOString(), comment: m[2].trim().slice(0, 500) });
-    reopened.push(t.id);
+    const ids = m[1].split(/\s*,\s*/);
+    const comment = m[2].trim().replace(/\*+$/, "").slice(0, 500);
+    for (const id of ids) {
+      const t = data.tasks.find((x) => x.id === id);
+      if (!t) continue;
+      t.status = "pending";
+      (t.reviews ??= []).push({ at: new Date().toISOString(), comment });
+      reopened.push(t.id);
+    }
   }
   if (reopened.length > 0) await saveTasks(root, rel, data);
   return reopened;

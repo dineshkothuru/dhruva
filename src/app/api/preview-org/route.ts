@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { isAttachableRoot } from "@/lib/fsguard";
 
-/** Local Dev preview manager — no raw console windows. The UI picks the
+/** Local Dev preview manager - no raw console windows. The UI picks the
  * app/site in a Dhruva modal, the dev server runs hidden here, and its
  * output streams into the panel. One preview per project at a time.
  *
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
         Name: string;
       }[];
     // LWR only: Aura sites open a preview shell that silently serves the
-    // DEPLOYED site (local files are not rendered) — misleading, so excluded.
+    // DEPLOYED site (local files are not rendered) - misleading, so excluded.
     const all = records.filter((r) => r.Name);
     const lwrSites = all.filter(
       (r) => typeByName.get(norm(r.Name)) === "ChatterNetworkPicasso",
@@ -168,7 +168,7 @@ export async function POST(req: Request) {
       spawn("taskkill", ["/pid", String(existing.child.pid), "/T", "/F"], { shell: false });
       previews.delete(key);
     }
-    // pre-answer every interactive prompt — the process runs hidden
+    // pre-answer every interactive prompt - the process runs hidden
     const extra = kind === "app" ? " --device-type desktop" : "";
     const child = spawn(`sf lightning dev ${kind} --name "${name}"${extra}`, {
       cwd: root,

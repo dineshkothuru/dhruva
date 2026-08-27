@@ -5,7 +5,7 @@ import { promises as fs } from "node:fs";
 /** Local folder browser for the attach picker (the server runs on the same
  * machine as the user, so listing directories is the user browsing their own
  * disk). Directories only; hidden/system folders filtered.
- * POST {dir?} → {dir, parent, entries:[names]} — no dir = list drives. */
+ * POST {dir?} → {dir, parent, entries:[names]} - no dir = list drives. */
 export async function POST(req: Request) {
   let body: { dir?: unknown };
   try {
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  // NOTE: path.normalize("") returns "." — empty must stay empty (drive list)
+  // NOTE: path.normalize("") returns "." - empty must stay empty (drive list)
   const rawDir = typeof body.dir === "string" ? body.dir.trim() : "";
   const dir = rawDir ? path.normalize(rawDir) : "";
 

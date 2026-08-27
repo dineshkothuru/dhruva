@@ -15,11 +15,11 @@ import { ROLE_TIER } from "./schema";
 
 /** Deterministic workflow runner. Runs live in this server process (a local
  * single-user tool); every state change is persisted to
- * <project>/.sfharness/runs/<runId>.json — the audit trail. */
+ * <project>/.sfharness/runs/<runId>.json - the audit trail. */
 
 const runs = new Map<string, RunState>();
 const gateWaiters = new Map<string, (decision: GateDecision) => void>(); // key: runId
-// the live child process of each run's current step — so an abort can kill it
+// the live child process of each run's current step - so an abort can kill it
 const activeChildren = new Map<string, ReturnType<typeof spawn>>();
 const STEP_OUTPUT_CAP = 60_000;
 const STEP_TIMEOUT_MS = 15 * 60 * 1000;
@@ -37,7 +37,7 @@ export function hasActiveRun(root: string): boolean {
   return false;
 }
 
-/** Live runs for this project waiting on a human gate (in-memory only —
+/** Live runs for this project waiting on a human gate (in-memory only -
  * cheap enough to poll for the tab-bar indicator). */
 export function pendingGateCount(root: string): number {
   let n = 0;
@@ -61,7 +61,7 @@ export async function listRuns(root: string): Promise<RunState[]> {
         if (!r.runId || !Array.isArray(r.steps)) continue;
         if (r.status === "running" || r.status === "waiting_gate") {
           r.status = "aborted";
-          // normalize the steps too — a step frozen at "running" in a dead
+          // normalize the steps too - a step frozen at "running" in a dead
           // run's audit must not render as working forever, and the reader
           // deserves to know WHY the run ended
           for (const s of r.steps) {
@@ -69,7 +69,7 @@ export async function listRuns(root: string): Promise<RunState[]> {
               s.status = "failed";
               s.endedAt ??= Date.now();
               s.output +=
-                "\n[engine] run ended while this step was in progress — the server process " +
+                "\n[engine] run ended while this step was in progress - the server process " +
                 "restarted or was killed (dev-mode file edits recompile the app; the installed " +
                 "desktop app is immune). Output above is the last saved state; re-run the workflow.";
             }
@@ -77,7 +77,7 @@ export async function listRuns(root: string): Promise<RunState[]> {
         }
         byId.set(r.runId, r);
       } catch {
-        /* corrupt audit file — skip */
+        /* corrupt audit file - skip */
       }
     }
   } catch {
@@ -99,15 +99,15 @@ export function abortRun(runId: string): boolean {
   if (resolveGate(runId, { action: "abort" })) return true; // parked at a gate
   const step = run.steps.find((s) => s.status === "running");
   if (step) {
-    // mark immediately — the UI must never show "working" on an aborted run,
+    // mark immediately - the UI must never show "working" on an aborted run,
     // even if the process tree takes time to die
     step.status = "failed";
     step.endedAt = Date.now();
-    step.output += "\n[engine] aborted by user (Stop run) — the step's process was killed";
+    step.output += "\n[engine] aborted by user (Stop run) - the step's process was killed";
   }
   const child = activeChildren.get(runId);
   if (child?.pid) {
-    // shell:true means the child is cmd.exe — kill the whole tree
+    // shell:true means the child is cmd.exe - kill the whole tree
     spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: false });
     child.kill();
   }
@@ -176,6 +176,18 @@ export async function resumeRun(
     } catch {
       return null;
     }
+    // a DISK run still marked running/waiting_gate belongs to a dead server
+    // process (restart killed it) - normalize like listRuns does, or the most
+    // common death mode could never be resumed
+    if (run && (run.status === "running" || run.status === "waiting_gate")) {
+      run.status = "aborted";
+      for (const s of run.steps) {
+        if (s.status === "running" || s.status === "waiting_gate") {
+          s.status = "failed";
+          s.endedAt ??= Date.now();
+        }
+      }
+    }
   }
   if (!run || run.root !== root) return null;
   if (run.status === "running" || run.status === "waiting_gate" || run.status === "done") {
@@ -184,7 +196,7 @@ export async function resumeRun(
   const { loadWorkflow } = await import("./custom");
   const def = await loadWorkflow(root, run.workflowId);
   if (!def) return null;
-  // the definition must still match the recorded steps — resuming into a
+  // the definition must still match the recorded steps - resuming into a
   // changed workflow would execute steps the approvals never covered
   if (
     def.steps.length !== run.steps.length ||
@@ -204,10 +216,11 @@ export async function resumeRun(
     s.model = undefined;
     s.modelFrom = undefined;
   }
-  run.steps[start].output = "[engine] resumed — re-running from this step\n";
-  // refresh model settings on resume — a run that failed BECAUSE of a bad
-  // role model must be fixable by correcting the setting and resuming
-  if (roleModels && Object.keys(roleModels).length > 0) {
+  run.steps[start].output = "[engine] resumed - re-running from this step\n";
+  // refresh model settings on resume - a run that failed BECAUSE of a bad
+  // role model must be fixable by correcting OR CLEARING the setting and
+  // resuming (an empty map means "all automatic", not "keep the old ones")
+  if (roleModels !== undefined) {
     run.roleModels = roleModels;
     run.steps[start].output += "[engine] role-model settings refreshed from your current configuration\n";
   }
@@ -222,7 +235,7 @@ export async function resumeRun(
 async function execute(run: RunState, def: WorkflowDef, startIndex = 0) {
   await executeSteps(run, def, startIndex);
   // Pin the end state (without moving HEAD) so this run stays diffable after
-  // later runs re-baseline — done for every terminal status incl. aborted.
+  // later runs re-baseline - done for every terminal status incl. aborted.
   run.endCommit = (await commitRunResult(run.root, run.runId)) ?? undefined;
   await persist(run);
 }
@@ -242,7 +255,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
     }
 
     // Gates run here (not in runStep) so a "revise" decision can re-run the
-    // steps this gate reviews — everything back to the nearest agent step —
+    // steps this gate reviews - everything back to the nearest agent step -
     // with the reviewer's feedback injected, then gate again.
     if (stepDef.type === "gate") {
       let revisions = 0;
@@ -252,10 +265,14 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         step.startedAt ??= Date.now();
         step.output = template(stepDef.message ?? "Proceed?", run) + notice;
         run.status = "waiting_gate";
-        await persist(run);
-        const decision = await new Promise<GateDecision>((resolve) => {
+        // register the waiter BEFORE persisting: persist rides a serialized
+        // write chain, and an abort landing in that window would otherwise
+        // find waiting_gate with no waiter to resolve - a permanent hang
+        const decisionPromise = new Promise<GateDecision>((resolve) => {
           gateWaiters.set(run.runId, resolve);
         });
+        await persist(run);
+        const decision = await decisionPromise;
         if (decision.action === "approve") {
           run.status = "running";
           step.output += "\n→ approved";
@@ -280,14 +297,18 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         if (from < 0 || from >= i || ++revisions > MAX_REVISIONS_PER_GATE) {
           notice =
             revisions > MAX_REVISIONS_PER_GATE
-              ? "\n\n→ revision limit reached — approve or abort"
-              : "\n\n→ revision is not possible at this gate (no earlier agent step) — approve or abort";
+              ? "\n\n→ revision limit reached - approve or abort"
+              : "\n\n→ revision is not possible at this gate (no earlier agent step) - approve or abort";
           continue;
         }
         const targetId = def.steps[from].id;
         run.revisions ??= {};
         (run.revisions[targetId] ??= []).push(decision.feedback.trim());
         step.output += `\n→ revision requested: ${decision.feedback.trim().slice(0, 300)}`;
+        // the gate must NOT look armed while the replay runs - the UI renders
+        // the approval panel purely off waiting_gate, and clicks during a
+        // replay would be silent no-ops
+        step.status = "running";
         run.status = "running";
         await persist(run);
         if (!(await replayRange(run, def, from, i))) return;
@@ -312,7 +333,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
       // Bounded self-healing (before the human gate): a review step whose
       // verdict matches its trigger auto-revises its target with the findings
       // as feedback, then re-runs everything up to and including itself. The
-      // following human gate always still fires — this pre-cleans what the
+      // following human gate always still fires - this pre-cleans what the
       // human reviews, it never replaces them.
       if (stepDef.type === "agent" && stepDef.autoRevise) {
         const ar = stepDef.autoRevise;
@@ -341,15 +362,15 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           const targetId = def.steps[from].id;
           run.revisions ??= {};
           (run.revisions[targetId] ??= []).push(
-            `[auto-revise round ${round} — findings from ${stepDef.id}]\n${step.output.slice(0, 4000)}`,
+            `[auto-revise round ${round} - findings from ${stepDef.id}]\n${step.output.slice(0, 4000)}`,
           );
           step.output += `\n\n[engine] auto-revise round ${round}/${max}: replaying ${targetId}`;
           await persist(run);
           if (!(await replayRange(run, def, from, i + 1))) return;
-          // the replay rewrote this step's output — restore the round marker
+          // the replay rewrote this step's output - restore the round marker
           // so the trace SHOWS the self-healing happened (audit readability)
           step.output =
-            `[engine] auto-revise round ${round}/${max} completed — "${targetId}" was reworked ` +
+            `[engine] auto-revise round ${round}/${max} completed - "${targetId}" was reworked ` +
             `with the previous findings as mandatory feedback; below is the RE-REVIEW of the ` +
             `reworked output\n\n` + step.output;
           await persist(run);
@@ -402,7 +423,7 @@ async function replayRange(
   return true;
 }
 
-/** The nearest agent step before index i — the step a gate's revision re-runs. */
+/** The nearest agent step before index i - the step a gate's revision re-runs. */
 function nearestAgentIndex(def: WorkflowDef, i: number): number {
   for (let j = i - 1; j >= 0; j--) {
     if (def.steps[j].type === "agent") return j;
@@ -432,14 +453,14 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
     }
     case "gate": {
       // gates are handled by the executor (revise loop); reaching here is a bug
-      step.output = "[engine] gate reached runStep — executor should handle gates";
+      step.output = "[engine] gate reached runStep - executor should handle gates";
       return false;
     }
     case "agent": {
       const agentDef = AGENTS[run.agent];
       // Ground the agent explicitly in the attached folder (prompt clarity +
       // audit-log readability; the cwd already enforces it technically).
-      // Standards are injected by the ENGINE — same rules, verbatim, for
+      // Standards are injected by the ENGINE - same rules, verbatim, for
       // every agent vendor; never dependent on vendor file conventions.
       // Scope: modules whose applyTo matches the files this run touches
       // (affected from the investigation, or changed files); baseline +
@@ -451,14 +472,14 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       ];
       const rules = (await standardsFor(scopeFiles).catch(() => "")) || STANDARDS_PROMPT;
       const role = def.persona ? await persona(def.persona).catch(() => "") : "";
-      // project knowledge (.sfharness/skills/*.md) — the org-specific layer,
+      // project knowledge (.sfharness/skills/*.md) - the org-specific layer,
       // injected for every vendor; audited per step below
       const skills = await skillsPrompt(run.root, scopeFiles).catch(() => ({ block: "", names: [], chars: 0 }));
       // Reviewer feedback from gates: mandatory, most recent last.
       const feedback = run.revisions?.[def.id];
       const feedbackBlock =
         feedback && feedback.length > 0
-          ? `\n\nREVIEWER INSTRUCTIONS (mandatory — this is a revision of your earlier output; follow every point):\n${feedback
+          ? `\n\nREVIEWER INSTRUCTIONS (mandatory - this is a revision of your earlier output; follow every point):\n${feedback
               .map((f, n) => `${n + 1}. ${f}`)
               .join("\n")}`
           : "";
@@ -466,7 +487,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         `You are working inside the Salesforce DX project at ${run.root} ` +
         `(your current working directory). Only read and modify files in this project.\n` +
         `CRITICAL: when the task references a document, attachment, requirement file, or design ` +
-        `file, read it COMPLETELY before acting — if your file-reading tool returns only part of ` +
+        `file, read it COMPLETELY before acting - if your file-reading tool returns only part of ` +
         `it (e.g. the first 2000 lines), keep reading with offsets until the end of the file. ` +
         `Never analyse, design, or implement from a partially read document; if a referenced ` +
         `document cannot be fully read, say so explicitly instead of proceeding.\n\n` +
@@ -492,7 +513,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
             ? "run model"
             : "CLI default";
       // the model is part of the step's log too, so the trace reads standalone
-      step.output += `[engine] model requested: ${stepModel || "(CLI default)"} — ${step.modelFrom}\n`;
+      step.output += `[engine] model requested: ${stepModel || "(CLI default)"} - ${step.modelFrom}\n`;
       if (skills.names.length > 0) {
         step.output += `[engine] project skills injected: ${skills.names.join(", ")} (${(skills.chars / 1000).toFixed(1)}k chars)\n`;
       }
@@ -502,7 +523,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const streamJson = run.agent === "claude";
       const spawnAgent = async (fullPrompt: string, promptTag: string): Promise<boolean> => {
         let p = fullPrompt;
-        // Inline-prompt agents (copilot) hit cmd.exe's ~8k command-line limit —
+        // Inline-prompt agents (copilot) hit cmd.exe's ~8k command-line limit -
         // the standards alone exceed it and the task would be truncated away.
         // Write the full prompt to a harness file and pass a short pointer.
         if (run.agent === "copilot") {
@@ -551,14 +572,14 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
               : "";
             const taskPrompt =
               prompt +
-              `\n\nCURRENT TASK — complete ONLY this one task now (the other tasks run as separate steps; do not start them):\n` +
+              `\n\nCURRENT TASK - complete ONLY this one task now (the other tasks run as separate steps; do not start them):\n` +
               `${t.id}: ${t.title}\n` +
               (t.change ? `Mechanism: ${t.change}\n` : "") +
               `Files this task should touch: ${t.files.join(", ") || "(per the design)"}\n` +
               (t.test_scenarios?.length ? `Test scenarios: ${t.test_scenarios.join("; ")}\n` : "") +
               (t.traces?.length ? `Traces: ${t.traces.join(", ")}\n` : "") +
               (latestReview
-                ? `REVIEWER COMMENT (mandatory — this reopened task's work order): ${latestReview}\n`
+                ? `REVIEWER COMMENT (mandatory - this reopened task's work order): ${latestReview}\n`
                 : "");
             const ok = await spawnAgent(taskPrompt, `${def.id}-${t.id}`);
             const u =
@@ -570,7 +591,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
             totals.estimated = totals.estimated || u.estimated;
             if (!ok) {
               step.usage = totals;
-              step.output += `\n[engine] ${t.id} failed — remaining tasks stay pending in ${rel}`;
+              step.output += `\n[engine] ${t.id} failed - remaining tasks stay pending in ${rel}`;
               return false;
             }
             const fresh = await loadTasks(run.root, rel);
@@ -588,7 +609,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
           harvestAffectedFiles(run, step.output);
           return true;
         }
-        step.output += `[engine] no valid tasks file or nothing pending (${rel}) — running as a single step\n`;
+        step.output += `[engine] no valid tasks file or nothing pending (${rel}) - running as a single step\n`;
       }
 
       const ok = await spawnAgent(prompt, def.id);
@@ -597,7 +618,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       return ok;
     }
     case "tasks-check": {
-      // Deterministic validation of the agent-produced tasks file — bad
+      // Deterministic validation of the agent-produced tasks file - bad
       // structure is caught by CODE before anything consumes it.
       const rel = template(def.tasksFile ?? "", run).replace(/\\/g, "/");
       if (!rel) {
@@ -607,7 +628,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const { data, errors } = await loadTasks(run.root, rel);
       if (!data) {
         if (def.optional) {
-          step.output = `no valid tasks file (${errors.join("; ")}) — step skipped`;
+          step.output = `no valid tasks file (${errors.join("; ")}) - step skipped`;
           step.status = "skipped";
           return true;
         }
@@ -621,7 +642,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       return true;
     }
     case "verify": {
-      // Deterministic standards enforcement over the actual changed files —
+      // Deterministic standards enforcement over the actual changed files -
       // catches violations regardless of which agent (or human) wrote them.
       const changed = (run.changes ?? []).filter((c) => c.status !== "deleted");
       if (changed.length === 0) {
@@ -637,7 +658,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
             contents.push({ file: c.file, content: await fs.readFile(abs, "utf8") });
           }
         } catch {
-          /* deleted/renamed between steps — skip */
+          /* deleted/renamed between steps - skip */
         }
       }
       const violations = checkStandards(contents);
@@ -650,10 +671,10 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         .join("\n");
       const errors = violations.filter((v) => v.severity === "error");
       if (errors.length > 0) {
-        step.output += `\n\n${errors.length} error-level violation(s) — run blocked. Fix and re-run.`;
+        step.output += `\n\n${errors.length} error-level violation(s) - run blocked. Fix and re-run.`;
         return false;
       }
-      step.output += "\n\nwarnings only — review them at the next gate.";
+      step.output += "\n\nwarnings only - review them at the next gate.";
       return true;
     }
     case "cli": {
@@ -664,11 +685,11 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const args = expandArgs(def.args ?? [], run);
       if (!args) {
         if (def.optional) {
-          step.output = "nothing to act on — step skipped";
+          step.output = "nothing to act on - step skipped";
           step.status = "skipped";
           return true;
         }
-        step.output = "no changed files to act on — nothing to validate/deploy";
+        step.output = "no changed files to act on - nothing to validate/deploy";
         return false;
       }
       if (def.detached) {
@@ -705,17 +726,28 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
   }
 }
 
-/** Fill "{inputs.x}" and "{steps.id.output}" placeholders. */
+/** Fill "{inputs.x}" and "{steps.id.output}" placeholders. Referenced outputs
+ * get a generous budget (an approved multi-REQ design is the whole point of
+ * the reference) and an EXPLICIT truncation marker - silent loss here once
+ * made a 15-requirement design produce 4-requirement documents. */
+const TEMPLATE_REF_CAP = 48_000;
 function template(text: string, run: RunState): string {
   return text
     .replace(/\{inputs\.([\w-]+)\}/g, (_, k) => String(run.inputs[k] ?? ""))
     .replace(/\{steps\.([\w-]+)\.output\}/g, (_, id) => {
       const s = run.steps.find((x) => x.id === id);
-      return s ? s.output.slice(0, 8000) : "";
+      if (!s) return "";
+      if (s.output.length <= TEMPLATE_REF_CAP) return s.output;
+      return (
+        s.output.slice(0, TEMPLATE_REF_CAP) +
+        `\n[TRUNCATED - the referenced step output is ${s.output.length} chars, ` +
+        `${s.output.length - TEMPLATE_REF_CAP} chars were cut. Treat this input as INCOMPLETE ` +
+        `and say so in your output.]`
+      );
     });
 }
 
-/** Parse a "FILES: a, b, c" line from agent output into run.affected —
+/** Parse a "FILES: a, b, c" line from agent output into run.affected -
  * project-relative paths only; anything absolute or escaping is dropped. */
 function harvestAffectedFiles(run: RunState, output: string) {
   const m = output.match(/FILES:\s*([^\n]+)/);
@@ -737,7 +769,7 @@ function expandArgs(argv: string[], run: RunState): string[] | null {
     if (a === "{changedSourceDirs}") {
       const files = (run.changes ?? []).filter((c) => c.status !== "deleted");
       if (files.length === 0) return null;
-      // file names can be agent-created — sanitize like any templated value
+      // file names can be agent-created - sanitize like any templated value
       for (const f of files.slice(0, 50)) out.push("--source-dir", cliSafe(f.file));
     } else if (a === "{affectedSourceDirs}") {
       const files = run.affected ?? [];
@@ -767,7 +799,7 @@ function cliSafe(v: string): string {
   return v.replace(/["'`^&|<>%$;\r\n\t]/g, " ").trim();
 }
 
-/** Args pass through cmd.exe (shell:true resolves .cmd shims) — quote paths
+/** Args pass through cmd.exe (shell:true resolves .cmd shims) - quote paths
  * with spaces; templates never contain quotes (whitelisted argv, not shell). */
 function winQuote(a: string): string {
   return /[\s&|^<>%()]/.test(a) && !a.startsWith('"') ? `"${a}"` : a;
@@ -787,7 +819,7 @@ function makeClaudeTraceTransform(step: StepState): (chunk: string) => string {
       if (!t.startsWith("{")) continue;
       try {
         const ev = JSON.parse(t);
-        // the init event carries the model the CLI ACTUALLY runs — exact even
+        // the init event carries the model the CLI ACTUALLY runs - exact even
         // when we requested nothing (CLI default); overwrite the requested id
         if (ev.type === "system" && ev.subtype === "init" && typeof ev.model === "string") {
           step.model = ev.model;
@@ -815,7 +847,7 @@ function makeClaudeTraceTransform(step: StepState): (chunk: string) => string {
           if (ev.is_error && ev.result) out += `\n[agent error] ${String(ev.result).slice(0, 500)}\n`;
         }
       } catch {
-        /* partial or non-JSON line — ignore */
+        /* partial or non-JSON line - ignore */
       }
     }
     return out;
@@ -831,6 +863,13 @@ function spawnToStep(
   transform?: (chunk: string) => string,
   timeoutMs: number = STEP_TIMEOUT_MS,
 ): Promise<boolean> {
+  // an abort can land between the awaits that precede a spawn (standards
+  // loading, prompt-file writes, task-loop iterations) - never launch a fresh
+  // process for an aborted run: nothing could kill it afterwards
+  if ((run.status as string) === "aborted") {
+    step.output += "\n[engine] aborted before the step's process started";
+    return Promise.resolve(false);
+  }
   return new Promise((resolve) => {
     const child = spawn(bin, args, {
       cwd: run.root,
@@ -841,7 +880,7 @@ function spawnToStep(
     activeChildren.set(run.runId, child);
     const timer = setTimeout(() => {
       step.output += "\n[engine] step timed out";
-      // shell:true means child is cmd.exe — kill the whole tree or the real
+      // shell:true means child is cmd.exe - kill the whole tree or the real
       // CLI survives as an orphan still editing the project
       if (child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: false });
       child.kill();
@@ -851,11 +890,18 @@ function spawnToStep(
     child.stdin.on("error", () => {});
     if (stdin) child.stdin.write(stdin);
     child.stdin.end();
-    const push = (chunk: Buffer) => {
-      const text = chunk.toString("utf8").replace(/\x1b\[[0-9;]*m/g, "");
+    // when the display cap is hit, keep a TAIL buffer: every machine-read
+    // signal (VERDICT, REOPEN, FILES) lives at the END of agent output, and
+    // capping it away made blocked reviews indistinguishable from approvals
+    let tail = "";
+    const push = (chunk: Buffer | string) => {
+      const text = chunk.toString().replace(/\x1b\[[0-9;]*m/g, "");
       const rendered = transform ? transform(text) : text;
-      if (rendered && step.output.length < STEP_OUTPUT_CAP) {
+      if (!rendered) return void persist(run);
+      if (step.output.length < STEP_OUTPUT_CAP) {
         step.output += rendered;
+      } else {
+        tail = (tail + rendered).slice(-10_000);
       }
       void persist(run);
     };
@@ -870,6 +916,12 @@ function spawnToStep(
     child.on("close", (code) => {
       clearTimeout(timer);
       activeChildren.delete(run.runId);
+      // flush the transform's trailing partial line (a final stream-json
+      // result event without a newline carries the exact usage)
+      if (transform) push("\n");
+      if (tail) {
+        step.output += `\n[...display capped at ${STEP_OUTPUT_CAP / 1000}k chars - the final output follows:]\n${tail}`;
+      }
       step.output += `\n[exit ${code}]`;
       resolve(code === 0);
     });

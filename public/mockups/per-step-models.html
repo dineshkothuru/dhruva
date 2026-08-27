@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Per-step models — mockup</title>
+<title>Per-step models - mockup</title>
 <style>
   * { box-sizing: border-box; margin: 0; }
   body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; background: #f1f5f9; color: #0f172a; padding: 28px; }
@@ -43,13 +43,13 @@
 </style>
 </head>
 <body>
-<h1>Start-modal redesign — "the system fills everything, you only override"</h1>
-<p class="sub">Two states of the SAME modal (Implement from TDD, agent = Claude Code). Left: what you normally see — zero model input needed. Right: the advanced section expanded, one step overridden.</p>
+<h1>Start-modal redesign - "the system fills everything, you only override"</h1>
+<p class="sub">Two states of the SAME modal (Implement from TDD, agent = Claude Code). Left: what you normally see - zero model input needed. Right: the advanced section expanded, one step overridden.</p>
 
 <div class="row">
   <div class="col">
-    <div class="stage">State 1 — normal start (nothing to fill)</div>
-    <div class="callout">The model box is <b>already filled</b> from your saved settings — the green chip shows it came from defaults. You just press Start.</div>
+    <div class="stage">State 1 - normal start (nothing to fill)</div>
+    <div class="callout">The model box is <b>already filled</b> from your saved settings - the green chip shows it came from defaults. You just press Start.</div>
     <div class="modal">
       <div class="mtitle">Implement from TDD</div>
       <div class="mdesc">Build what an approved Technical Design Document specifies…</div>
@@ -66,7 +66,7 @@
         <select><option>Claude Sonnet 5</option></select>
         <span class="autochip">AUTO · your default</span>
       </div>
-      <div class="hint">pre-filled from your saved defaults — change it and the change is remembered for this workflow</div>
+      <div class="hint">pre-filled from your saved defaults - change it and the change is remembered for this workflow</div>
 
       <label>TDD path in the project</label>
       <input class="input" value="docs/designs/solution-design-tdd.md">
@@ -75,7 +75,7 @@
       <input class="input" value="docs/designs/solution-design-tasks.json">
 
       <details>
-        <summary>Per-step models (advanced) — all resolved automatically</summary>
+        <summary>Per-step models (advanced) - all resolved automatically</summary>
       </details>
 
       <button class="startbtn">Start workflow ▶</button>
@@ -83,8 +83,8 @@
   </div>
 
   <div class="col">
-    <div class="stage">State 2 — advanced expanded, one step overridden</div>
-    <div class="callout">Every agent step is listed with the model the <b>tier already resolved</b> — visible, not hidden. Change one dropdown → only that step changes, highlighted amber, and it's <b>saved for next time</b> (per workflow, per agent).</div>
+    <div class="stage">State 2 - advanced expanded, one step overridden</div>
+    <div class="callout">Every agent step is listed with the model the <b>tier already resolved</b> - visible, not hidden. Change one dropdown → only that step changes, highlighted amber, and it's <b>saved for next time</b> (per workflow, per agent).</div>
     <div class="modal">
       <div class="mtitle">Implement from TDD</div>
       <div class="mdesc">Build what an approved Technical Design Document specifies…</div>
@@ -118,11 +118,11 @@
             <span class="tier best">best</span>
             <select><option>Claude Opus 5</option></select>
           </div>
-          <div style="padding-top:6px"><span class="changedtag">1 override — remembered for “Implement from TDD” with Claude Code &nbsp;·&nbsp; <u>reset to defaults</u></span></div>
+          <div style="padding-top:6px"><span class="changedtag">1 override - remembered for “Implement from TDD” with Claude Code &nbsp;·&nbsp; <u>reset to defaults</u></span></div>
         </div>
       </details>
 
-      <div class="note"><b>Where the defaults come from:</b> step's tier (best/default/light) → your tier settings for the selected agent (best = Opus 5, default = Sonnet 5) → this dropdown. New model ships? Update the tier once — every workflow follows. Overrides only stick where YOU changed something.</div>
+      <div class="note"><b>Where the defaults come from:</b> step's tier (best/default/light) → your tier settings for the selected agent (best = Opus 5, default = Sonnet 5) → this dropdown. New model ships? Update the tier once - every workflow follows. Overrides only stick where YOU changed something.</div>
 
       <button class="startbtn">Start workflow ▶</button>
     </div>

@@ -2,7 +2,7 @@
 
 import type { AgentId } from "@/lib/agents";
 
-/** The user's DEFAULT agent — preselected in chat and new workflow runs,
+/** The user's DEFAULT agent - preselected in chat and new workflow runs,
  * highlighted in the Models-by-role panel. One choice, applies everywhere. */
 
 const KEY = "sfdh.defaultAgent";

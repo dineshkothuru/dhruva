@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Project skills — mockup</title>
+<title>Project skills - mockup</title>
 <style>
   * { box-sizing: border-box; margin: 0; }
   body { font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; background: #f1f5f9; color: #0f172a; padding: 24px; }
@@ -31,12 +31,12 @@
 </style>
 </head>
 <body>
-<h1>Project skills — per-project knowledge, injected into every agent</h1>
-<p class="sub">Lives in the LEFT project panel (under Files). Everything is a plain .md file in the project — the UI is just a window onto the folder.</p>
+<h1>Project skills - per-project knowledge, injected into every agent</h1>
+<p class="sub">Lives in the LEFT project panel (under Files). Everything is a plain .md file in the project - the UI is just a window onto the folder.</p>
 
 <div class="row">
   <div class="col">
-    <div class="stage">1 — In the project panel</div>
+    <div class="stage">1 - In the project panel</div>
     <div class="callout">New section in the left panel of the app, per connected project. Lists every skill; ➕ add by pasting text, 📎 upload converts docx/pdf to md automatically.</div>
     <div class="panel">
       <div class="hdr">Project skills <span style="float:right;color:#cbd5e1">3 · ~4.1k tokens injected</span></div>
@@ -46,7 +46,7 @@
       <div class="addbox">
         <div class="hdr">+ Add a skill</div>
         <input placeholder="name, e.g. deployment-quirks">
-        <textarea rows="3" placeholder="Paste plain text — saved as an .md file. e.g. 'All triggers must delegate to TriggerDispatcher. Never modify LegacySync* classes (vendor-managed).'"></textarea>
+        <textarea rows="3" placeholder="Paste plain text - saved as an .md file. e.g. 'All triggers must delegate to TriggerDispatcher. Never modify LegacySync* classes (vendor-managed).'"></textarea>
         <button class="btn">Save skill</button><button class="btn2">📎 Upload file (md / docx / pdf)</button>
       </div>
       <div class="path">stored as: &lt;project&gt;\.sfharness\skills\&lt;name&gt;.md</div>
@@ -54,22 +54,22 @@
   </div>
 
   <div class="col">
-    <div class="stage">2 — Editing = the normal editor</div>
-    <div class="callout">Click a skill → it opens in Dhruva's built-in Monaco editor like any project file. Colleagues can also edit the .md files directly in VS Code / Notepad — the panel reflects the folder either way.</div>
+    <div class="stage">2 - Editing = the normal editor</div>
+    <div class="callout">Click a skill → it opens in Dhruva's built-in Monaco editor like any project file. Colleagues can also edit the .md files directly in VS Code / Notepad - the panel reflects the folder either way.</div>
     <span class="tab">Δ trigger-framework.md</span>
-    <div class="editor"># Trigger framework<br><br>- Every trigger delegates to `TriggerDispatcher`.<br>- Handler classes end in `TriggerHandler` and declare<br>&nbsp;&nbsp;`with sharing` or a justified exception.<br>- Recursion guards live in `TriggerContext`, never<br>&nbsp;&nbsp;static booleans in handlers.<br>- ⚠ `LegacySyncTriggerHandler` is vendor-managed —<br>&nbsp;&nbsp;never modify, raise a ticket with the vendor.</div>
+    <div class="editor"># Trigger framework<br><br>- Every trigger delegates to `TriggerDispatcher`.<br>- Handler classes end in `TriggerHandler` and declare<br>&nbsp;&nbsp;`with sharing` or a justified exception.<br>- Recursion guards live in `TriggerContext`, never<br>&nbsp;&nbsp;static booleans in handlers.<br>- ⚠ `LegacySyncTriggerHandler` is vendor-managed -<br>&nbsp;&nbsp;never modify, raise a ticket with the vendor.</div>
     <div class="warn">⚠ Save-time checks: the no-secrets scan runs on every skill (a pasted API key is rejected); skills over the size cap show a truncation warning here.</div>
   </div>
 
   <div class="col">
-    <div class="stage">3 — Where it lands (every agent, every step)</div>
-    <div class="callout">Injected by the ENGINE into every workflow agent step and every chat task — all vendors, deterministic. Standards stay the higher law.</div>
+    <div class="stage">3 - Where it lands (every agent, every step)</div>
+    <div class="callout">Injected by the ENGINE into every workflow agent step and every chat task - all vendors, deterministic. Standards stay the higher law.</div>
     <div class="inject">You are working inside the Salesforce DX project at …
 
 MANDATORY TEAM STANDARDS:
-  (shipped standards — unchanged)
+  (shipped standards - unchanged)
 
-<span class="green">PROJECT KNOWLEDGE (specific to THIS org — follow it;
+<span class="green">PROJECT KNOWLEDGE (specific to THIS org - follow it;
 where it conflicts with the team standards, the
 standards win and you must flag the conflict):
   ## trigger-framework
@@ -78,7 +78,7 @@ standards win and you must flag the conflict):
   ## do-not-touch-list …</span>
 
 (the task / step prompt)</div>
-    <div class="warn">Run audit shows which skills were injected (names + sizes) on every agent step — so a bad skill is traceable to the runs it influenced.</div>
+    <div class="warn">Run audit shows which skills were injected (names + sizes) on every agent step - so a bad skill is traceable to the runs it influenced.</div>
   </div>
 </div>
 </body>

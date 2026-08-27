@@ -1,13 +1,13 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
 
-/** Loader for the full standards library (standards/ in the harness repo —
+/** Loader for the full standards library (standards/ in the harness repo -
  * the complete team ruleset, copied verbatim from the source documents).
  *
  * The ENGINE does the scoping deterministically: each instruction module
  * declares an applyTo glob in its frontmatter; a workflow step gets exactly
  * the modules whose glob matches the files that step touches. Same selection
- * logic for every LLM vendor — no vendor file-discovery conventions. */
+ * logic for every LLM vendor - no vendor file-discovery conventions. */
 
 interface Module {
   name: string;
@@ -18,7 +18,7 @@ interface Module {
 let cache: { baseline: string; modules: Module[]; personas: Map<string, string> } | null = null;
 
 function stdRoot() {
-  // harness repo root — process.cwd() is where next dev/start runs; the
+  // harness repo root - process.cwd() is where next dev/start runs; the
   // Electron shell overrides via env (standalone server cwd differs)
   return process.env.DHRUVA_STANDARDS_DIR ?? path.join(process.cwd(), "standards");
 }
@@ -103,7 +103,7 @@ export async function persona(name: string): Promise<string> {
   return lib.personas.get(name) ?? "";
 }
 
-/** The whole shipped library for the read-only UI browser — so project-skill
+/** The whole shipped library for the read-only UI browser - so project-skill
  * authors can SEE what the standards already cover instead of duplicating it. */
 export async function libraryIndex(): Promise<{
   baseline: { chars: number; body: string };

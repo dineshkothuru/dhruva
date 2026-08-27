@@ -49,7 +49,7 @@ export default function RequirementCards({
   onSubmit: (reviseInstruction: string) => void;
   onApproveAll: () => void;
   disabled?: boolean;
-  /** Reviewer objections per REQ id — WHY the critic blocked, shown on the card. */
+  /** Reviewer objections per REQ id - WHY the critic blocked, shown on the card. */
   critique?: Record<string, string[]>;
 }) {
   const [decisions, setDecisions] = useState<Record<string, "approve" | "reject">>({});
@@ -67,14 +67,14 @@ export default function RequirementCards({
   function submit() {
     const lines: string[] = [];
     for (const i of rejected) {
-      lines.push(`${i.id} REJECTED${comments[i.id]?.trim() ? `: ${comments[i.id].trim()}` : ""} — rework this item.`);
+      lines.push(`${i.id} REJECTED${comments[i.id]?.trim() ? `: ${comments[i.id].trim()}` : ""} - rework this item.`);
     }
     for (const i of commented) {
       lines.push(`${i.id} note (item stays approved, incorporate this): ${comments[i.id].trim()}`);
     }
     lines.push(
       "Rework the rejected items above, AND any other REQ whose DEPENDS-ON chain includes a " +
-        "reworked item — adjust those only as far as the changed dependency forces, noting what " +
+        "reworked item - adjust those only as far as the changed dependency forces, noting what " +
         "rippled. Keep every unaffected REQ block EXACTLY as it was (same ids, same order, full " +
         "output again).",
     );
@@ -167,7 +167,7 @@ export default function RequirementCards({
             disabled={disabled}
             className="ml-auto rounded-lg border border-amber-400 bg-amber-50 px-4 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-40"
           >
-            Submit review — rework {rejected.length} item(s)
+            Submit review - rework {rejected.length} item(s)
           </button>
         ) : (
           <button

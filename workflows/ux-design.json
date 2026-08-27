@@ -48,7 +48,7 @@
     },
     {
       "id": "ux-critique",
-      "title": "UX critique (best model, read-only) \u2014 auto-fixes once before your gate",
+      "title": "UX critique (best model, read-only) - auto-fixes once before your gate",
       "type": "agent",
       "role": "review",
       "readOnly": true,
@@ -57,7 +57,7 @@
         "trigger": "VERDICT:\\s*BLOCKED",
         "maxRounds": 1
       },
-      "prompt": "You are the UX REVIEWER - adversarially critique the UX design below before a human sees it. Do not modify any files.\n\nDesign under review:\n{steps.ux-design.output}\n\nRequirement:\n{inputs.requirement}\n\nCheck strictly:\n1. Every screen/flow the requirement implies has a UX-n block; no state is missing (loading/empty/error are the usual omissions).\n2. SLDS-only holds - flag any custom CSS without a cited design-folder mandate.\n3. REUSES claims are real (the cited components exist and fit).\n4. Accessibility is concrete (actual labels/keyboard paths, not 'accessible').\nReport each finding in this exact shape (severity in parentheses):\nF<n> (critical | important | nit) [refs: <the REQ-/UX-/task ids this finding concerns, comma-separated \u2014 the SAME ids used in the design/plan under review; '-' only for a truly global finding>]: <short title>\n  Where: <file / component / section>\n  Problem: <what is wrong>\n  Fix: <the concrete change to make>\ncritical = would break in production or violates a blocking standard; important = should be fixed before deploy; nit = style/polish, never blocks.\nThen end with exactly one line:\nVERDICT: APPROVED \u2014 or \u2014 VERDICT: BLOCKED, followed by the critical/important finding ids.\nnit-only findings never block."
+      "prompt": "You are the UX REVIEWER - adversarially critique the UX design below before a human sees it. Do not modify any files.\n\nDesign under review:\n{steps.ux-design.output}\n\nRequirement:\n{inputs.requirement}\n\nCheck strictly:\n1. Every screen/flow the requirement implies has a UX-n block; no state is missing (loading/empty/error are the usual omissions).\n2. SLDS-only holds - flag any custom CSS without a cited design-folder mandate.\n3. REUSES claims are real (the cited components exist and fit).\n4. Accessibility is concrete (actual labels/keyboard paths, not 'accessible').\nReport each finding in this exact shape (severity in parentheses):\nF<n> (critical | important | nit) [refs: <the REQ-/UX-/task ids this finding concerns, comma-separated - the SAME ids used in the design/plan under review; '-' only for a truly global finding>]: <short title>\n  Where: <file / component / section>\n  Problem: <what is wrong>\n  Fix: <the concrete change to make>\ncritical = would break in production or violates a blocking standard; important = should be fixed before deploy; nit = style/polish, never blocks.\nThen end with exactly one line:\nVERDICT: APPROVED - or - VERDICT: BLOCKED, followed by the critical/important finding ids.\nnit-only findings never block."
     },
     {
       "id": "approve-ux",
@@ -97,7 +97,7 @@
         "trigger": "COVERAGE:\\s*INCOMPLETE",
         "maxRounds": 1
       },
-      "prompt": "Coverage verification. Do not modify any files.\nRead docs/designs/{inputs.docName}-ux.md and docs/designs/{inputs.docName}-tasks.json in full.\nApproved UX design:\n{steps.ux-design.output}\n\nFor EVERY UX-n block report one line:\n  UX-n \u2014 COVERED (spec section + task id) | MISSING FROM SPEC | NO TASK | DIVERGES (quote it)\nAlso flag spec content or tasks with no approved UX block behind them (scope creep). End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE \u2014 items <UX ids>."
+      "prompt": "Coverage verification. Do not modify any files.\nRead docs/designs/{inputs.docName}-ux.md and docs/designs/{inputs.docName}-tasks.json in full.\nApproved UX design:\n{steps.ux-design.output}\n\nFor EVERY UX-n block report one line:\n  UX-n - COVERED (spec section + task id) | MISSING FROM SPEC | NO TASK | DIVERGES (quote it)\nAlso flag spec content or tasks with no approved UX block behind them (scope creep). End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE - items <UX ids>."
     },
     {
       "id": "approve-doc",

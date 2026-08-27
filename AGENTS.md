@@ -4,7 +4,7 @@
 repo" section of [README.md](README.md) exactly, in order, verifying each step.
 Summary: verify Node 20+/git → install/update Salesforce CLI (`sf`) →
 `sf plugins install @salesforce/plugin-lightning-dev` → ensure at least one
-agent CLI exists (copilot/claude/codex; the USER must perform logins — never
+agent CLI exists (copilot/claude/codex; the USER must perform logins - never
 attempt them yourself) → `npm ci` → `npm run build` → `npm start` →
 verify http://localhost:3005 returns 200 → hand off to the user.
 On Windows, `dhruva.cmd` performs all of this in one command.

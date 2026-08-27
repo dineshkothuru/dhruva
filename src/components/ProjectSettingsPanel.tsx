@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-/** Per-project settings (.sfharness/settings.json) — lives in the LEFT
+/** Per-project settings (.sfharness/settings.json) - lives in the LEFT
  * project panel with the rest of the per-project configuration (skills,
  * standards browser). Today: the UX design configuration consumed by the
  * Solution design workflow's conditional UX steps. */
@@ -51,12 +51,12 @@ export default function ProjectSettingsPanel({ root }: { root: string }) {
     <div className="border-t border-slate-100 px-5 py-3">
       <details>
         <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-widest text-slate-400 hover:text-slate-600">
-          Project settings — UX design {ux.enabled ? "(on)" : "(off)"}
+          Project settings - UX design {ux.enabled ? "(on)" : "(off)"}
         </summary>
         <div className="mt-2 space-y-2.5">
           <p className="text-[10px] leading-relaxed text-slate-400">
             Per-project (.sfharness/settings.json). When ON, Solution design adds UX steps for the
-            UI-scoped requirements — designed under the rules below, critiqued, gated, and carried
+            UI-scoped requirements - designed under the rules below, critiqued, gated, and carried
             into the TDD + build-plan tasks. When OFF, Solution design is unchanged.
           </p>
           <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-slate-600">

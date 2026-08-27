@@ -8,7 +8,7 @@ import { ensureExtractedFile } from "@/lib/docExtract";
  * project's harness area so agents can read it from disk.
  * POST multipart/form-data {root, file} → {rel} (project-relative path).
  *
- * Word documents are binary zips the agents' file-read tools cannot parse —
+ * Word documents are binary zips the agents' file-read tools cannot parse -
  * a read-only agent then wastes calls on doomed workarounds (shell denied,
  * write denied). So .docx text is extracted DETERMINISTICALLY here at upload
  * and the agents get the extracted .md as the file to read. */
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   const ext = path.extname(file.name).toLowerCase();
   if (!ALLOWED_EXT.has(ext)) {
     return NextResponse.json(
-      { error: `file type not allowed (${ext || "none"}) — images, pdf, doc, txt` },
+      { error: `file type not allowed (${ext || "none"}) - images, pdf, doc, txt` },
       { status: 400 },
     );
   }

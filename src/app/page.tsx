@@ -15,7 +15,7 @@ import WorkflowsPane from "@/components/workflows/WorkflowsPane";
 
 type Tab = "chat" | "workflows" | "editor" | "setup";
 
-/** POST JSON and parse the response defensively — an empty/non-JSON body
+/** POST JSON and parse the response defensively - an empty/non-JSON body
  * (crashed route, dev-server rebuild) becomes a readable error, not a
  * "Unexpected end of JSON input" exception. */
 async function postJson(url: string, body: unknown) {
@@ -66,7 +66,7 @@ export default function Home() {
       try {
         localStorage.setItem("sfdh.panelWidth", String(lastW));
       } catch {
-        /* quota — persistence is best-effort */
+        /* quota - persistence is best-effort */
       }
     }
     window.addEventListener("mousemove", onMove);
@@ -83,7 +83,7 @@ export default function Home() {
   }
 
   // Diff views ride the same tab strip as editors, keyed "diff:<rel>".
-  // Re-opening a diff bumps its nonce so the pane remounts and refetches —
+  // Re-opening a diff bumps its nonce so the pane remounts and refetches -
   // a second agent run on the same file must never show the previous diff.
   const [diffNonce, setDiffNonce] = useState<Record<string, number>>({});
   // Pinned commits per diff tab: set = a historical run's baseline→result;
@@ -138,7 +138,7 @@ export default function Home() {
     const projectPath = result.path;
     const target = norm(projectPath);
     try {
-      // reuse the org's known host when re-authorizing — a sandbox login via
+      // reuse the org's known host when re-authorizing - a sandbox login via
       // login.salesforce.com fails the code exchange (invalid_grant)
       const instanceUrl = host ?? result.org?.instanceUrl;
       const { ok, data } = await postJson("/api/org-login", { path: projectPath, instanceUrl });
@@ -146,7 +146,7 @@ export default function Home() {
         setError(String(data.error ?? "Could not start org login"));
         return;
       }
-      setLoginMsg("Finish the login in your browser — this panel updates automatically…");
+      setLoginMsg("Finish the login in your browser - this panel updates automatically…");
       // poll until the CLI has stored the new authorization (up to 3 minutes)
       for (let i = 0; i < 36; i++) {
         await new Promise((r) => setTimeout(r, 5000));
@@ -155,19 +155,19 @@ export default function Home() {
         const org = probe.ok ? (probe.data.org as DetectionResult["org"]) : undefined;
         if (org?.connected) {
           setResult((r) => (r && norm(r.path) === target ? { ...r, org } : r));
-          // stay expanded — the user collapses when done reviewing
+          // stay expanded - the user collapses when done reviewing
           setLoginMsg(`Org authorized: ${org.username}`);
           return;
         }
       }
-      setLoginMsg("Still not authorized — finish the browser login, then click Refresh org status.");
+      setLoginMsg("Still not authorized - finish the browser login, then click Refresh org status.");
     } catch (e) {
       setError(String(e));
     }
   }
 
   useEffect(() => {
-    // Hydrate the last-used path after mount and RECONNECT automatically —
+    // Hydrate the last-used path after mount and RECONNECT automatically -
     // a refresh should land back in the attached project, not on the
     // connect form. (localStorage can't be read during render: hydration.)
     const saved = localStorage.getItem("sfdh.lastPath");
@@ -185,7 +185,7 @@ export default function Home() {
   async function connect(pathOverride?: string) {
     const target = (typeof pathOverride === "string" ? pathOverride : path).trim();
     if (!target || loading) return;
-    // Only a DIFFERENT project resets the workspace — reconnecting or
+    // Only a DIFFERENT project resets the workspace - reconnecting or
     // refreshing the same one must keep open tabs and chat context.
     const switching = result?.path !== undefined && norm(result.path) !== norm(target);
     connectTarget.current = norm(target);
@@ -226,7 +226,7 @@ export default function Home() {
             );
           }
         } catch {
-          /* corrupt workspace entry — start clean */
+          /* corrupt workspace entry - start clean */
         }
       }
 
@@ -255,11 +255,11 @@ export default function Home() {
         JSON.stringify({ openFiles: openFiles.slice(0, 20), activeFile }),
       );
     } catch {
-      /* quota — persistence is best-effort, never crash the tree */
+      /* quota - persistence is best-effort, never crash the tree */
     }
   }, [connected, result?.path, openFiles, activeFile]);
 
-  // an "editor" tab with no files renders nothing — fall back to chat
+  // an "editor" tab with no files renders nothing - fall back to chat
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (tab === "editor" && openFiles.length === 0) setTab("chat");
@@ -290,7 +290,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Left panel — project (resizable via the divider) */}
+      {/* Left panel - project (resizable via the divider) */}
       <aside
         style={{ width: panelWidth }}
         className="flex shrink-0 flex-col bg-white"
@@ -382,11 +382,11 @@ export default function Home() {
               <dl className="mt-4 space-y-3 text-sm">
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Project</dt>
-                  <dd className="mt-0.5 font-medium">{result.projectName ?? "—"}</dd>
+                  <dd className="mt-0.5 font-medium">{result.projectName ?? "-"}</dd>
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">API version</dt>
-                  <dd className="mt-0.5 font-medium">{result.sourceApiVersion ?? "—"}</dd>
+                  <dd className="mt-0.5 font-medium">{result.sourceApiVersion ?? "-"}</dd>
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">
@@ -400,7 +400,7 @@ export default function Home() {
                             {d.default && <span className="ml-1 text-slate-400">(default)</span>}
                           </div>
                         ))
-                      : "—"}
+                      : "-"}
                   </dd>
                 </div>
                 <div>
@@ -528,7 +528,7 @@ export default function Home() {
             </div>
           )}
         </div>
-        {/* attribution footer — version + author, pinned to the panel bottom */}
+        {/* attribution footer - version + author, pinned to the panel bottom */}
         <div className="border-t border-slate-100 px-5 py-2.5 text-[10px] text-slate-400">
           Dhruva v{pkg.version} · built by{" "}
           <a
@@ -554,14 +554,14 @@ export default function Home() {
         />
       )}
 
-      {/* drag handle — the border line itself resizes the panel */}
+      {/* drag handle - the border line itself resizes the panel */}
       <div
         onMouseDown={startResize}
         className="w-1 shrink-0 cursor-col-resize bg-slate-200 transition-colors hover:bg-slate-400 active:bg-slate-500"
         title="Drag to resize"
       />
 
-      {/* Right panel — chat & workflows (min-w-0: long unbroken output lines
+      {/* Right panel - chat & workflows (min-w-0: long unbroken output lines
           must wrap inside cards, never widen the panel past the viewport) */}
       <section className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-slate-50">
         <div className="flex items-center gap-1 border-b border-slate-200 bg-white px-5 py-2.5">
@@ -589,11 +589,11 @@ export default function Home() {
           </span>
         </div>
 
-        {/* All panes stay MOUNTED and are hidden by CSS — switching tabs must
+        {/* All panes stay MOUNTED and are hidden by CSS - switching tabs must
             never drop the chat transcript or unsaved editor buffers. */}
         {openFiles.length > 0 && result?.path && (
           <div className={`min-h-0 flex-1 flex-col ${tab === "editor" ? "flex" : "hidden"}`}>
-            {/* file tab strip — open buffers keep unsaved changes when switching */}
+            {/* file tab strip - open buffers keep unsaved changes when switching */}
             <div className="flex items-center gap-0.5 overflow-x-auto border-b border-slate-200 bg-slate-100 px-2 pt-1.5">
               {openFiles.map((f) => (
                 <span
@@ -685,7 +685,7 @@ export default function Home() {
           <div className={`min-h-0 flex-1 overflow-y-auto p-6 ${tab === "setup" ? "block" : "hidden"}`}>
             <h2 className="text-sm font-semibold text-slate-700">Project setup</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Per-project knowledge and configuration — stored under .sfharness/ inside{" "}
+              Per-project knowledge and configuration - stored under .sfharness/ inside{" "}
               {result.projectName}, applied to every agent working in this project.
             </p>
             <div className="mt-4 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">

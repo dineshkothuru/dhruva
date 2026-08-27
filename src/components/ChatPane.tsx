@@ -47,14 +47,14 @@ export default function ChatPane({
 }: {
   root: string;
   onOpenDiff?: (rel: string) => void;
-  /** Called when an intake proposal starts a workflow run — the app switches
+  /** Called when an intake proposal starts a workflow run - the app switches
    * to the Workflows tab and opens the run. */
   onRunStarted?: (runId: string) => void;
 }) {
   const [status, setStatus] = useState<Record<string, AgentStatus> | null>(null);
   // default agent (user setting) preselected; switching stays per-session
   const [agent, setAgent] = useState<AgentId>(() => loadDefaultAgent() ?? "copilot");
-  // model per agent — persisted as the DEFAULT: whatever you pick is
+  // model per agent - persisted as the DEFAULT: whatever you pick is
   // remembered and taken automatically every session, no re-input needed
   const [models, setModels] = useState<Partial<Record<AgentId, string>>>(() => {
     try {
@@ -78,7 +78,7 @@ export default function ChatPane({
   const [custom, setCustom] = useState<Partial<Record<AgentId, boolean>>>({});
   const [input, setInput] = useState("");
   // ChatPane only mounts after a project connects (post-hydration), so a
-  // lazy localStorage read is safe here — transcripts persist per project.
+  // lazy localStorage read is safe here - transcripts persist per project.
   const [messages, setMessages] = useState<Msg[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(chatKey(root)) ?? "null");
@@ -138,7 +138,7 @@ export default function ChatPane({
       try {
         localStorage.setItem(chatKey(root), JSON.stringify(toPersistable(messages)));
       } catch {
-        /* storage full — transcript persistence is best-effort */
+        /* storage full - transcript persistence is best-effort */
       }
     }
   }, [messages, running, root]);
@@ -147,7 +147,7 @@ export default function ChatPane({
     const prompt = input.trim();
     if (!prompt || running) return;
     // Task-first intake: delivery-shaped text proposes the matching workflow
-    // (deterministic classifier; the user confirms — nothing starts silently).
+    // (deterministic classifier; the user confirms - nothing starts silently).
     // attachments ride along as project-relative paths the agents can read
     const attached = attachments.map((a) => a.rel);
     const taskText =
@@ -177,7 +177,7 @@ export default function ChatPane({
     await runAgentChat(prompt, true, attached);
   }
 
-  /** Plain agent chat (streaming) — also the "just chat" path of a proposal. */
+  /** Plain agent chat (streaming) - also the "just chat" path of a proposal. */
   async function runAgentChat(prompt: string, addUserMsg: boolean, attached: string[] = []) {
     if (running) return;
     if (!status?.[agent]?.installed) {
@@ -366,7 +366,7 @@ export default function ChatPane({
               }}
               disabled={running}
               className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 outline-none focus:border-slate-400 disabled:opacity-50"
-              title="Model the agent runs with — your pick is saved as the default and used automatically from then on"
+              title="Model the agent runs with - your pick is saved as the default and used automatically from then on"
             >
               {current.models.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -389,7 +389,7 @@ export default function ChatPane({
               </div>
               <h2 className="mt-4 text-base font-semibold">Agent chat</h2>
               <p className="mt-1.5 text-sm text-slate-500">
-                Describe a task — the selected agent works inside the attached project and its
+                Describe a task - the selected agent works inside the attached project and its
                 output streams here.
               </p>
               {current && !current.installed && (
@@ -466,7 +466,7 @@ export default function ChatPane({
             ) : m.role === "changes" ? (
               <div key={i} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                 <div className="mb-2 text-[10px] font-medium uppercase tracking-wide text-emerald-700">
-                  Review — {m.text}
+                  Review - {m.text}
                 </div>
                 <div className="flex flex-col gap-1">
                   {m.changes?.map((c) => (
@@ -539,7 +539,7 @@ export default function ChatPane({
             onClick={() => fileRef.current?.click()}
             disabled={uploading || running}
             className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40"
-            title="Add files — images, PDFs, or documents"
+            title="Add files - images, PDFs, or documents"
           >
             {uploading ? (
               <span className="text-xs">…</span>

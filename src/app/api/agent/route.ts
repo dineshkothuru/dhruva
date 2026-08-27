@@ -11,7 +11,7 @@ export const maxDuration = 800;
 const RUN_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Run ONE whitelisted coding-agent CLI (GitHub Copilot / Claude Code /
- * OpenAI Codex — see AGENTS) inside the attached Salesforce project and
+ * OpenAI Codex - see AGENTS) inside the attached Salesforce project and
  * stream its output to the chat pane.
  *
  * Guards: the binary comes from the AGENTS whitelist (never caller input),
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
 
   const def = AGENTS[body.agent];
   const model = isSafeModelId(body.model) ? body.model : undefined;
-  // project knowledge rides chat tasks too — AFTER the task so copilot's
+  // project knowledge rides chat tasks too - AFTER the task so copilot's
   // inline-prompt truncation can never eat the user's ask
   const { block: skillsBlock } = await skillsPrompt(root).catch(() => ({ block: "" }));
   const fullPrompt =
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
   }
 
   // Baseline snapshot so the review layer can show exactly what this run
-  // changed — deterministic, works for projects without git. Skipped while a
+  // changed - deterministic, works for projects without git. Skipped while a
   // workflow run is active for this project: re-baselining mid-run (e.g. at a
   // gate) would erase that run's pending diff.
   if (!readOnly && !hasActiveRun(root)) await takeSnapshot(root);

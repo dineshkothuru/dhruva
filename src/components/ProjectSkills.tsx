@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** Project skills — per-project knowledge (.sfharness/skills/*.md) with a
+/** Project skills - per-project knowledge (.sfharness/skills/*.md) with a
  * read-only browser of the SHIPPED standards library alongside, so authors
  * see what is already covered instead of duplicating it into skills. */
 
@@ -17,7 +17,7 @@ interface SkillMeta {
 const COVERED_HINT =
   "Already covered by the team standards: Apex (classes, triggers, async, tests), LWC, flows, " +
   "security & FLS, naming, logging, metadata, deployments. Write only what is TRUE OF THIS ORG " +
-  "and not derivable from code — conventions, landmines, org facts. Optional scoping: start the " +
+  "and not derivable from code - conventions, landmines, org facts. Optional scoping: start the " +
   'file with ---\\napplyTo: "force-app/main/default/lwc/**"\\n--- to inject it only for steps ' +
   "touching matching files (analysis steps always get everything).";
 
@@ -152,7 +152,7 @@ export default function ProjectSkills({
         <button
           onClick={() => setAdding((v) => !v)}
           className="ml-auto rounded px-1.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          title="Add project knowledge — injected into every agent prompt for this project"
+          title="Add project knowledge - injected into every agent prompt for this project"
         >
           {adding ? "✕" : "＋"}
         </button>
@@ -160,7 +160,7 @@ export default function ProjectSkills({
 
       {skills.length === 0 && !adding && (
         <p className="mt-1 text-[10px] text-slate-300">
-          org-specific knowledge for agents — conventions, landmines, facts
+          org-specific knowledge for agents - conventions, landmines, facts
         </p>
       )}
 
@@ -183,7 +183,7 @@ export default function ProjectSkills({
               </span>
             )}
             {s.truncated && (
-              <span className="text-[9px] font-semibold text-amber-600" title="exceeds the per-skill injection budget — trim it">
+              <span className="text-[9px] font-semibold text-amber-600" title="exceeds the per-skill injection budget - trim it">
                 truncated
               </span>
             )}
@@ -219,7 +219,7 @@ export default function ProjectSkills({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={4}
-            placeholder="Paste plain text — saved as an .md file and injected into every agent prompt for this project."
+            placeholder="Paste plain text - saved as an .md file and injected into every agent prompt for this project."
             className="mt-1.5 w-full rounded-md border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-400"
           />
           <p className="mt-1 text-[9px] leading-relaxed text-slate-400">{COVERED_HINT}</p>
@@ -284,7 +284,7 @@ export default function ProjectSkills({
                 </button>
               ))}
               <p className="pt-0.5 text-[9px] text-slate-300">
-                shipped with Dhruva — same for every project, not editable here
+                shipped with Dhruva - same for every project, not editable here
               </p>
             </>
           )}

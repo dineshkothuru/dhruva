@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Dhruva launcher — the `dhruva` command (Claude Code-style install).
+/** Dhruva launcher - the `dhruva` command (Claude Code-style install).
  *
  * Runs the app from wherever the package is installed, on the user's machine,
  * with the user's own logins (sf / copilot / claude / codex). No credentials
@@ -12,7 +12,7 @@ const path = require("node:path");
 const appRoot = path.join(__dirname, "..");
 const port = process.env.DHRUVA_PORT || "3005";
 
-// `dhruva update` — install the latest published version from the npm
+// `dhruva update` - install the latest published version from the npm
 // registry (immutable, versioned). `dhruva update edge` tracks the GitHub
 // master branch instead (whatever was pushed last).
 if (process.argv[2] === "update") {
@@ -25,7 +25,7 @@ if (process.argv[2] === "update") {
   });
   process.exit(r.status ?? 1);
 }
-// `dhruva app` — fetch the latest desktop installer from GitHub Releases and
+// `dhruva app` - fetch the latest desktop installer from GitHub Releases and
 // launch it: one command from npm-land to the self-updating desktop app,
 // no browser download needed.
 if (process.argv[2] === "app") {

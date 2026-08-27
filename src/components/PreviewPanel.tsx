@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-/** Local Dev preview control — replaces the raw console: pick the app/site
+/** Local Dev preview control - replaces the raw console: pick the app/site
  * in a modal, the dev server runs hidden, status + logs stream here, Stop
  * kills it. The CLI itself opens the org in the browser when ready. */
 
@@ -71,7 +71,7 @@ export default function PreviewPanel({ root }: { root: string }) {
         setError(
           kind === "site"
             ? auraCount > 0
-              ? `no LWR sites in this org — its ${auraCount} Aura site(s) cannot be previewed locally (platform limit); test them by deploying to the sandbox`
+              ? `no LWR sites in this org - its ${auraCount} Aura site(s) cannot be previewed locally (platform limit); test them by deploying to the sandbox`
               : "no Experience Cloud sites found in the org"
             : "no Lightning apps found",
         );
@@ -131,7 +131,7 @@ export default function PreviewPanel({ root }: { root: string }) {
           <div className="flex items-center gap-2">
             <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-sky-500" />
             <span className="truncate text-xs font-medium text-sky-800">
-              Local Dev running — {status.kind}: {status.name}
+              Local Dev running - {status.kind}: {status.name}
             </span>
             <button
               onClick={stop}
@@ -197,7 +197,7 @@ export default function PreviewPanel({ root }: { root: string }) {
             </div>
             {choices.kind === "site" && (
               <p className="mt-1 text-[11px] text-amber-600">
-                Only LWR sites can be previewed — Aura sites will fail to start (platform limit).
+                Only LWR sites can be previewed - Aura sites will fail to start (platform limit).
               </p>
             )}
             <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-100">

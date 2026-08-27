@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 
 /** Launch `sf org login web` for the given project folder. The Salesforce
- * login page opens in the user's own browser — credentials never pass
+ * login page opens in the user's own browser - credentials never pass
  * through this app; the sf CLI captures the OAuth token when they finish.
  * Fire-and-forget: the UI re-runs detection afterwards to see the result. */
 export async function POST(req: Request) {
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
 
   try {
     // NOT detached: on Windows a detached child gets its own console that
-    // ignores windowsHide — attached+hidden means the user sees only the
+    // ignores windowsHide - attached+hidden means the user sees only the
     // browser tab the CLI opens. The command exits by itself after login.
     const child = spawn("sf", args, {
       cwd: projectPath,
@@ -56,6 +56,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     started: true,
-    message: "Salesforce login opened in your browser — this panel updates automatically when you finish.",
+    message: "Salesforce login opened in your browser - this panel updates automatically when you finish.",
   });
 }

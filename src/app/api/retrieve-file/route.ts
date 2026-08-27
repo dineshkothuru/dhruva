@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   if (!rel || !resolveInside(root, rel)) {
     return NextResponse.json({ error: "path escapes the project" }, { status: 400 });
   }
-  // shell reaches cmd.exe — keep the arg free of metacharacters
+  // shell reaches cmd.exe - keep the arg free of metacharacters
   if (/["'`^&|<>%$;\r\n\t]/.test(rel)) {
     return NextResponse.json({ error: "invalid characters in path" }, { status: 400 });
   }

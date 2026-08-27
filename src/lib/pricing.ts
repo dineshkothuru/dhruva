@@ -1,12 +1,12 @@
 /** Informational API-rate cost estimation.
  *
  * The agent CLIs run on the user's subscription (Copilot seat / Claude plan /
- * ChatGPT), so nothing here is billed — this answers "what WOULD this task
+ * ChatGPT), so nothing here is billed - this answers "what WOULD this task
  * cost at public API rates". Tokens are estimated at ~4 chars/token from the
  * prompt we sent and the output we saw (the agent's internal context reads
  * are not visible to the harness), so treat every number as a floor estimate.
  *
- * Rates are USD per 1M tokens — edit here as providers change pricing. */
+ * Rates are USD per 1M tokens - edit here as providers change pricing. */
 
 export interface Usage {
   inTokens: number;

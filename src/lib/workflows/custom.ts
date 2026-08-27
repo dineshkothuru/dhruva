@@ -5,14 +5,14 @@ import type { WorkflowDef } from "./schema";
 import { builtinWorkflows } from "./builtins";
 import { validateWorkflowDef } from "./validate";
 
-/** Custom workflows — user-designed (usually by duplicating a built-in),
+/** Custom workflows - user-designed (usually by duplicating a built-in),
  * stored as JSON in the SAME shape as built-ins and validated by the same
  * contract, so the engine runs them identically.
  *
  * Two scopes:
- *  - "central" (default): ~/.dhruva/workflows — follows the user across every
+ *  - "central" (default): ~/.dhruva/workflows - follows the user across every
  *    project they connect on this machine.
- *  - "project": <project>/.sfharness/workflows — travels with the repo, so
+ *  - "project": <project>/.sfharness/workflows - travels with the repo, so
  *    teammates who clone the project get it too.
  * On an id collision the project copy wins (more specific). */
 
@@ -21,11 +21,11 @@ export type WorkflowScope = "central" | "project";
 const SLUG = /^[a-z0-9][a-z0-9-]{1,40}$/;
 
 function centralDir() {
-  // XDG-style config home (~/.config/dhruva) — the convention most CLIs use
+  // XDG-style config home (~/.config/dhruva) - the convention most CLIs use
   const cfg = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
   return path.join(cfg, "dhruva", "workflows");
 }
-// pre-rename location — still read (never written) so nothing already saved is lost
+// pre-rename location - still read (never written) so nothing already saved is lost
 function legacyCentralDir() {
   return path.join(os.homedir(), ".dhruva", "workflows");
 }
@@ -45,7 +45,7 @@ async function readDir(dir: string): Promise<WorkflowDef[]> {
         const raw = JSON.parse(await fs.readFile(path.join(dir, f), "utf8"));
         out.push(validateWorkflowDef(raw));
       } catch {
-        /* invalid file — skip; the save path validates, so this is rare */
+        /* invalid file - skip; the save path validates, so this is rare */
       }
     }
   } catch {

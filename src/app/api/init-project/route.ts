@@ -6,7 +6,7 @@ import { detectProject } from "@/lib/detect";
 
 /** Create the folder if needed and scaffold a Salesforce DX project into it
  * via `sf project generate` (same structure VS Code creates). Only proceeds
- * when the target is missing or an empty directory — never scaffolds into a
+ * when the target is missing or an empty directory - never scaffolds into a
  * folder that already has files. Returns the fresh detection result. */
 export async function POST(req: Request) {
   let body: { path?: unknown };
@@ -45,14 +45,14 @@ export async function POST(req: Request) {
     const entries = await fs.readdir(target);
     if (entries.length > 0) {
       return NextResponse.json(
-        { error: "folder is not empty — refusing to scaffold over existing files" },
+        { error: "folder is not empty - refusing to scaffold over existing files" },
         { status: 409 },
       );
     }
   }
 
   // mkdir on an existing drive root ("d:\") throws EPERM on Windows even
-  // with recursive:true — only create the parent when it's actually missing.
+  // with recursive:true - only create the parent when it's actually missing.
   const parentStat = await fs.stat(parent).catch(() => null);
   if (!parentStat) {
     try {

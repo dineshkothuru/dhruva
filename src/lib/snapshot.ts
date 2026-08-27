@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 
 /** Deterministic before/after snapshots of the attached project, independent
  * of whether the customer uses git: the harness keeps a PRIVATE shadow git
- * repo under <project>/.sfharness/shadow.git (git as a snapshot engine —
+ * repo under <project>/.sfharness/shadow.git (git as a snapshot engine -
  * no remote, never pushed, invisible to the customer's own git because the
  * work-tree's .git dir is untouched and .sfharness is excluded). */
 
@@ -33,11 +33,11 @@ async function clearStaleLock(root: string) {
   const lock = path.join(shadowGitDir(root), "index.lock");
   try {
     const s = await fs.stat(lock);
-    // must exceed the git op timeout (300s) — a live add on a huge org tree
+    // must exceed the git op timeout (300s) - a live add on a huge org tree
     // can legitimately hold the lock for minutes
     if (Date.now() - s.mtimeMs > 330_000) await fs.unlink(lock);
   } catch {
-    /* no lock — fine */
+    /* no lock - fine */
   }
 }
 
@@ -60,7 +60,7 @@ async function ensureShadow(root: string): Promise<boolean> {
     await runGit(root, ["config", "user.email", "harness@local"]);
     await runGit(root, ["config", "user.name", "dhruva"]);
     // Salesforce org retrieves routinely exceed Windows' 260-char path limit
-    // (e.g. nested report folders) — long paths must be on or add fails.
+    // (e.g. nested report folders) - long paths must be on or add fails.
     await runGit(root, ["config", "core.longpaths", "true"]);
     // Snapshots must be byte-faithful; no line-ending rewriting or warnings.
     await runGit(root, ["config", "core.autocrlf", "false"]);
@@ -76,13 +76,13 @@ async function ensureShadow(root: string): Promise<boolean> {
       await fs.writeFile(excludeFile, `${cur.replace(/\n*$/, "\n")}${SHADOW_DIRNAME}\n`, "utf8");
     }
   } catch {
-    /* no customer git — nothing to exclude */
+    /* no customer git - nothing to exclude */
   }
   return true;
 }
 
 /** Commit the current state as the "before" baseline. Returns false when git
- * is unavailable — callers degrade gracefully (no review, agent still runs). */
+ * is unavailable - callers degrade gracefully (no review, agent still runs). */
 export async function takeSnapshot(root: string): Promise<boolean> {
   if (!(await ensureShadow(root))) return false;
   await clearStaleLock(root);
@@ -100,7 +100,7 @@ export interface ChangedFile {
 /** Changes in the work tree since the last snapshot. */
 export async function changesSince(root: string): Promise<ChangedFile[] | null> {
   if (!(await ensureShadow(root))) return null;
-  // No baseline yet (first use): take one now — current state becomes the
+  // No baseline yet (first use): take one now - current state becomes the
   // reference, so "no changes" is the correct answer.
   const head = await runGit(root, ["rev-parse", "HEAD"]);
   if (!head.ok) {
@@ -144,7 +144,7 @@ export async function headCommit(root: string): Promise<string | null> {
 
 /** Commit the current work-tree state WITHOUT moving HEAD (write-tree +
  * commit-tree) and pin it under refs/runs/<runId> so a later run's baseline
- * never erases this run's result — historical diffs stay reproducible. */
+ * never erases this run's result - historical diffs stay reproducible. */
 export async function commitRunResult(root: string, runId: string): Promise<string | null> {
   if (!/^[\w-]{1,64}$/.test(runId)) return null;
   if (!(await ensureShadow(root))) return null;

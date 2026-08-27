@@ -1,4 +1,4 @@
-/** Deterministic workflow engine — type definitions.
+/** Deterministic workflow engine - type definitions.
  *
  * A workflow is DATA (steps with dependencies); the engine is CODE. The only
  * nondeterministic step type is "agent" (one bounded task via the adapter
@@ -9,7 +9,7 @@
 import type { AgentId } from "@/lib/agents";
 
 /** The five model-consuming roles an agent step can play. Users pick models
- * ROLE-wise (5 decisions), not step-wise (17) — every step inherits from its
+ * ROLE-wise (5 decisions), not step-wise (17) - every step inherits from its
  * role; the tier map below is the shipped fallback per role. */
 export type StepRole = "read" | "design" | "implement" | "review" | "trace";
 export const STEP_ROLES: StepRole[] = ["read", "design", "implement", "review", "trace"];
@@ -56,7 +56,7 @@ export interface StepDef {
   /** Step timeout in minutes (default 15). BRD-scale analysis and large
    * implementations legitimately need more. */
   timeoutMinutes?: number;
-  /** agent: the step's role — the ONLY per-step model knob. Resolution:
+  /** agent: the step's role - the ONLY per-step model knob. Resolution:
    * the user's per-role model (run.roleModels) wins; otherwise the role's
    * tier (ROLE_TIER) resolves through the agent's shipped tiers map. */
   role?: StepRole;
@@ -64,12 +64,12 @@ export interface StepDef {
    * this step's output matches `trigger` (regex, case-insensitive), the
    * engine replays `target`..this step with the findings injected as
    * feedback, up to `maxRounds` times (default 1). The human gate always
-   * follows — this only cleans what the human reviews, never replaces them. */
+   * follows - this only cleans what the human reviews, never replaces them. */
   autoRevise?: { target: string; trigger: string; maxRounds?: number };
   /** tasks-check / agent taskLoop / reviewer reopen: project-relative path
    * template of the machine-readable tasks file (JSON, see tasks.ts). */
   tasksFile?: string;
-  /** agent: engine-driven task loop — one agent spawn per PENDING task in
+  /** agent: engine-driven task loop - one agent spawn per PENDING task in
    * tasksFile (dependency order); each success is marked completed with its
    * own token usage. Falls back to a normal single run when the file is
    * absent (older TDDs). */
@@ -85,7 +85,7 @@ export interface StepDef {
   /** cli: when an argv expansion has nothing to expand ({affectedSourceDirs}
    * with no files named), skip the step instead of failing the run. */
   optional?: boolean;
-  /** cli: launch in a visible console window and continue immediately —
+  /** cli: launch in a visible console window and continue immediately -
    * for long-lived servers like Salesforce Local Dev (visual testing). */
   detached?: boolean;
 }
@@ -104,7 +104,7 @@ export interface WorkflowDef {
     /** Attachment references are appended to THIS input (must be free-text,
      * never a path/list field). Fallback: the first text input. */
     attachTo?: boolean;
-    /** Not shown in the start form — filled by the server from project
+    /** Not shown in the start form - filled by the server from project
      * settings at run start (still recorded in the run's audited inputs). */
     hidden?: boolean;
   }[];
@@ -126,7 +126,7 @@ export interface StepState {
   usage?: { inTokens: number; outTokens: number; costUsd: number; estimated: boolean };
   /** Agent steps: the model this step actually ran with (role-resolved). */
   model?: string;
-  /** Agent steps: WHERE the model came from, human-readable — 'your "review"
+  /** Agent steps: WHERE the model came from, human-readable - 'your "review"
    * role setting' / 'shipped default for the "design" role' / 'run model' /
    * 'CLI default'. Shown in the UI and kept in the audit. */
   modelFrom?: string;
@@ -141,21 +141,21 @@ export interface RunState {
   status: "running" | "waiting_gate" | "done" | "failed" | "aborted";
   agent: AgentId;
   model?: string;
-  /** User-configured per-ROLE models for this run — the model setting.
+  /** User-configured per-ROLE models for this run - the model setting.
    * A step's role model beats the shipped tier resolution. */
   roleModels?: Partial<Record<StepRole, string>>;
   inputs: Record<string, string | boolean>;
   steps: StepState[];
   /** Changed files as of the last "changes" step. */
   changes?: { file: string; status: string }[];
-  /** Shadow-git commits pinning this run's before/after states — historical
+  /** Shadow-git commits pinning this run's before/after states - historical
    * runs stay diffable after later runs re-baseline HEAD. */
   baseCommit?: string;
   endCommit?: string;
-  /** Files the investigation step named (parsed from its FILES: line) —
+  /** Files the investigation step named (parsed from its FILES: line) -
    * used to retrieve fresh copies from the org before implementing. */
   affected?: string[];
-  /** Reviewer feedback given at gates, keyed by the agent step it revises —
+  /** Reviewer feedback given at gates, keyed by the agent step it revises -
    * injected into that step's prompt on re-run (and kept in the audit). */
   revisions?: Record<string, string[]>;
 }

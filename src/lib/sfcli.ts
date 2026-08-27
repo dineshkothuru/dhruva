@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 
 /** Best-effort `sf org display --json` in the given project folder.
- * Never throws — an unusable sf CLI or missing org is a normal outcome. */
+ * Never throws - an unusable sf CLI or missing org is a normal outcome. */
 export async function sfOrgDisplay(cwd: string): Promise<{
   connected: boolean;
   username?: string;
@@ -57,7 +57,7 @@ export async function sfOrgDisplay(cwd: string): Promise<{
 }
 
 /** Parse sf's JSON output: strip ANSI color codes (sf colorizes when
- * FORCE_COLOR is set — Next's dev server sets it) and skip any plain-text
+ * FORCE_COLOR is set - Next's dev server sets it) and skip any plain-text
  * prefix lines (e.g. a CLI update warning) before the first "{". */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseJson(stdout: string): any | null {

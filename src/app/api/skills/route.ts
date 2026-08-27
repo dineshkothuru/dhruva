@@ -14,9 +14,9 @@ import {
 } from "@/lib/projectSkills";
 import { extractDocText } from "@/lib/docExtract";
 
-/** Project skills — per-project knowledge under .sfharness/skills/.
+/** Project skills - per-project knowledge under .sfharness/skills/.
  * JSON: POST {action: list|get|save|delete, root, name?, content?}
- * Upload: multipart {root, name, file} — .md/.txt kept, .docx/.pdf extracted. */
+ * Upload: multipart {root, name, file} - .md/.txt kept, .docx/.pdf extracted. */
 export async function POST(req: Request) {
   // ---- multipart: file upload becomes a skill
   if (req.headers.get("content-type")?.includes("multipart/form-data")) {
@@ -45,12 +45,12 @@ export async function POST(req: Request) {
       await fs.unlink(tmp).catch(() => {});
       if (!content) {
         return NextResponse.json(
-          { error: "no text could be extracted (scanned/image document?) — paste the text instead" },
+          { error: "no text could be extracted (scanned/image document?) - paste the text instead" },
           { status: 400 },
         );
       }
     } else {
-      return NextResponse.json({ error: `unsupported type ${ext} — md, txt, docx, pdf` }, { status: 400 });
+      return NextResponse.json({ error: `unsupported type ${ext} - md, txt, docx, pdf` }, { status: 400 });
     }
     try {
       await saveSkill(root, name, content);
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
     const secret = findSecret(b.content);
     if (secret) {
       return NextResponse.json(
-        { error: `looks like a credential ("${secret}") — skills must never carry secrets` },
+        { error: `looks like a credential ("${secret}") - skills must never carry secrets` },
         { status: 400 },
       );
     }

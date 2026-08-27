@@ -87,7 +87,7 @@ export default function EditorPane({ root, file }: { root: string; file: string 
   }
 
   // The parent remounts this component per file (key={file}), so state
-  // starts fresh — the effect only loads the content.
+  // starts fresh - the effect only loads the content.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -152,7 +152,7 @@ export default function EditorPane({ root, file }: { root: string; file: string 
               className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
               title={
                 dirty
-                  ? "Save or discard your edits first — retrieving would overwrite them"
+                  ? "Save or discard your edits first - retrieving would overwrite them"
                   : "Pull this file fresh from the connected org (overwrites the local copy)"
               }
             >

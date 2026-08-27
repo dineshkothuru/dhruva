@@ -1,6 +1,6 @@
 "use client";
 
-/** Custom model ids the user has typed (per agent) — fed back as datalist
+/** Custom model ids the user has typed (per agent) - fed back as datalist
  * suggestions so a model id typed once autocompletes everywhere afterward.
  * No management UI: the list grows from use. */
 
@@ -22,7 +22,7 @@ export function loadCustomModels(agent: string): string[] {
 
 export function addCustomModel(agent: string, id: string) {
   const v = id.trim();
-  // only valid model-id shapes become suggestions — never propagate typos
+  // only valid model-id shapes become suggestions - never propagate typos
   if (!/^[A-Za-z0-9._-]{1,60}$/.test(v)) return;
   const all = loadAll();
   const list = all[agent] ?? [];
