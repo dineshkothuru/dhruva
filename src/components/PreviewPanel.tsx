@@ -99,31 +99,31 @@ export default function PreviewPanel({ root }: { root: string }) {
   return (
     <div className="mt-2 flex flex-col gap-1.5">
       {!status.running ? (
-        <div className="flex gap-1.5">
+        <div className="grid grid-cols-3 gap-1.5">
           <button
             onClick={() => pick("app")}
             disabled={loadingChoices !== null}
-            className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
+            className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm hover:border-slate-300 hover:text-slate-900 disabled:opacity-40"
             title="Local Dev: your LOCAL UI files rendered against real org data (no deploy). Apex is not previewed."
           >
-            {loadingChoices === "app" ? "Loading apps…" : "🖥 Preview app"}
+            {loadingChoices === "app" ? "Loading…" : "🖥 App"}
           </button>
           <button
             onClick={() => pick("site")}
             disabled={loadingChoices !== null}
-            className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
+            className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm hover:border-slate-300 hover:text-slate-900 disabled:opacity-40"
             title="Local Dev for an LWR Experience Cloud site (Aura sites are not supported by the platform)"
           >
-            {loadingChoices === "site" ? "Loading sites…" : "🌐 Preview site"}
+            {loadingChoices === "site" ? "Loading…" : "🌐 Site"}
           </button>
           <button
             onClick={async () => {
               await api({ path: root, action: "open" });
             }}
-            className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium hover:bg-slate-50"
+            className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-1.5 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm hover:border-slate-300 hover:text-slate-900"
             title="Open the default org (incl. a default scratch org) in the browser, logged in"
           >
-            ↗ Open org
+            ↗ Org
           </button>
         </div>
       ) : (

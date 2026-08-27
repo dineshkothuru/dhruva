@@ -379,65 +379,57 @@ export default function Home() {
                 <>
               <p className="mt-1 break-all font-mono text-[11px] text-slate-400">{result.path}</p>
 
-              <dl className="mt-4 space-y-3 text-sm">
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Project</dt>
-                  <dd className="mt-0.5 font-medium">{result.projectName ?? "-"}</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">API version</dt>
-                  <dd className="mt-0.5 font-medium">{result.sourceApiVersion ?? "-"}</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">
-                    Package directories
+              {/* project facts as a compact chip row - labels are noise here */}
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600" title="source API version">
+                  API {result.sourceApiVersion ?? "?"}
+                </span>
+                {result.packageDirectories?.map((d) => (
+                  <span
+                    key={d.path}
+                    className={`rounded-md px-2 py-0.5 font-mono text-[10px] font-medium ${
+                      d.default ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-500"
+                    }`}
+                    title={d.default ? "default package directory" : "package directory"}
+                  >
+                    {d.path}
+                    {d.default && " ★"}
+                  </span>
+                ))}
+                <span
+                  className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                    result.isGitRepo ? "bg-slate-100 text-slate-600" : "bg-slate-50 text-slate-300"
+                  }`}
+                >
+                  {result.isGitRepo ? "git" : "no git"}
+                </span>
+              </div>
+
+              <dl className="mt-3 text-sm">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                  <dt className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                    <span
+                      className={`inline-flex h-1.5 w-1.5 rounded-full ${
+                        result.org?.connected ? "bg-emerald-500" : "bg-slate-300"
+                      }`}
+                    />
+                    Connected org
                   </dt>
-                  <dd className="mt-0.5 font-mono text-xs">
-                    {result.packageDirectories?.length
-                      ? result.packageDirectories.map((d) => (
-                          <div key={d.path}>
-                            {d.path}
-                            {d.default && <span className="ml-1 text-slate-400">(default)</span>}
-                          </div>
-                        ))
-                      : "-"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Git</dt>
-                  <dd className="mt-1">
-                    {result.isGitRepo ? (
-                      <span className="rounded bg-slate-200 px-2 py-0.5 text-xs font-medium">
-                        git repo
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">not a git repo</span>
-                    )}
-                  </dd>
-                </div>
-                <div className="border-t border-slate-200 pt-3">
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Default org</dt>
-                  <dd className="mt-1 text-xs">
+                  <dd className="mt-1.5 text-xs">
                     {result.org?.connected ? (
                       <span className="flex min-w-0 flex-col gap-0.5">
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                          <span className="truncate font-medium" title={result.org.username}>
-                            {result.org.username}
-                          </span>
+                        <span className="truncate font-semibold text-slate-800" title={result.org.username}>
+                          {result.org.username}
                         </span>
-                        <span className="truncate pl-4 text-slate-400" title={result.org.instanceUrl}>
-                          {result.org.instanceUrl}
+                        <span className="truncate font-mono text-[10px] text-slate-400" title={result.org.instanceUrl}>
+                          {result.org.instanceUrl?.replace(/^https?:\/\//, "")}
                         </span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-2 text-slate-500">
-                        <span className="inline-flex h-2 w-2 rounded-full bg-slate-300" />
-                        {result.org?.reason ?? "no org authorized"}
-                      </span>
+                      <span className="text-slate-500">{result.org?.reason ?? "no org authorized"}</span>
                     )}
                   </dd>
-                  <div className="mt-3 flex flex-col gap-2">
+                  <div className="mt-2.5 flex flex-col gap-2">
                     {loginMsg ? (
                       <>
                         <p className="text-[11px] text-sky-700">{loginMsg}</p>
