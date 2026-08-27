@@ -621,7 +621,7 @@ export default function ChatPane({
         msgIndex,
         links.length > 1
           ? `chain started - "${links[0].title}" is running; the next phase starts automatically when it finishes clean` +
-            (ch.auto ? ". Unattended: the AI gatekeeper will clear the gates (audited) and escalate to you only when unsure" : "")
+            (ch.auto ? ". Gates are set to auto-approve, so no phase will stop for you - review the result at the end" : "")
           : `started ${links[0].title}`,
         String(data.runId),
       );

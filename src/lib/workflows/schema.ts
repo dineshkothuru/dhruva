@@ -173,9 +173,9 @@ export interface RunState {
    * with the same agent/model settings. Fail/abort pauses the chain. */
   chain?: ChainLink[];
   chainIndex?: number;
-  /** Unattended mode: an AI gatekeeper (review role) resolves human gates -
-   * decision + reasoning audited on the gate step; escalates to the human
-   * when unsure or when its bounded rounds run out. */
+  /** Auto-approve: EVERY gate in this run is approved without stopping, and
+   * a chained phase inherits the flag. Deterministic - no model decides. Set
+   * only by the user ticking the box on the chain proposal card. */
   autoGate?: boolean;
   /** Human-required actions the agents surfaced (parsed from their MANUAL:
    * lines - deterministic, zero tokens). Chained runs inherit the previous

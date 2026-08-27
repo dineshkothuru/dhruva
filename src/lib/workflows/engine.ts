@@ -303,59 +303,6 @@ function collectManual(run: RunState, step: StepState) {
   }
 }
 
-const MAX_AUTOGATE_ROUNDS = 3;
-
-/** Unattended mode: an AI gatekeeper (review role - different eyes than the
- * step that produced the work) resolves a human gate. Its full trace lands in
- * the gate step's output - the audit a human reads later. It may approve,
- * send bounded revisions, or ESCALATE back to the real human. */
-async function gatekeeperDecision(
-  run: RunState,
-  gateDef: StepDef,
-  step: StepState,
-  round: number,
-): Promise<{ action: "approve" | "revise" | "escalate"; feedback?: string }> {
-  const agentDef = AGENTS[run.agent];
-  const model = run.roleModels?.review || agentDef.tiers[ROLE_TIER.review] || run.model;
-  const prompt =
-    `You are the GATEKEEPER for an UNATTENDED Salesforce delivery run in ${run.root} ` +
-    `(your current working directory). A human would normally review this gate; the team enabled ` +
-    `unattended mode, so YOU decide - and your reasoning becomes part of the permanent audit ` +
-    `trail. Read-only: do NOT modify any files.\n\n` +
-    `THE GATE PUT TO YOU:\n${template(gateDef.message ?? "Proceed?", run)}\n\n` +
-    `Judge strictly - approve only work you would stake your name on. Unresolved CRITICAL ` +
-    `findings mean REVISE with concrete instructions. If you are genuinely unsure, or the call ` +
-    `needs business context only a human has, ESCALATE.\n\n` +
-    `End your answer with EXACTLY this structure:\n` +
-    `REASON: <2-5 sentences - what you checked and why you decided>\n` +
-    `GATE DECISION: APPROVE | REVISE | ESCALATE\n` +
-    `FEEDBACK: <REVISE only - complete, concrete rework instructions>`;
-  step.output += `\n\n🤖 [auto-gate] round ${round}/${MAX_AUTOGATE_ROUNDS} - gatekeeper deciding (${model || "CLI default"}, review role)…\n`;
-  await persist(run);
-  const before = step.output.length;
-  const streamJson = run.agent === "claude";
-  const { args, viaStdin } = agentDef.build(prompt, model, true, streamJson);
-  const ok = await spawnToStep(
-    run,
-    step,
-    agentDef.bin,
-    args,
-    viaStdin ? prompt : undefined,
-    streamJson ? makeClaudeTraceTransform(step) : undefined,
-    10 * 60_000,
-  );
-  const out = step.output.slice(before);
-  if (!ok) return { action: "escalate" };
-  const decisions = [...out.matchAll(/GATE DECISION:\s*(APPROVE|REVISE|ESCALATE)/gi)];
-  const d = decisions[decisions.length - 1]?.[1]?.toUpperCase();
-  if (d === "APPROVE") return { action: "approve" };
-  if (d === "REVISE") {
-    const fb = out.match(/FEEDBACK:\s*([\s\S]{1,4000}?)(?=\nGATE DECISION:|\n\[exit|$)/i)?.[1]?.trim();
-    if (fb) return { action: "revise", feedback: `[auto-gate round ${round}] ${fb}` };
-  }
-  return { action: "escalate" };
-}
-
 /** Chain handoff: when a run that belongs to a multi-workflow chain finishes
  * CLEAN, start the next link with the same agent/model settings. A failed or
  * aborted run pauses the chain on purpose - resuming it to done re-fires. */
@@ -443,60 +390,29 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
     if (stepDef.type === "gate") {
       let revisions = 0;
       let notice = ""; // survives re-render (e.g. "revision not possible")
-      let autoRound = 0;
-      let escalated = false; // gatekeeper handed this gate to the human
+      const auto = run.autoGate === true;
       for (;;) {
         let decision: GateDecision;
-        const useAuto = run.autoGate === true && !escalated && autoRound < MAX_AUTOGATE_ROUNDS;
-        if (useAuto) {
-          // unattended mode: the AI gatekeeper decides - fully audited in the
-          // gate's own log, bounded rounds, escalates to the human when unsure
-          autoRound++;
+        if (auto) {
+          // Auto-approve. A run started with the chain card's box ticked clears
+          // EVERY gate, in every phase of the chain, without stopping.
+          //
+          // This used to spawn an "AI gatekeeper" that read the gate and voted
+          // approve / revise / escalate. That was a model impersonating a
+          // reviewer: it cost a full agent run per gate, its judgement was not
+          // reproducible, and its one real safety feature - escalating to the
+          // human - depended on someone watching a pane that never notifies.
+          // A flag the user set deliberately is more honest than a model
+          // guessing what the user would have said.
           step.status = "running";
           step.startedAt ??= Date.now();
-          if (!step.output) step.output = template(stepDef.message ?? "Proceed?", run);
-          if (notice) {
-            step.output += notice;
-            notice = "";
-          }
-          run.status = "running";
-          await persist(run);
-          const gk = await gatekeeperDecision(run, stepDef, step, autoRound);
-          if ((run.status as string) === "aborted") {
-            step.status = "failed";
-            step.endedAt = Date.now();
-            await persist(run);
-            return;
-          }
-          if (gk.action === "approve") {
-            decision = { action: "approve" };
-          } else if (gk.action === "revise" && gk.feedback) {
-            decision = { action: "revise", feedback: gk.feedback };
-          } else {
-            escalated = true;
-            step.output +=
-              "\n\n[engine] auto-gate escalated - the gatekeeper wants a HUMAN decision " +
-              "(its reasoning is above). Review and approve, revise, or abort.";
-            continue;
-          }
-          step.output += `\n\n🤖 auto-gate decision: ${decision.action.toUpperCase()}`;
+          step.output = template(stepDef.message ?? "Proceed?", run) + notice;
+          notice = "";
+          decision = { action: "approve" };
         } else {
-          if (run.autoGate === true && !escalated) {
-            escalated = true;
-            step.output +=
-              `\n\n[engine] auto-gate rounds exhausted (${MAX_AUTOGATE_ROUNDS}) - this gate needs YOUR decision.`;
-          }
           step.status = "waiting_gate";
           step.startedAt ??= Date.now();
-          if (run.autoGate === true) {
-            // append-only: the gatekeeper's audited reasoning must survive
-            if (notice) {
-              step.output += notice;
-              notice = "";
-            }
-          } else {
-            step.output = template(stepDef.message ?? "Proceed?", run) + notice;
-          }
+          step.output = template(stepDef.message ?? "Proceed?", run) + notice;
           run.status = "waiting_gate";
           // register the waiter BEFORE persisting: persist rides a serialized
           // write chain, and an abort landing in that window would otherwise
@@ -511,13 +427,13 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         void track("gate_resolved", {
           workflow_id: run.workflowId,
           gate_decision: decision.action,
-          unattended: useAuto,
+          unattended: auto,
           revisions,
           step_index: i,
         });
         if (decision.action === "approve") {
           run.status = "running";
-          step.output += useAuto ? "\n→ approved by the AI gatekeeper (unattended mode)" : "\n→ approved";
+          step.output += auto ? "\n→ approved automatically (gates set to auto-approve)" : "\n→ approved";
           step.status = "done";
           step.endedAt = Date.now();
           await persist(run);

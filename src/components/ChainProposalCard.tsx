@@ -50,7 +50,7 @@ export default function ChainProposalCard({
   resolved?: string;
   catalog: WfLite[] | null;
   starting: boolean;
-  /** unattended mode: an AI gatekeeper clears the human gates (audited). */
+  /** auto-approve: every gate in every phase is cleared without stopping. */
   auto: boolean;
   onAuto: (v: boolean) => void;
   onChange: (slots: ChainSlot[]) => void;
@@ -213,7 +213,7 @@ export default function ChainProposalCard({
                   ? "border-violet-300 bg-violet-50 text-violet-700"
                   : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
               }`}
-              title="An AI gatekeeper (review role) clears each human gate: it approves, sends bounded revisions, or hands the gate back to you when unsure. Every decision and its reasoning is written into the gate's audit log."
+              title="Every gate in every phase is approved automatically, so the chain runs start to finish without stopping. Nothing is judged on your behalf - the gates are simply not asked. Leave it off to review each one yourself."
             >
               <input
                 type="checkbox"
@@ -223,8 +223,8 @@ export default function ChainProposalCard({
               />
               <span>
                 <Icon.robot size={12} strokeWidth={1.75} className="inline text-violet-500" />{" "}
-                <span className="font-semibold">Unattended</span> - an AI gatekeeper clears the
-                human gates (audited; escalates to you when unsure)
+                <span className="font-semibold">Approve gates automatically</span> - every gate in
+                every phase clears without stopping, including a still-blocked review
               </span>
             </label>
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -244,7 +244,7 @@ export default function ChainProposalCard({
               </button>
               <span className="ml-auto text-[11px] text-slate-400">
                 {auto
-                  ? "every gatekeeper decision is written into the run audit"
+                  ? "nothing will pause for you - review the result at the end"
                   : "the next phase starts only after a clean finish"}
               </span>
             </div>

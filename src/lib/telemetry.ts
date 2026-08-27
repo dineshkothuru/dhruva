@@ -47,8 +47,8 @@ const ALLOWED_PROPS = new Set([
   "duration_bucket", // "1-5m" - bucketed, never a raw timing
   "step_count",
   "chained", // was this run part of a workflow chain
-  "unattended", // was the AI gatekeeper resolving gates
-  "gate_decision", // approve | revise | abort | escalate
+  "unattended", // were this run's gates set to auto-approve
+  "gate_decision", // approve | revise | abort
   "feature", // which UI feature was used, from a fixed vocabulary
   "model", // the resolved model id, e.g. claude-opus-5 - not sensitive
   "model_from", // role setting | shipped tier | run model | CLI default

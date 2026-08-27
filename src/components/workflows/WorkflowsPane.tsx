@@ -437,9 +437,9 @@ export default function WorkflowsPane({
           {run.autoGate && (
             <span
               className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700"
-              title="Unattended mode: an AI gatekeeper clears the human gates (every decision + reasoning is recorded in the gate's log) and escalates to you only when unsure"
+              title="Every gate in this run is approved automatically without stopping - you chose this when starting the chain. Nothing pauses for review."
             >
-              {<Icon.robot size={12} strokeWidth={1.75} className="inline shrink-0 text-violet-500" />} unattended
+              {<Icon.robot size={12} strokeWidth={1.75} className="inline shrink-0 text-violet-500" />} gates auto-approved
             </span>
           )}
           <span className="ml-auto font-mono text-[11px] text-slate-400">run {run.runId}</span>
