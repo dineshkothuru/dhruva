@@ -14,7 +14,7 @@ import {
 } from "@/lib/projectSkills";
 import { extractDocText } from "@/lib/docExtract";
 
-/** Project skills - per-project knowledge under .sfharness/skills/.
+/** Project skills - per-project knowledge under .dhruva/skills/.
  * JSON: POST {action: list|get|save|delete, root, name?, content?}
  * Upload: multipart {root, name, file} - .md/.txt kept, .docx/.pdf extracted. */
 export async function POST(req: Request) {

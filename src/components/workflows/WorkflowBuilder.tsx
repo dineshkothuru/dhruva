@@ -4,7 +4,7 @@ import { useState } from "react";
 
 /** UI designer for custom workflows - builds the same WorkflowDef shape as
  * built-ins; the engine runs them identically. Saved per project into
- * .sfharness/workflows/<id>.json via the workflow API. */
+ * .dhruva/workflows/<id>.json via the workflow API. */
 
 interface StepDraft {
   id: string;
@@ -159,9 +159,9 @@ export default function WorkflowBuilder({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // saved centrally (~/.dhruva/workflows) - available in every project
-        // the user connects on this machine. (.sfharness/workflows is still
+        // the user connects on this machine. (.dhruva/workflows is still
         // READ as an escape hatch for manually distributed files, but the UI
-        // never writes there: the harness git-excludes .sfharness, so a
+        // never writes there: the harness git-excludes .dhruva, so a
         // project-scoped copy could never actually travel with the repo.)
         body: JSON.stringify({ action: "save-custom", root, def, scope: "central" }),
       });
@@ -182,7 +182,7 @@ export default function WorkflowBuilder({
     <div className="mt-5 rounded-xl border border-slate-300 bg-white p-4">
       <h3 className="text-sm font-semibold">Design a workflow</h3>
       <p className="mt-0.5 text-[11px] text-slate-400">
-        Saved into this project (.sfharness/workflows) and run by the same engine as built-ins -
+        Saved into this project (.dhruva/workflows) and run by the same engine as built-ins -
         gates, standards, role-based models, audit included.
       </p>
       {error && (

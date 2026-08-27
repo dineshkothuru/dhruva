@@ -584,8 +584,8 @@ function StepBody({
         ) : (
           <details className="rounded-lg border border-slate-100 bg-slate-50/60">
             <summary className="cursor-pointer px-2.5 py-1.5 text-[11px] text-slate-400 hover:text-slate-600">
-              📖 <span className="font-semibold text-slate-500">Activity</span> - what it read and
-              did{did && <span className="ml-1">· {did}</span>}
+              📖 <span className="font-semibold text-slate-500">Activity</span> - what it did
+              {did && <span className="ml-1">· {did}</span>}
             </summary>
             <div className="space-y-1 border-t border-slate-100 px-2.5 py-2">
               {activitySegs.map((seg, i) => renderSeg(seg, i))}

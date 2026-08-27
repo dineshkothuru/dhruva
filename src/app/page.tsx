@@ -686,7 +686,7 @@ export default function Home() {
             <h2 className="text-base font-semibold tracking-tight text-slate-800">Project setup</h2>
             <div className="mt-1.5 h-0.5 w-10 rounded-full bg-gradient-to-r from-indigo-500 to-sky-400" />
             <p className="mt-1 text-xs text-slate-500">
-              Per-project knowledge and configuration - stored under .sfharness/ inside{" "}
+              Per-project knowledge and configuration - stored under .dhruva/ inside{" "}
               {result.projectName}, applied to every agent working in this project.
             </p>
             <div className="mt-4 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">

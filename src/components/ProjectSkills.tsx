@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** Project skills - per-project knowledge (.sfharness/skills/*.md) with a
+/** Project skills - per-project knowledge (.dhruva/skills/*.md) with a
  * read-only browser of the SHIPPED standards library alongside, so authors
  * see what is already covered instead of duplicating it into skills. */
 
@@ -206,7 +206,7 @@ export default function ProjectSkills({
           >
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => onOpenFile?.(`.sfharness/skills/${s.name}.md`)}
+                onClick={() => onOpenFile?.(`.dhruva/skills/${s.name}.md`)}
                 className="font-medium text-slate-600 hover:text-slate-900"
                 title={`open in the editor · ${(s.chars / 1000).toFixed(1)}k chars`}
               >
@@ -377,7 +377,7 @@ export default function ProjectSkills({
           <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
             <h3 className="text-sm font-semibold text-slate-800">Delete skill &quot;{deleting}&quot;?</h3>
             <p className="mt-2 text-xs leading-relaxed text-slate-600">
-              The file <span className="font-mono text-[11px]">.sfharness/skills/{deleting}.md</span>{" "}
+              The file <span className="font-mono text-[11px]">.dhruva/skills/{deleting}.md</span>{" "}
               will be permanently deleted from the project folder. It cannot be recovered from
               Dhruva, and agents stop receiving this knowledge immediately.
             </p>

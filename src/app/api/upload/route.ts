@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     .replace(/[^A-Za-z0-9._-]/g, "_")
     .slice(0, 60);
   const name = `${Date.now().toString(36)}-${safeBase}${ext}`;
-  const dir = path.join(root, ".sfharness", "attachments");
+  const dir = path.join(root, ".dhruva", "attachments");
   await fs.mkdir(dir, { recursive: true });
   const abs = path.join(dir, name);
   await fs.writeFile(abs, Buffer.from(await file.arrayBuffer()));
@@ -63,12 +63,12 @@ export async function POST(req: Request) {
     if (sibling) {
       // agents read the extracted text, not the binary
       return NextResponse.json({
-        rel: `.sfharness/attachments/${path.basename(sibling)}`,
+        rel: `.dhruva/attachments/${path.basename(sibling)}`,
         name: file.name,
         extracted: true,
       });
     }
   }
 
-  return NextResponse.json({ rel: `.sfharness/attachments/${name}`, name: file.name });
+  return NextResponse.json({ rel: `.dhruva/attachments/${name}`, name: file.name });
 }

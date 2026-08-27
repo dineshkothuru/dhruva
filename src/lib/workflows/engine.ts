@@ -15,7 +15,7 @@ import { ROLE_TIER } from "./schema";
 
 /** Deterministic workflow runner. Runs live in this server process (a local
  * single-user tool); every state change is persisted to
- * <project>/.sfharness/runs/<runId>.json - the audit trail. */
+ * <project>/.dhruva/runs/<runId>.json - the audit trail. */
 
 const runs = new Map<string, RunState>();
 const gateWaiters = new Map<string, (decision: GateDecision) => void>(); // key: runId
@@ -52,7 +52,7 @@ export function pendingGateCount(root: string): number {
  * marked running belongs to a dead server process → shown as aborted. */
 export async function listRuns(root: string): Promise<RunState[]> {
   const byId = new Map<string, RunState>();
-  const dir = path.join(root, ".sfharness", "runs");
+  const dir = path.join(root, ".dhruva", "runs");
   try {
     for (const f of await fs.readdir(dir)) {
       if (!f.endsWith(".json")) continue;
@@ -180,7 +180,7 @@ export async function resumeRun(
   if (!run) {
     try {
       run = JSON.parse(
-        await fs.readFile(path.join(root, ".sfharness", "runs", `${runId}.json`), "utf8"),
+        await fs.readFile(path.join(root, ".dhruva", "runs", `${runId}.json`), "utf8"),
       ) as RunState;
     } catch {
       return null;
@@ -662,7 +662,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       ];
       const rules = (await standardsFor(scopeFiles).catch(() => "")) || STANDARDS_PROMPT;
       const role = def.persona ? await persona(def.persona).catch(() => "") : "";
-      // project knowledge (.sfharness/skills/*.md) - the org-specific layer,
+      // project knowledge (.dhruva/skills/*.md) - the org-specific layer,
       // injected for every vendor; audited per step below
       const skills = await skillsPrompt(run.root, scopeFiles).catch(() => ({ block: "", names: [], chars: 0 }));
       // Reviewer feedback from gates: mandatory, most recent last.
@@ -717,9 +717,9 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         // the standards alone exceed it and the task would be truncated away.
         // Write the full prompt to a harness file and pass a short pointer.
         if (run.agent === "copilot") {
-          const rel = `.sfharness/tmp/prompt-${run.runId}-${promptTag}.txt`;
+          const rel = `.dhruva/tmp/prompt-${run.runId}-${promptTag}.txt`;
           try {
-            await fs.mkdir(path.join(run.root, ".sfharness", "tmp"), { recursive: true });
+            await fs.mkdir(path.join(run.root, ".dhruva", "tmp"), { recursive: true });
             await fs.writeFile(path.join(run.root, rel), p, "utf8");
             p =
               `Read the file ${rel} in this project COMPLETELY (it contains your full ` +
@@ -1123,7 +1123,7 @@ async function persist(run: RunState) {
   // serialize writes; audit file lives with the project
   persistChain = persistChain.then(async () => {
     try {
-      const dir = path.join(run.root, ".sfharness", "runs");
+      const dir = path.join(run.root, ".dhruva", "runs");
       await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(path.join(dir, `${run.runId}.json`), JSON.stringify(run, null, 2), "utf8");
     } catch {

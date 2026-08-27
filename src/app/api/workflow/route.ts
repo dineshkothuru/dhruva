@@ -173,7 +173,7 @@ export async function POST(req: Request) {
       if (typeof v === "string" && v.length > 8000) inputs[k] = v.slice(0, 8000);
     }
     // Project-settings injection: when the workflow declares the UX inputs,
-    // fill them from .sfharness/settings.json - server-side, so it's
+    // fill them from .dhruva/settings.json - server-side, so it's
     // deterministic and lands in the run's audited inputs.
     if (def.inputs.some((i) => i.key === "uxEnabled")) {
       const s = await readProjectSettings(root);
@@ -184,7 +184,7 @@ export async function POST(req: Request) {
     // binary documents (.docx/.pdf) in the attachments and design folders get
     // their agent-readable .extracted.md siblings BEFORE any agent runs -
     // covers files dropped into folders that never passed through upload
-    const scanDirs = [".sfharness/attachments"];
+    const scanDirs = [".dhruva/attachments"];
     if (typeof inputs.designDir === "string" && inputs.designDir) scanDirs.push(inputs.designDir);
     await ensureExtractedIn(root, scanDirs);
     const model = isSafeModelId(b.model) ? b.model : undefined;

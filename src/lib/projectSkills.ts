@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import { resolveInside } from "@/lib/fsguard";
 import { globToRegex } from "@/lib/standardsLibrary";
 
-/** Project skills - per-project knowledge (.sfharness/skills/*.md), authored
+/** Project skills - per-project knowledge (.dhruva/skills/*.md), authored
  * by the team (UI, upload, or dropping .md files in the folder) and injected
  * by the ENGINE into every agent prompt as PROJECT KNOWLEDGE. This is the
  * org-specific layer: conventions, landmines, org facts - the shipped
@@ -19,7 +19,7 @@ const SECRET_RE =
   /(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[bap]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:password|passwd|client_secret|api[_-]?key|access[_-]?token)\s*[:=]\s*['"]?[A-Za-z0-9/+_.-]{12,})/i;
 
 function skillsDir(root: string) {
-  return path.join(root, ".sfharness", "skills");
+  return path.join(root, ".dhruva", "skills");
 }
 
 export function isSkillName(v: unknown): v is string {
@@ -80,7 +80,7 @@ export async function listSkills(root: string): Promise<SkillMeta[]> {
 
 export async function readSkill(root: string, name: string): Promise<string | null> {
   if (!NAME_RE.test(name)) return null;
-  const abs = resolveInside(root, `.sfharness/skills/${name}.md`);
+  const abs = resolveInside(root, `.dhruva/skills/${name}.md`);
   if (!abs) return null;
   try {
     return await fs.readFile(abs, "utf8");

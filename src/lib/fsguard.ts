@@ -7,7 +7,8 @@ export const IGNORED_DIRS = new Set([
   ".git",
   ".sfdx",
   ".sf",
-  ".sfharness",
+  ".sfharness", // legacy name - auto-migrated to .dhruva on attach
+  ".dhruva",
   ".next",
   "dist",
   "out",
@@ -32,8 +33,29 @@ export async function isAttachableRoot(root: string): Promise<boolean> {
   if (!path.isAbsolute(root)) return false;
   try {
     const s = await fs.stat(path.join(path.resolve(root), "sfdx-project.json"));
-    return s.isFile();
+    if (!s.isFile()) return false;
+    await migrateHarnessDir(path.resolve(root));
+    return true;
   } catch {
     return false;
+  }
+}
+
+/** One-time rename of the legacy state folder: projects attached before the
+ * Dhruva rename keep their run history, snapshots, skills, and settings.
+ * Every API entry passes through isAttachableRoot, so this runs before any
+ * read or write path touches the folder. Concurrent calls are safe - the
+ * loser's rename fails on ENOENT and is ignored. */
+async function migrateHarnessDir(absRoot: string): Promise<void> {
+  const legacy = path.join(absRoot, ".sfharness");
+  const current = path.join(absRoot, ".dhruva");
+  try {
+    const [hasLegacy, hasCurrent] = await Promise.all([
+      fs.stat(legacy).then((x) => x.isDirectory()).catch(() => false),
+      fs.stat(current).then(() => true).catch(() => false),
+    ]);
+    if (hasLegacy && !hasCurrent) await fs.rename(legacy, current);
+  } catch {
+    /* best-effort - a locked folder just stays legacy until the next call */
   }
 }

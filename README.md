@@ -89,7 +89,7 @@ verify each step before the next:
 10. Tell the user: open http://localhost:3005, paste a Salesforce DX project path, Connect, then Authorize sandbox (test.salesforce.com) or production (login.salesforce.com) as appropriate.
 
 Never commit or push from inside an attached customer project; Dhruva's own
-`.sfharness/` artifacts are excluded automatically.
+`.dhruva/` artifacts are excluded automatically.
 
 ---
 
@@ -115,7 +115,7 @@ Never commit or push from inside an attached customer project; Dhruva's own
   Test generation, Retrieve/org sync, Deploy preview, Validate deploy, Run
   Apex tests, Scratch org. Step types: `snapshot | agent | cli | gate |
   changes | verify`. Custom workflows are saved per project under
-  `.sfharness/workflows/` and run on the same engine.
+  `.dhruva/workflows/` and run on the same engine.
 - **Determinism & safety** - CLI steps run whitelisted binaries (sf/git) only;
   gates pause for human Approve / **Revise with instructions** / Abort;
   standards (full team ruleset in `standards/`) are engine-injected into every
@@ -128,7 +128,7 @@ Never commit or push from inside an attached customer project; Dhruva's own
   use the Scratch org workflow or sandbox deploys for backend verification.
   Experience Cloud: LWR sites only - Aura communities cannot be previewed
   locally by any tool.)
-- **Audit & cost** - every run persists to `<project>/.sfharness/runs/<id>.json`;
+- **Audit & cost** - every run persists to `<project>/.dhruva/runs/<id>.json`;
   live step traces; token usage + API-rate cost per step and per run (exact
   for Claude); per-role model tiers (best/default/light) configurable in the UI.
 
@@ -138,7 +138,7 @@ Never commit or push from inside an attached customer project; Dhruva's own
 - `src/lib/standards.ts` + `standards/` - machine checks + the full ruleset (baseline, 15 scoped modules, 5 personas)
 - `src/lib/agents.ts` - LLM-agnostic agent adapters + model tiers
 - `src/lib/snapshot.ts` - git-server-independent before/after snapshots
-- `.sfharness/` (inside attached projects) - snapshots, run audit logs, custom workflows, attachments
+- `.dhruva/` (inside attached projects) - snapshots, run audit logs, custom workflows, attachments
 
 ## Troubleshooting
 

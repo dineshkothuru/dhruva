@@ -12,7 +12,7 @@ import { validateWorkflowDef } from "./validate";
  * Two scopes:
  *  - "central" (default): ~/.dhruva/workflows - follows the user across every
  *    project they connect on this machine.
- *  - "project": <project>/.sfharness/workflows - travels with the repo, so
+ *  - "project": <project>/.dhruva/workflows - travels with the repo, so
  *    teammates who clone the project get it too.
  * On an id collision the project copy wins (more specific). */
 
@@ -30,7 +30,7 @@ function legacyCentralDir() {
   return path.join(os.homedir(), ".dhruva", "workflows");
 }
 function projectDir(root: string) {
-  return path.join(root, ".sfharness", "workflows");
+  return path.join(root, ".dhruva", "workflows");
 }
 function dirFor(root: string, scope: WorkflowScope) {
   return scope === "project" ? projectDir(root) : centralDir();

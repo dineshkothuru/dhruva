@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-/** Per-project settings (.sfharness/settings.json) - lives in the LEFT
+/** Per-project settings (.dhruva/settings.json) - lives in the LEFT
  * project panel with the rest of the per-project configuration (skills,
  * standards browser). Today: the UX design configuration consumed by the
  * Solution design workflow's conditional UX steps. */
@@ -55,7 +55,7 @@ export default function ProjectSettingsPanel({ root }: { root: string }) {
         </summary>
         <div className="mt-2 space-y-2.5">
           <p className="text-[10px] leading-relaxed text-slate-400">
-            Per-project (.sfharness/settings.json). When ON, Solution design adds UX steps for the
+            Per-project (.dhruva/settings.json). When ON, Solution design adds UX steps for the
             UI-scoped requirements - designed under the rules below, critiqued, gated, and carried
             into the TDD + build-plan tasks. When OFF, Solution design is unchanged.
           </p>

@@ -4,11 +4,11 @@ import { execFile } from "node:child_process";
 
 /** Deterministic before/after snapshots of the attached project, independent
  * of whether the customer uses git: the harness keeps a PRIVATE shadow git
- * repo under <project>/.sfharness/shadow.git (git as a snapshot engine -
+ * repo under <project>/.dhruva/shadow.git (git as a snapshot engine -
  * no remote, never pushed, invisible to the customer's own git because the
- * work-tree's .git dir is untouched and .sfharness is excluded). */
+ * work-tree's .git dir is untouched and .dhruva is excluded). */
 
-const SHADOW_DIRNAME = ".sfharness";
+const SHADOW_DIRNAME = ".dhruva";
 
 function shadowGitDir(root: string) {
   return path.join(root, SHADOW_DIRNAME, "shadow.git");

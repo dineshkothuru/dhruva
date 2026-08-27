@@ -3,7 +3,7 @@ import path from "node:path";
 import { isAttachableRoot } from "@/lib/fsguard";
 import { readProjectSettings, writeProjectSettings, type ProjectSettings } from "@/lib/projectSettings";
 
-/** Per-project settings (.sfharness/settings.json).
+/** Per-project settings (.dhruva/settings.json).
  * POST {root}            → current settings
  * POST {root, settings}  → validate + save, returns the stored settings */
 export async function POST(req: Request) {

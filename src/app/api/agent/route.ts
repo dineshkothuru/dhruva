@@ -47,13 +47,13 @@ export async function POST(req: Request) {
     return new Response("prompt required (max 8000 chars)", { status: 400 });
   }
 
-  // attachments: harness-saved files only (.sfharness/attachments/*), never
+  // attachments: harness-saved files only (.dhruva/attachments/*), never
   // arbitrary caller paths
   const attachments = (Array.isArray(body.attachments) ? body.attachments : [])
     .filter(
       (a): a is string =>
         typeof a === "string" &&
-        /^\.sfharness\/attachments\/[A-Za-z0-9._-]+$/.test(a.replace(/\\/g, "/")),
+        /^\.dhruva\/attachments\/[A-Za-z0-9._-]+$/.test(a.replace(/\\/g, "/")),
     )
     .slice(0, 8);
 
