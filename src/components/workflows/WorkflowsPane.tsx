@@ -270,11 +270,15 @@ function StepBody({
   const reqSource = findFirst > reqFirst && findFirst >= 0 ? output.slice(0, findFirst) : output;
   const reqItems = reqFirst >= 0 ? parseRequirements(reqSource) : [];
 
+  const isMdTableRow = (t: string) => /^\s*\|.*\|\s*$/.test(t) && (t.match(/\|/g) ?? []).length >= 3;
   const isTool = (raw: string) => {
     const t = raw.trimStart(); // continuation lines are often indented
+    // a markdown table row leads with an ASCII pipe too - it belongs to the
+    // agent's prose, not to the collapsed tool trace
+    if (isMdTableRow(t)) return false;
     return /^[⚙●○◦]\s?/.test(t) || /^[│|├└╰]\s?/.test(t) || /^[Xx✗]\s+\S/.test(t) || /^\/\s?\S/.test(t);
   };
-  type Seg = { kind: "text" | "engine" | "exit" | "toolgroup"; lines: string[] };
+  type Seg = { kind: "text" | "engine" | "exit" | "toolgroup" | "table"; lines: string[] };
   const buildSegs = (text: string): Seg[] => {
     const out: Seg[] = [];
     for (const raw of text.split("\n")) {
@@ -285,11 +289,13 @@ function StepBody({
         ? "exit"
         : t.startsWith("[engine]") || t.startsWith("[agent error]")
           ? "engine"
-          : isTool(t)
-            ? "toolgroup"
-            : "text";
+          : isMdTableRow(t)
+            ? "table"
+            : isTool(t)
+              ? "toolgroup"
+              : "text";
       const last = out[out.length - 1];
-      if (kind === "toolgroup" && last?.kind === "toolgroup") last.lines.push(t);
+      if ((kind === "toolgroup" || kind === "table") && last?.kind === kind) last.lines.push(t);
       else out.push({ kind, lines: [t] });
     }
     return out;
@@ -359,7 +365,7 @@ function StepBody({
   const postToolSegs = lastToolIdx >= 0 ? segs.slice(lastToolIdx + 1) : segs;
 
   type RSeg = {
-    kind: "text" | "engine" | "exit" | "toolgroup" | "cards" | "reqcards" | "summary";
+    kind: "text" | "engine" | "exit" | "toolgroup" | "table" | "cards" | "reqcards" | "summary";
     lines: string[];
   };
   const renderSeg = (seg: RSeg, i: number) => {
@@ -402,20 +408,57 @@ function StepBody({
         }
         if (seg.kind === "summary") {
           return (
-            <div key={`sum-${i}`} className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-                Step summary
+            <div
+              key={`sum-${i}`}
+              className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2"
+            >
+              <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+                <Icon.ok size={12} strokeWidth={2} />
+                Outcome
               </p>
-              {did && (
-                <p className="mt-1 text-[11px] text-slate-600">
-                  <span className="font-semibold">Did:</span> {did}
-                </p>
-              )}
-              {produced.length > 0 && (
-                <p className="mt-0.5 text-[11px] text-slate-600">
-                  <span className="font-semibold">Produced:</span> {produced.join(" · ")}
-                </p>
-              )}
+              <p className="mt-1 text-xs leading-relaxed text-emerald-900/85">
+                {produced.length > 0 ? produced.join(" · ") : "no structured output"}
+              </p>
+            </div>
+          );
+        }
+        if (seg.kind === "table") {
+          const rows = seg.lines
+            .map((l) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()))
+            // the |---|---| separator row carries no data
+            .filter((cells) => !cells.every((c) => /^:?-{2,}:?$/.test(c)));
+          if (rows.length === 0) return null;
+          const [head, ...body] = rows;
+          return (
+            <div key={`tbl-${i}`} className="my-1.5 overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full border-collapse text-left text-[11px]">
+                <thead>
+                  <tr className="bg-slate-50">
+                    {head.map((c, ci) => (
+                      <th
+                        key={ci}
+                        className="border-b border-slate-200 px-2.5 py-1.5 font-semibold text-slate-600"
+                      >
+                        {inlineCode(c)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {body.map((cells, ri) => (
+                    <tr key={ri} className="even:bg-slate-50/50">
+                      {cells.map((c, ci) => (
+                        <td
+                          key={ci}
+                          className="border-t border-slate-100 px-2.5 py-1.5 align-top leading-relaxed text-slate-700"
+                        >
+                          {inlineCode(c)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           );
         }
@@ -539,6 +582,58 @@ function StepBody({
               );
             }
           }
+          // A line that LEADS with a file path is the agent reporting an
+          // artefact. That is the single most useful thing in a write-doc
+          // step and it was buried mid-paragraph - promote it to a file row.
+          const artefact = t.match(
+            /^\s*[-*]?\s*`?([\w./-]+\.(?:md|cls|trigger|xml|json|js|ts|tsx|html|css|yaml|yml|sql))`?\s*(?:[-–—:]\s*(.*))?$/,
+          );
+          if (artefact && artefact[1].includes("/")) {
+            return (
+              <div
+                key={`${i}-${n}`}
+                className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5"
+              >
+                <Icon.editor size={13} strokeWidth={1.75} className="mt-0.5 shrink-0 text-slate-400" />
+                <span className="min-w-0">
+                  <span className="block break-all font-mono text-[11px] font-medium text-slate-700">
+                    {artefact[1]}
+                  </span>
+                  {artefact[2] && (
+                    <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-500">
+                      {inlineCode(artefact[2])}
+                    </span>
+                  )}
+                </span>
+              </div>
+            );
+          }
+
+          // "1. point" - agents number their most important observations
+          const numbered = t.match(/^\s*(\d{1,2})[.)]\s+(.*)$/);
+          if (numbered) {
+            return (
+              <p key={`${i}-${n}`} className="flex gap-2 text-xs leading-relaxed text-slate-700">
+                <span className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-md bg-slate-200 text-[10px] font-bold text-slate-600">
+                  {numbered[1]}
+                </span>
+                <span className="min-w-0">{inlineCode(numbered[2])}</span>
+              </p>
+            );
+          }
+
+          // a short ALL-CAPS line is a section heading the agent wrote
+          if (/^[A-Z][A-Z0-9 &/()-]{2,40}$/.test(t.trim()) && t.trim().length < 42) {
+            return (
+              <p
+                key={`${i}-${n}`}
+                className="pt-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400"
+              >
+                {t.trim()}
+              </p>
+            );
+          }
+
           // "- item" / "* item" lines are list items, not prose starting with
           // a hyphen; agents emit markdown lists constantly
           const bullet = t.match(/^\s*[-*•]\s+(.*)$/);
@@ -624,10 +719,16 @@ function StepBody({
             {activitySegs.map((seg, i) => renderSeg(seg, i))}
           </div>
         ) : (
-          <details className="rounded-lg border border-slate-100 bg-slate-50/60">
-            <summary className="cursor-pointer px-2.5 py-1.5 text-[11px] text-slate-400 hover:text-slate-600">
-              {<Icon.activity size={12} strokeWidth={1.75} className="inline shrink-0 text-slate-400" />} <span className="font-semibold text-slate-500">Activity</span> - what it did
-              {did && <span className="ml-1">· {did}</span>}
+          <details className="group rounded-lg border border-slate-100 bg-slate-50/60">
+            <summary className="flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-slate-500 hover:text-slate-800">
+              <Icon.chevron
+                size={11}
+                strokeWidth={2}
+                className="shrink-0 text-slate-400 transition-transform group-open:rotate-90"
+              />
+              <Icon.activity size={12} strokeWidth={1.75} className="shrink-0 text-slate-400" />
+              <span className="font-semibold text-slate-600">What it did</span>
+              {did && <span className="truncate text-slate-400">· {did}</span>}
             </summary>
             <div className="space-y-1 border-t border-slate-100 px-2.5 py-2">
               {activitySegs.map((seg, i) => renderSeg(seg, i))}
@@ -637,6 +738,9 @@ function StepBody({
         </div>
         {toggleBtn}
       </div>
+      {/* the answer to "what did it do and what came out" goes FIRST - it was
+          previously the last thing after a long transcript */}
+      {showSummary && renderSeg({ kind: "summary", lines: [] }, -1)}
       {!running &&
         activitySegs.length > 0 &&
         (postToolSegs.length > 0 || findingsCount > 0 || reqItems.length > 0) && (
@@ -649,7 +753,6 @@ function StepBody({
         ...(findingsCount > 0 ? [{ kind: "cards" as const, lines: [] }] : []),
         ...(reqItems.length > 0 ? [{ kind: "reqcards" as const, lines: [] }] : []),
         ...trailingSegs,
-        ...(showSummary ? [{ kind: "summary" as const, lines: [] }] : []),
       ].map((seg, i) => renderSeg(seg, i))}
       {running && (
         <p className="pt-1 text-[11px] text-slate-400">
