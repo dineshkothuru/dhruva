@@ -317,7 +317,7 @@ export default function ProjectSkills({
 
       <details className="mt-2" onToggle={(e) => (e.target as HTMLDetailsElement).open && void loadLibrary()}>
         <summary className="cursor-pointer text-[10px] font-medium uppercase tracking-widest text-slate-300 hover:text-slate-500">
-          Team standards (read-only)
+          📚 Team standards (read-only)
         </summary>
         <div className="mt-2">
           {!lib && <p className="text-[10px] text-slate-300">loading…</p>}

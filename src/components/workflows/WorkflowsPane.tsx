@@ -829,17 +829,21 @@ export default function WorkflowsPane({
         {Object.keys(run.inputs ?? {}).length > 0 && (
           <details className="mb-3 rounded-xl border border-slate-200 bg-white">
             <summary className="cursor-pointer px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-400 hover:text-slate-700">
-              Run inputs - what this run was asked to do
+              🧾 Run inputs - what this run was asked to do
             </summary>
-            <dl className="space-y-1.5 border-t border-slate-100 px-4 py-2">
-              {Object.entries(run.inputs).map(([k, v]) => (
-                <div key={k}>
-                  <dt className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{k}</dt>
-                  <dd className="whitespace-pre-wrap break-words text-xs text-slate-700">
-                    {typeof v === "boolean" ? (v ? "yes" : "no") : String(v).slice(0, 2000)}
-                  </dd>
-                </div>
-              ))}
+            <dl className="grid grid-cols-1 gap-x-8 gap-y-2 border-t border-slate-100 px-4 py-3 sm:grid-cols-2 xl:grid-cols-3">
+              {Object.entries(run.inputs).map(([k, v]) => {
+                const val = typeof v === "boolean" ? (v ? "yes" : "no") : String(v).slice(0, 2000);
+                const long = val.length > 90 || val.includes("\n");
+                return (
+                  <div key={k} className={long ? "sm:col-span-2 xl:col-span-3" : ""}>
+                    <dt className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{k}</dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-700">
+                      {val || <span className="text-slate-300">empty</span>}
+                    </dd>
+                  </div>
+                );
+              })}
             </dl>
           </details>
         )}
@@ -1157,7 +1161,8 @@ export default function WorkflowsPane({
   // ---------- catalog + start form ----------
   return (
     <div className="flex-1 overflow-y-auto p-6">
-      <h2 className="text-sm font-semibold text-slate-700">Delivery workflows</h2>
+      <h2 className="text-base font-semibold tracking-tight text-slate-800">Delivery workflows</h2>
+      <div className="mt-1.5 h-0.5 w-10 rounded-full bg-gradient-to-r from-indigo-500 to-sky-400" />
       <p className="mt-1 text-xs text-slate-500">
         Deterministic step-by-step paths. Agents act only inside gated steps; everything is logged
         to the run history.
@@ -1171,7 +1176,7 @@ export default function WorkflowsPane({
 
       <details className="mt-4 rounded-xl border border-slate-200 bg-white">
         <summary className="cursor-pointer px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
-          Models by role - which model plays each role, per agent
+          🎛 Models by role - which model plays each role, per agent
         </summary>
         <div className="space-y-4 border-t border-slate-100 p-4">
           <p className="text-[11px] text-slate-400">
@@ -1223,7 +1228,7 @@ export default function WorkflowsPane({
                   />
                   Default agent - preselected for chat and every new run
                 </label>
-                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
                   {STEP_ROLES.map((role) => {
                     const val = cfg[role]?.trim() ?? "";
                     const set = !!val;
@@ -1300,7 +1305,7 @@ export default function WorkflowsPane({
       {history.length > 0 && (
         <details className="mt-4 rounded-xl border border-slate-200 bg-white">
           <summary className="flex cursor-pointer items-center px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500 hover:text-slate-800">
-            Recent runs ({history.length})
+            🕘 Recent runs ({history.length})
             <span className="ml-auto font-normal normal-case tracking-normal text-slate-400">
               total {fmtCost(history.reduce((n, r) => n + runCost(r), 0))} at API rates
             </span>
@@ -1368,7 +1373,18 @@ export default function WorkflowsPane({
         if (list.length === 0 && label !== "Custom") return null;
         return (
           <div key={label} className="mt-5">
-            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+              <span
+                className={`inline-flex h-1.5 w-1.5 rounded-full ${
+                  label === "Development"
+                    ? "bg-indigo-500"
+                    : label === "Testing"
+                      ? "bg-emerald-500"
+                      : label === "Custom"
+                        ? "bg-violet-500"
+                        : "bg-amber-500"
+                }`}
+              />
               {label}
             </h3>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">

@@ -51,7 +51,7 @@ export default function ProjectSettingsPanel({ root }: { root: string }) {
     <div className="border-t border-slate-100 px-5 py-3">
       <details>
         <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-widest text-slate-400 hover:text-slate-600">
-          Project settings - UX design {ux.enabled ? "(on)" : "(off)"}
+          ⚙ Project settings - UX design {ux.enabled ? "(on)" : "(off)"}
         </summary>
         <div className="mt-2 space-y-2.5">
           <p className="text-[10px] leading-relaxed text-slate-400">

@@ -688,7 +688,8 @@ export default function Home() {
 
         {connected && result?.path ? (
           <div className={`min-h-0 flex-1 overflow-y-auto p-6 ${tab === "setup" ? "block" : "hidden"}`}>
-            <h2 className="text-sm font-semibold text-slate-700">Project setup</h2>
+            <h2 className="text-base font-semibold tracking-tight text-slate-800">Project setup</h2>
+            <div className="mt-1.5 h-0.5 w-10 rounded-full bg-gradient-to-r from-indigo-500 to-sky-400" />
             <p className="mt-1 text-xs text-slate-500">
               Per-project knowledge and configuration - stored under .sfharness/ inside{" "}
               {result.projectName}, applied to every agent working in this project.
