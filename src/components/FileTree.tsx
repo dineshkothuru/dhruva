@@ -38,7 +38,7 @@ const DIR_CHIPS: Record<string, { chip: string; c: string }> = {
   staticresources: { chip: "Static", c: "bg-slate-100 text-slate-500" },
 };
 
-function FileBadge({ name }: { name: string }) {
+export function FileBadge({ name }: { name: string }) {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   const b = FILE_BADGES[ext] ?? { l: "·", c: "bg-slate-100 text-slate-400" };
   return (

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { FileBadge } from "@/components/FileTree";
 
 const Monaco = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -25,6 +26,65 @@ const LANG_BY_EXT: Record<string, string> = {
   soql: "sql",
   sql: "sql",
 };
+
+
+/** One Monaco look for the whole app - quiet light theme, real code font. */
+export const MONACO_OPTIONS = {
+  minimap: { enabled: false },
+  fontSize: 13,
+  fontFamily: '"JetBrains Mono", "Cascadia Code", Consolas, monospace',
+  fontLigatures: true,
+  lineHeight: 21,
+  padding: { top: 12, bottom: 12 },
+  scrollBeyondLastLine: false,
+  automaticLayout: true,
+  smoothScrolling: true,
+  cursorBlinking: "smooth" as const,
+  renderLineHighlight: "all" as const,
+  guides: { indentation: true, bracketPairs: true },
+  bracketPairColorization: { enabled: true },
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function defineDhruvaTheme(monaco: any) {
+  monaco.editor.defineTheme("dhruva", {
+    base: "vs",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": "#ffffff",
+      "editor.lineHighlightBackground": "#f8fafc",
+      "editorLineNumber.foreground": "#cbd5e1",
+      "editorLineNumber.activeForeground": "#64748b",
+      "editorIndentGuide.background1": "#f1f5f9",
+      "editorIndentGuide.activeBackground1": "#e2e8f0",
+      "editor.selectionBackground": "#e0e7ff",
+      "editorCursor.foreground": "#4f46e5",
+      "diffEditor.insertedTextBackground": "#dcfce744",
+      "diffEditor.removedTextBackground": "#fee2e244",
+      "diffEditor.insertedLineBackground": "#f0fdf466",
+      "diffEditor.removedLineBackground": "#fef2f266",
+    },
+  });
+}
+
+/** Breadcrumb path: dim segments, chevrons, bold filename with type badge. */
+export function PathCrumb({ file }: { file: string }) {
+  const parts = file.split("/");
+  const name = parts.pop() ?? file;
+  return (
+    <span className="flex min-w-0 items-center gap-1 font-mono text-xs">
+      {parts.map((p, i) => (
+        <span key={i} className="flex shrink items-center gap-1 truncate text-slate-400">
+          <span className="truncate">{p}</span>
+          <span className="text-slate-300">/</span>
+        </span>
+      ))}
+      <FileBadge name={name} />
+      <span className="truncate font-semibold text-slate-800">{name}</span>
+    </span>
+  );
+}
 
 function langFor(file: string) {
   const ext = file.split(".").pop()?.toLowerCase() ?? "";
@@ -137,12 +197,24 @@ export default function EditorPane({ root, file }: { root: string; file: string 
   }
 
   const dirty = content !== null && content !== original;
+  const saveRef = useRef(save);
+  useEffect(() => {
+    saveRef.current = save;
+  });
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
-        <span className="truncate font-mono text-xs text-slate-600">{file}</span>
-        {dirty && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="unsaved changes" />}
+        <PathCrumb file={file} />
+        <span className="hidden shrink-0 rounded bg-slate-100 px-1.5 py-px text-[9px] font-semibold uppercase text-slate-400 sm:inline">
+          {lang}
+        </span>
+        {content !== null && (
+          <span className="hidden shrink-0 text-[10px] text-slate-300 md:inline">
+            {content.split("\n").length} lines
+          </span>
+        )}
+        {dirty && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="unsaved changes (Ctrl+S to save)" />}
         <div className="ml-auto flex items-center gap-2">
           {savedAt && !dirty && <span className="text-[11px] text-emerald-600">saved</span>}
           {file.startsWith("force-app") && (
@@ -190,17 +262,14 @@ export default function EditorPane({ root, file }: { root: string; file: string 
             language={lang}
             value={content ?? ""}
             onChange={(v) => setContent(v ?? "")}
-            onMount={(editor) => {
+            onMount={(editor, monaco) => {
               editorRef.current = editor;
+              defineDhruvaTheme(monaco);
+              monaco.editor.setTheme("dhruva");
+              // Ctrl/Cmd+S saves - muscle memory must work
+              editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void saveRef.current());
             }}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              formatOnPaste: true,
-              formatOnType: true,
-            }}
+            options={{ ...MONACO_OPTIONS, formatOnPaste: true, formatOnType: true }}
           />
         )}
       </div>

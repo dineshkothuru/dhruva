@@ -29,6 +29,30 @@ const WF_META: Record<string, { icon: string; tint: string }> = {
   "scratch-org": { icon: "🌱", tint: "bg-emerald-100 text-emerald-700" },
 };
 
+
+/** Custom workflows auto-pick a fitting identity from their title/description
+ * keywords - deterministic, so the same workflow always gets the same face. */
+function wfIdentity(w: { id: string; title: string; description: string }) {
+  const known = WF_META[w.id];
+  if (known) return known;
+  const t = `${w.title} ${w.description}`.toLowerCase();
+  const rules: [RegExp, { icon: string; tint: string }][] = [
+    [/bug|fix|defect|issue/, { icon: "🐞", tint: "bg-rose-100 text-rose-700" }],
+    [/deploy|release|ship/, { icon: "🚀", tint: "bg-amber-100 text-amber-700" }],
+    [/test|coverage|quality/, { icon: "🧪", tint: "bg-emerald-100 text-emerald-700" }],
+    [/review|critique|audit/, { icon: "🧐", tint: "bg-amber-100 text-amber-700" }],
+    [/design|architect|spec/, { icon: "📐", tint: "bg-indigo-100 text-indigo-700" }],
+    [/ux|ui|screen|component/, { icon: "🎨", tint: "bg-fuchsia-100 text-fuchsia-700" }],
+    [/doc|report|summar/, { icon: "📄", tint: "bg-sky-100 text-sky-700" }],
+    [/sync|retrieve|refresh|pull/, { icon: "🔄", tint: "bg-amber-100 text-amber-700" }],
+    [/data|migrat|load|import/, { icon: "🗃️", tint: "bg-emerald-100 text-emerald-700" }],
+    [/secur|permission|fls|sharing/, { icon: "🛡️", tint: "bg-rose-100 text-rose-700" }],
+    [/clean|refactor|tidy/, { icon: "🧹", tint: "bg-violet-100 text-violet-700" }],
+  ];
+  for (const [re, m] of rules) if (re.test(t)) return m;
+  return { icon: "🧩", tint: "bg-violet-100 text-violet-700" };
+}
+
 /** Visual identity per role - icon tile tint, what it means, which steps use it. */
 const ROLE_META: Record<string, { icon: string; tint: string; blurb: string; steps: string[] }> = {
   read: { icon: "🔍", tint: "bg-sky-100 text-sky-700", blurb: "investigates code and documents before anything changes", steps: ["locate", "plan", "assess"] },
@@ -1421,11 +1445,9 @@ export default function WorkflowsPane({
                   <button onClick={() => pick(w)} className="w-full p-4 text-left">
                     <div className="flex items-start gap-2.5">
                       <span
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base ${
-                          (WF_META[w.id] ?? { tint: "bg-violet-100 text-violet-700" }).tint
-                        }`}
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base ${wfIdentity(w).tint}`}
                       >
-                        {(WF_META[w.id] ?? { icon: "🧩" }).icon}
+                        {wfIdentity(w).icon}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
