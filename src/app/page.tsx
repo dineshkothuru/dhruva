@@ -309,7 +309,10 @@ export default function Home() {
     <div className="flex h-screen overflow-hidden">
       {/* Left panel - project (resizable via the divider) */}
       <aside
-        style={{ width: panelWidth }}
+        // clamped to a share of the window: the panel is user-resizable, but a
+        // fixed width in a narrow window crushed the content column to
+        // unusable
+        style={{ width: panelWidth, maxWidth: "38vw" }}
         className="flex shrink-0 flex-col bg-white"
       >
         <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 px-5 py-4">

@@ -37,16 +37,35 @@ export function parseRequirements(output: string): ReqItem[] {
  * the gate cards and the step-trace REQ cards. */
 const FIELD_RE = /^(BRD-REF|STATUS|EVIDENCE|ALREADY-PRESENT|PENDING|DESIGN|EFFORT|DEPENDS-ON):\s*(.*)$/;
 
-export function inlineCode(v: string) {
-  return v.split("`").map((part, i) =>
-    i % 2 ? (
-      <code key={i} className="rounded-md bg-slate-100 px-1 py-px font-mono text-[11px] text-slate-700">
-        {part}
-      </code>
-    ) : (
-      part
-    ),
-  );
+/** Inline markdown the agents actually emit: `code` and **bold**. Rendering
+ * them was the difference between a paragraph and a wall of literal
+ * asterisks - agents write markdown whether or not we asked them to. */
+export function inlineCode(v: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  v.split("`").forEach((chunk, i) => {
+    if (i % 2) {
+      out.push(
+        <code key={`c${i}`} className="rounded-md bg-slate-100 px-1 py-px font-mono text-[11px] text-slate-700">
+          {chunk}
+        </code>,
+      );
+      return;
+    }
+    // outside code spans, honour **bold**
+    chunk.split(/\*\*/).forEach((part, j) => {
+      if (!part) return;
+      out.push(
+        j % 2 ? (
+          <strong key={`b${i}-${j}`} className="font-semibold text-slate-900">
+            {part}
+          </strong>
+        ) : (
+          <span key={`t${i}-${j}`}>{part}</span>
+        ),
+      );
+    });
+  });
+  return out;
 }
 
 export function ReqBody({ body }: { body: string }) {

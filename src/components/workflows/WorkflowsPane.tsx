@@ -65,20 +65,37 @@ const ROLE_META: Record<string, { icon: IconType; tint: string; blurb: string; s
   trace: { icon: ROLE_ICON.trace, tint: "bg-emerald-100 text-emerald-700", blurb: "verifies every requirement is covered", steps: ["coverage-check", "traceability"] },
 };
 
-const SEV_STYLE: Record<Finding["severity"], { border: string; chip: string }> = {
-  critical: { border: "border-l-red-500", chip: "bg-red-100 text-red-700" },
-  important: { border: "border-l-amber-400", chip: "bg-amber-100 text-amber-700" },
-  nit: { border: "border-l-slate-300", chip: "bg-slate-100 text-slate-500" },
+/** Severity is carried by the HEADER BAND, not by a left rail. The card
+ * already states severity in its chip; a heavy colored edge on top of that
+ * was a third signal for the same fact, and an asymmetric one - thick on the
+ * left, flat everywhere else. Tinting the band instead reads as one object,
+ * and the body stays neutral so the text is what you look at. */
+const SEV_STYLE: Record<Finding["severity"], { head: string; chip: string; ring: string }> = {
+  critical: {
+    head: "bg-red-50 border-red-100",
+    chip: "bg-red-600 text-white",
+    ring: "ring-red-200",
+  },
+  important: {
+    head: "bg-amber-50 border-amber-100",
+    chip: "bg-amber-500 text-white",
+    ring: "ring-amber-200",
+  },
+  nit: {
+    head: "bg-slate-100 border-slate-200",
+    chip: "bg-slate-400 text-white",
+    ring: "ring-slate-200",
+  },
 };
 
 /** One reviewer finding as a designed card - severity edge, labeled fields. */
 function FindingCard({ f }: { f: Finding }) {
   const sev = SEV_STYLE[f.severity];
   return (
-    <div className={`overflow-hidden rounded-lg border border-l-4 border-slate-200 bg-white ${sev.border}`}>
-      {/* header band: id + severity + refs + title on a gray strip */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-slate-100/80 px-3 py-2">
-        <span className="font-mono text-[11px] font-bold text-slate-500">{f.id}</span>
+    <div className={`overflow-hidden rounded-lg bg-white shadow-sm ring-1 ${sev.ring}`}>
+      {/* header band carries the severity - tinted, with the id, refs and title */}
+      <div className={`flex flex-wrap items-center gap-1.5 border-b px-3 py-2 ${sev.head}`}>
+        <span className="font-mono text-[11px] font-bold text-slate-600">{f.id}</span>
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ${sev.chip}`}>
           {f.severity}
         </span>
@@ -521,6 +538,26 @@ function StepBody({
                 </div>
               );
             }
+          }
+          // "- item" / "* item" lines are list items, not prose starting with
+          // a hyphen; agents emit markdown lists constantly
+          const bullet = t.match(/^\s*[-*•]\s+(.*)$/);
+          if (bullet) {
+            return (
+              <p key={`${i}-${n}`} className="flex gap-1.5 pl-1 text-xs leading-relaxed text-slate-700">
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-slate-400" />
+                <span className="min-w-0">{inlineCode(bullet[1])}</span>
+              </p>
+            );
+          }
+          // "### Heading" / "## Heading"
+          const head = t.match(/^#{2,4}\s+(.*)$/);
+          if (head) {
+            return (
+              <p key={`${i}-${n}`} className="pt-1 text-xs font-semibold text-slate-800">
+                {inlineCode(head[1])}
+              </p>
+            );
           }
           return (
             <p key={`${i}-${n}`} className="text-xs leading-relaxed text-slate-700">
@@ -1200,13 +1237,21 @@ export default function WorkflowsPane({
             <details
               key={s.id}
               open={s.status === "running" || s.status === "waiting_gate" || s.status === "failed"}
-              className={`rounded-xl border border-l-4 bg-white shadow-sm transition-shadow ${
+              className={`rounded-xl border border-l-4 transition-shadow ${
                 STATUS_EDGE[s.status] ?? "border-l-slate-200"
               } ${
-                s.status === "waiting_gate" ? "border-amber-300 ring-1 ring-amber-200 shadow-lg shadow-amber-100/70" : "border-slate-200"
+                s.status === "waiting_gate"
+                  ? "border-amber-300 bg-white ring-1 ring-amber-200 shadow-lg shadow-amber-100/70"
+                  : s.status === "pending"
+                    ? "border-slate-200 bg-slate-50/60"
+                    : "border-slate-200 bg-white shadow-sm"
               }`}
             >
-              <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm">
+              <summary
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm ${
+                  s.status === "pending" ? "cursor-default list-none" : "cursor-pointer"
+                }`}
+              >
                 {(() => {
                   const I = STATUS_ICON[s.status] ?? Icon.pending;
                   const tone =
@@ -1221,10 +1266,36 @@ export default function WorkflowsPane({
                             : "text-slate-300";
                   return <I size={15} strokeWidth={2} className={`shrink-0 ${tone}`} />;
                 })()}
-                <span className={s.status === "skipped" ? "text-slate-400" : "font-medium"}>
-                  {s.title}
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={
+                      s.status === "skipped"
+                        ? "text-slate-400 line-through"
+                        : s.status === "pending"
+                          ? "text-slate-400"
+                          : "font-medium text-slate-800"
+                    }
+                  >
+                    {s.title}
+                  </span>
+                  {/* a step that has not run yet says so, instead of being an
+                      unexplained empty row */}
+                  {s.status === "pending" && (
+                    <span className="ml-2 text-[11px] text-slate-300">not started</span>
+                  )}
+                  {s.status === "skipped" && (
+                    <span className="ml-2 text-[11px] text-slate-400">skipped</span>
+                  )}
+                  {s.startedAt && s.endedAt && s.status !== "pending" && (
+                    <span className="ml-2 text-[11px] text-slate-400">
+                      {(() => {
+                        const sec = Math.round((s.endedAt - s.startedAt) / 1000);
+                        return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`;
+                      })()}
+                    </span>
+                  )}
                 </span>
-                <span className="ml-auto flex items-center gap-1.5">
+                <span className="ml-auto flex shrink-0 items-center gap-1.5">
                   {s.type === "agent" && s.model && s.model !== "default" && (
                     <span
                       className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500"
