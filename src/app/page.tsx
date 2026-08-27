@@ -13,7 +13,7 @@ import ChatPane from "@/components/ChatPane";
 import DiffPane from "@/components/DiffPane";
 import WorkflowsPane from "@/components/workflows/WorkflowsPane";
 
-type Tab = "chat" | "workflows" | "editor";
+type Tab = "chat" | "workflows" | "editor" | "setup";
 
 /** POST JSON and parse the response defensively — an empty/non-JSON body
  * (crashed route, dev-server rebuild) becomes a readable error, not a
@@ -502,8 +502,6 @@ export default function Home() {
                   result.packageDirectories?.[0]?.path
                 }
               />
-              <ProjectSkills key={`skills-${result.path}`} root={result.path} onOpenFile={openFile} />
-              <ProjectSettingsPanel key={`pset-${result.path}`} root={result.path} />
             </div>
           )}
 
@@ -567,7 +565,7 @@ export default function Home() {
           must wrap inside cards, never widen the panel past the viewport) */}
       <section className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-slate-50">
         <div className="flex items-center gap-1 border-b border-slate-200 bg-white px-5 py-2.5">
-          {([...(openFiles.length ? (["editor"] as Tab[]) : []), "chat", "workflows"] as Tab[]).map((t) => (
+          {([...(openFiles.length ? (["editor"] as Tab[]) : []), "chat", "workflows", "setup"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -680,6 +678,28 @@ export default function Home() {
             }`}
           >
             <p className="text-sm text-slate-500">Attach a Salesforce project to run workflows.</p>
+          </div>
+        )}
+
+        {connected && result?.path ? (
+          <div className={`min-h-0 flex-1 overflow-y-auto p-6 ${tab === "setup" ? "block" : "hidden"}`}>
+            <h2 className="text-sm font-semibold text-slate-700">Project setup</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Per-project knowledge and configuration — stored under .sfharness/ inside{" "}
+              {result.projectName}, applied to every agent working in this project.
+            </p>
+            <div className="mt-4 grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white">
+                <ProjectSkills key={`skills-${result.path}`} root={result.path} onOpenFile={openFile} />
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white">
+                <ProjectSettingsPanel key={`pset-${result.path}`} root={result.path} />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className={`flex-1 items-center justify-center px-8 ${tab === "setup" ? "flex" : "hidden"}`}>
+            <p className="text-sm text-slate-500">Attach a Salesforce project to configure it.</p>
           </div>
         )}
       </section>
