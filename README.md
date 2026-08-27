@@ -139,8 +139,9 @@ against how it is actually used. There is no per-user switch - a self-selected
 sample would not answer that question. What protects you is the shape of the
 data, not a dialog:
 
-- Your **IP address is discarded on arrival**, so no personal data is stored
-  and no location is derived.
+- Your **IP address is not recorded**. Each event overwrites it before
+  sending, and the analytics project additionally discards client IPs at
+  ingest, so no address is stored and no location is derived.
 - Your install is a **random id generated on your own machine**. It maps to no
   person, organisation, repository, or customer.
 - A build with no analytics key configured collects nothing at all.

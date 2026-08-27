@@ -205,8 +205,13 @@ export async function track(event: string, props: TelemetryProps = {}): Promise<
         ...sanitizeProps(props),
         app_version: process.env.npm_package_version ?? "unknown",
         os: process.platform,
-        // discard the IP at ingest: no personal data stored, no geo derived
-        $ip: null,
+        // Overwrite the IP with a fixed placeholder. $ip: null is NOT enough:
+        // PostHog then falls back to the connection's address and stores the
+        // real one (verified against live data). A concrete value is what
+        // actually prevents the address from being recorded. The project also
+        // has anonymize_ips enabled as a second layer.
+        $ip: "0.0.0.0",
+        $geoip_disable: true,
         $process_person_profile: false,
       },
     });
