@@ -62,3 +62,42 @@ export function parseFindings(text: string): {
   }
   return { before, findings, trailing };
 }
+
+/** Tail kept when a reviewer's output carries no parseable findings: the end
+ * of the transcript, where a verdict or a conclusion sits. */
+const TAIL_CHARS = 12_000;
+
+/** What a review step hands back to the step it is reworking.
+ *
+ * The bug this exists to prevent: a step's `output` is the RAW CLI transcript.
+ * It opens with the engine's own "[engine] model requested" banner, continues
+ * through dozens of tool-trace lines, and the findings land at the END.
+ * Forwarding the FIRST 4,000 characters therefore forwarded pure noise.
+ * Measured on a real run: the reviewer wrote 25,558 characters and the first
+ * finding began at 9,936, so the reworked step was ordered to "follow every
+ * point" of a directory listing, changed nothing, and was blocked again.
+ *
+ * Raising that number would not have been enough on its own - a head-anchored
+ * cap reproduces the same failure the moment the tool trace grows. So there is
+ * NO cap on the findings: every one goes back whole, with its Where / Problem /
+ * Fix intact. The only thing dropped is the tool trace, and a tool trace is not
+ * information. When nothing parses (a reviewer on a different contract, e.g.
+ * "COVERAGE: INCOMPLETE"), fall back to the TAIL rather than the head. */
+export function reviewFeedback(output: string): string {
+  const { findings } = parseFindings(output);
+  if (findings.length === 0) return output.slice(-TAIL_CHARS);
+  const verdict = output.match(/VERDICT:[^\n]*/i)?.[0] ?? "";
+  const body = findings
+    .map((f) =>
+      [
+        `${f.id} (${f.severity})${f.refs.length ? ` [refs: ${f.refs.join(", ")}]` : ""}: ${f.title}`,
+        f.where ? `  Where: ${f.where}` : "",
+        f.problem ? `  Problem: ${f.problem}` : "",
+        f.fix ? `  Fix: ${f.fix}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .join("\n\n");
+  return [verdict, body].filter(Boolean).join("\n\n");
+}

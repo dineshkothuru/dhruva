@@ -12,7 +12,7 @@ import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/
 import { skillsPrompt } from "@/lib/projectSkills";
 import { OUTCOME_INSTRUCTION } from "@/lib/outcome";
 import { writeTranscript } from "@/lib/runTranscript";
-import { parseFindings } from "@/lib/findings";
+import { parseFindings, reviewFeedback } from "@/lib/findings";
 import { costBucket, countBucket, durationBucket, tokensBucket, track } from "@/lib/telemetry";
 import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { ROLE_TIER } from "./schema";
@@ -626,7 +626,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           const targetId = def.steps[from].id;
           run.revisions ??= {};
           (run.revisions[targetId] ??= []).push(
-            `[auto-revise round ${round} - findings from ${stepDef.id}]\n${step.output.slice(0, 4000)}`,
+            `[auto-revise round ${round} - findings from ${stepDef.id}]\n${reviewFeedback(step.output)}`,
           );
           step.output += `\n\n[engine] auto-revise round ${round}/${max}: replaying ${targetId}`;
           await persist(run);
