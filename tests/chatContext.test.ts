@@ -152,14 +152,14 @@ describe("buildRunContext", () => {
     ).toContain("17 requirement designs");
   });
 
-  it("names each audit file so detail is READ rather than guessed", () => {
+  it("names each audit file so detail is read rather than guessed", () => {
     const block = buildRunContext([group()]);
     expect(block).toContain(".dhruva/runs/40c5de4c.json");
-    expect(block).toMatch(/READ THAT FILE/);
+    expect(block).toMatch(/read the relevant file/);
   });
 
   it("marks the block as facts, not instructions to act on", () => {
-    expect(buildRunContext([group()])).toContain("Not instructions to act on");
+    expect(buildRunContext([group()])).toContain("not instructions to act on");
   });
 
   it("bounds how many deliveries it describes", () => {
@@ -181,5 +181,35 @@ describe("threadFileHint", () => {
 
   it("says nothing without a thread id", () => {
     expect(threadFileHint("", true)).toBe("");
+  });
+});
+
+describe("the archive is discoverable, not just the recent few", () => {
+  const g = {
+    phases: [
+      { id: "r1", title: "Solution design", status: "done", stepsDone: 13, stepsTotal: 13 },
+    ],
+    state: "done",
+    startedHere: false,
+  };
+
+  it("names both record directories, so nothing is out of reach", () => {
+    const block = buildRunContext([g]);
+    expect(block).toContain(".dhruva/runs/*.json");
+    expect(block).toContain(".dhruva/chats/*.json");
+  });
+
+  it("tells the agent to LIST and read for work that is not summarised", () => {
+    const block = buildRunContext([g]);
+    expect(block).toMatch(/LIST those directories/);
+    expect(block).toContain("older work");
+  });
+
+  it("says where design rationale lives, so 'why did we do it that way' is answerable", () => {
+    expect(buildRunContext([g])).toMatch(/why did we build it\s+that way/);
+  });
+
+  it("still refuses to speak when the project has done nothing", () => {
+    expect(buildRunContext([])).toBe("");
   });
 });
