@@ -9,7 +9,7 @@ import { STEP_ROLES, ROLE_LABEL, ROLE_TIER } from "@/lib/workflows/schema";
 import { loadDefaultAgent, saveDefaultAgent } from "@/lib/agentStore";
 import { loadCustomModels, addCustomModel } from "@/lib/modelStore";
 import WorkflowBuilder, { type BuilderSeed } from "@/components/workflows/WorkflowBuilder";
-import RequirementCards, { parseRequirements, ReqBody } from "@/components/workflows/RequirementCards";
+import RequirementCards, { inlineCode, parseRequirements, ReqBody } from "@/components/workflows/RequirementCards";
 import { parseFindings, type Finding } from "@/lib/findings";
 
 
@@ -72,29 +72,45 @@ const SEV_STYLE: Record<Finding["severity"], { border: string; chip: string }> =
 function FindingCard({ f }: { f: Finding }) {
   const sev = SEV_STYLE[f.severity];
   return (
-    <div className={`rounded-lg border border-l-4 border-slate-200 bg-white p-3 ${sev.border}`}>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-[10px] font-semibold text-slate-400">{f.id}</span>
+    <div className={`overflow-hidden rounded-lg border border-l-4 border-slate-200 bg-white ${sev.border}`}>
+      {/* header band: id + severity + refs + title on a gray strip */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-slate-100/80 px-3 py-2">
+        <span className="font-mono text-[10px] font-bold text-slate-500">{f.id}</span>
         <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${sev.chip}`}>
           {f.severity}
         </span>
         {f.refs.map((r) => (
-          <span key={r} className="rounded-full bg-sky-50 px-2 py-0.5 font-mono text-[9px] text-sky-600">
+          <span key={r} className="rounded-full bg-sky-100 px-2 py-0.5 font-mono text-[9px] text-sky-700">
             {r}
           </span>
         ))}
         <span className="w-full text-xs font-semibold text-slate-800 sm:w-auto sm:flex-1">{f.title}</span>
       </div>
-      {f.where && (
-        <p className="mt-1.5 truncate font-mono text-[10px] text-slate-400" title={f.where}>
-          📍 {f.where}
-        </p>
+      {/* issue body */}
+      {(f.where || f.problem) && (
+        <div className="px-3 py-2">
+          {f.where && (
+            <p className="truncate font-mono text-[10px] text-slate-400" title={f.where}>
+              📍 {f.where}
+            </p>
+          )}
+          {f.problem && (
+            <p className={`text-xs leading-relaxed text-slate-700 ${f.where ? "mt-1.5" : ""}`}>
+              {f.problem}
+            </p>
+          )}
+        </div>
       )}
-      {f.problem && <p className="mt-1.5 text-xs leading-relaxed text-slate-700">{f.problem}</p>}
+      {/* fix panel */}
       {f.fix && (
-        <p className="mt-1.5 rounded-md bg-emerald-50 px-2.5 py-1.5 text-xs leading-relaxed text-emerald-800">
-          <span className="font-semibold">Fix:</span> {f.fix}
-        </p>
+        <div className="border-t border-emerald-100 bg-emerald-50 px-3 py-2">
+          <p className="text-xs leading-relaxed text-emerald-800">
+            <span className="mr-1 rounded bg-emerald-600 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">
+              Fix
+            </span>{" "}
+            {f.fix}
+          </p>
+        </div>
       )}
     </div>
   );
@@ -232,8 +248,10 @@ function StepBody({
   const reqSource = findFirst > reqFirst && findFirst >= 0 ? output.slice(0, findFirst) : output;
   const reqItems = reqFirst >= 0 ? parseRequirements(reqSource) : [];
 
-  const isTool = (t: string) =>
-    /^[⚙●○◦]\s?/.test(t) || /^[│|├└╰]\s?/.test(t) || /^[Xx✗]\s+\S/.test(t) || /^\/\s?\S/.test(t);
+  const isTool = (raw: string) => {
+    const t = raw.trimStart(); // continuation lines are often indented
+    return /^[⚙●○◦]\s?/.test(t) || /^[│|├└╰]\s?/.test(t) || /^[Xx✗]\s+\S/.test(t) || /^\/\s?\S/.test(t);
+  };
   type Seg = { kind: "text" | "engine" | "exit" | "toolgroup"; lines: string[] };
   const buildSegs = (text: string): Seg[] => {
     const out: Seg[] = [];
@@ -483,35 +501,63 @@ function StepBody({
               </p>
             );
           }
+          // long single-paragraph narration reads as a wall - split it into
+          // sentence lines (display only; the raw trace keeps the original)
+          if (t.length > 280) {
+            const sentences = t.split(/(?<=[.!?])\s+(?=[A-Z`])/).filter((x) => x.trim());
+            if (sentences.length > 2) {
+              return (
+                <div key={`${i}-${n}`} className="space-y-1 border-l-2 border-slate-200 pl-2.5">
+                  {sentences.map((sn, si) => (
+                    <p key={si} className="text-xs leading-relaxed text-slate-700">
+                      {inlineCode(sn)}
+                    </p>
+                  ))}
+                </div>
+              );
+            }
+          }
           return (
             <p key={`${i}-${n}`} className="text-xs leading-relaxed text-slate-700">
-              {t}
+              {inlineCode(t)}
             </p>
           );
         });
   };
 
+  // the view toggle flows WITH the content (top row, right-aligned) - no
+  // absolute positioning, no reserved right gutter
+  const toggleBtn = (
+    <button
+      onClick={() => setRaw((v) => !v)}
+      className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+        raw
+          ? "border-slate-400 bg-slate-700 text-white"
+          : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
+      }`}
+      title="Toggle between the structured view and the agent's raw trace"
+    >
+      {raw ? "structured" : "raw trace"}
+    </button>
+  );
   return (
-    <div className="relative border-t border-slate-100">
-      <button
-        onClick={() => setRaw((v) => !v)}
-        className={`absolute right-2 top-1.5 z-10 rounded-md border px-2 py-0.5 text-[10px] font-medium ${
-          raw
-            ? "border-slate-400 bg-slate-700 text-white"
-            : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
-        }`}
-        title="Toggle between the structured view and the agent's raw trace"
-      >
-        {raw ? "structured" : "raw trace"}
-      </button>
+    <div className="border-t border-slate-100">
       {raw ? (
-        <div ref={boxRef} className="max-h-80 overflow-y-auto">
-          <pre className="whitespace-pre-wrap break-words px-4 py-3 pr-20 font-mono text-[11px] text-slate-600">
+        <div ref={boxRef} className="max-h-80 overflow-y-auto px-4 py-3">
+          <div className="flex items-center">
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+              Raw agent trace
+            </span>
+            <span className="ml-auto">{toggleBtn}</span>
+          </div>
+          <pre className="mt-1.5 whitespace-pre-wrap break-words font-mono text-[11px] text-slate-600">
             {output}
           </pre>
         </div>
       ) : (
-    <div ref={boxRef} className="max-h-80 space-y-1 overflow-y-auto px-4 py-3 pr-20">
+    <div ref={boxRef} className="max-h-80 space-y-1 overflow-y-auto px-4 py-3">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1 space-y-1">
       {!running && (verdict || coverage) && (
         <div
           className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
@@ -546,6 +592,9 @@ function StepBody({
             </div>
           </details>
         ))}
+        </div>
+        {toggleBtn}
+      </div>
       {!running &&
         activitySegs.length > 0 &&
         (postToolSegs.length > 0 || findingsCount > 0 || reqItems.length > 0) && (

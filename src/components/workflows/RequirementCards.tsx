@@ -36,7 +36,7 @@ export function parseRequirements(output: string): ReqItem[] {
  * the gate cards and the step-trace REQ cards. */
 const FIELD_RE = /^(BRD-REF|STATUS|EVIDENCE|ALREADY-PRESENT|PENDING|DESIGN|EFFORT|DEPENDS-ON):\s*(.*)$/;
 
-function inlineCode(v: string) {
+export function inlineCode(v: string) {
   return v.split("`").map((part, i) =>
     i % 2 ? (
       <code key={i} className="rounded bg-slate-100 px-1 py-px font-mono text-[10px] text-slate-700">
