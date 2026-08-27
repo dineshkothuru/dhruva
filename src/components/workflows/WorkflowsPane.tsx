@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId } from "@/lib/agents";
+import { chainState, groupRunsByChain } from "@/lib/chains";
 import type { RunState } from "@/lib/workflows/schema";
 import { Icon, ROLE_ICON, WF_ICON, wfIconFor, type IconType } from "@/components/icons";
 import StepBody, {
@@ -1189,48 +1190,110 @@ export default function WorkflowsPane({
             {history.filter(matchesFilter).length === 0 && (
               <p className="px-2 py-1 text-xs text-slate-400">no runs match</p>
             )}
-            {history.filter(matchesFilter).map((r) => (
-              <button
-                key={r.runId}
-                onClick={() => setRun(r)}
-                className={`flex w-full items-center gap-3 rounded-lg border border-l-4 border-slate-200 bg-white px-3 py-2 text-left text-xs hover:border-slate-400 ${
-                  r.status === "done"
-                    ? "border-l-emerald-400"
-                    : r.status === "running" || r.status === "waiting_gate"
-                      ? "border-l-sky-400"
-                      : "border-l-red-300"
-                }`}
-              >
-                <span className="font-medium">{r.workflowTitle}</span>
-                {r.chain && r.chain.length > 1 && (
-                  <span
-                    className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-500"
-                    title={`chain: ${r.chain.map((c) => c.title).join(" → ")}`}
-                  >
-                    {<Icon.chain size={12} strokeWidth={1.75} className="inline shrink-0 text-indigo-400" />} {(r.chainIndex ?? 0) + 1}/{r.chain.length}
-                  </span>
-                )}
-                <span className="text-slate-400">{new Date(r.createdAt).toLocaleString()}</span>
-                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
-                  {r.agent}
-                  {r.model ? ` · ${r.model}` : ""}
-                </span>
-                {runCost(r) > 0 && (
-                  <span className="text-[11px] text-slate-400">{fmtCost(runCost(r))}</span>
-                )}
-                <span
-                  className={`ml-auto text-[11px] font-semibold uppercase ${
-                    r.status === "done"
-                      ? "text-emerald-600"
-                      : r.status === "running" || r.status === "waiting_gate"
-                        ? "text-sky-600"
-                        : "text-red-500"
+            {groupRunsByChain(history.filter(matchesFilter)).map((g) => {
+              const head = g.runs[g.runs.length - 1];
+              const plan = head.chain;
+              const isChain = !!plan && plan.length > 1;
+              const cost = g.runs.reduce((n, r) => n + runCost(r), 0);
+              // the chain's overall state: live if any phase is, else the
+              // furthest phase's own outcome
+              const broke = g.runs.find((r) => r.status === "failed" || r.status === "aborted");
+              const state = chainState(g);
+              const byId = new Map(g.runs.map((r) => [r.runId, r]));
+
+              return (
+                <div
+                  key={g.key}
+                  className={`rounded-lg border border-l-4 border-slate-200 bg-white ${
+                    state === "done"
+                      ? "border-l-emerald-400"
+                      : state === "running" || state === "waiting_gate"
+                        ? "border-l-sky-400"
+                        : "border-l-red-300"
                   }`}
                 >
-                  {r.status.replace("_", " ")}
-                </span>
-              </button>
-            ))}
+                  <button
+                    onClick={() => setRun(head)}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-slate-50"
+                  >
+                    <span className="font-medium">
+                      {isChain ? plan!.map((c) => c.title).join(" -> ") : head.workflowTitle}
+                    </span>
+                    {isChain && (
+                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-600">
+                        <Icon.chain size={11} strokeWidth={1.75} />
+                        {plan!.filter((c) => byId.get(c.runId ?? "")?.status === "done").length}/
+                        {plan!.length}
+                      </span>
+                    )}
+                    <span className="text-slate-400">
+                      {new Date(head.createdAt).toLocaleString()}
+                    </span>
+                    <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
+                      {head.agent}
+                      {head.model ? ` \u00b7 ${head.model}` : ""}
+                    </span>
+                    {cost > 0 && <span className="text-[11px] text-slate-400">{fmtCost(cost)}</span>}
+                    <span
+                      className={`ml-auto text-[11px] font-semibold uppercase ${
+                        state === "done"
+                          ? "text-emerald-600"
+                          : state === "running" || state === "waiting_gate"
+                            ? "text-sky-600"
+                            : "text-red-500"
+                      }`}
+                    >
+                      {String(state).replace("_", " ")}
+                    </span>
+                  </button>
+
+                  {/* per-phase progress: status, and click straight into any
+                      phase that has actually run */}
+                  {isChain && (
+                    <div className="flex flex-wrap items-center gap-1 border-t border-slate-100 px-3 py-1.5">
+                      {plan!.map((c, ci) => {
+                        const r = c.runId ? byId.get(c.runId) : undefined;
+                        const st = r?.status ?? (c.runId ? "running" : "queued");
+                        const tone =
+                          st === "done"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : st === "running" || st === "waiting_gate"
+                              ? "border-sky-300 bg-sky-50 text-sky-700 animate-pulse"
+                              : st === "queued"
+                                ? "border-dashed border-slate-300 bg-white text-slate-400"
+                                : "border-red-200 bg-red-50 text-red-700";
+                        return (
+                          <span key={ci} className="flex items-center gap-1">
+                            {ci > 0 && (
+                              <Icon.chevron size={10} strokeWidth={2} className="text-slate-300" />
+                            )}
+                            <button
+                              disabled={!r}
+                              onClick={() => r && setRun(r)}
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${tone} ${
+                                r ? "hover:brightness-95" : "cursor-default"
+                              }`}
+                              title={
+                                r
+                                  ? `${c.title} - ${r.status.replace("_", " ")} (open)`
+                                  : `${c.title} - not started yet`
+                              }
+                            >
+                              {ci + 1}. {c.title}
+                            </button>
+                          </span>
+                        );
+                      })}
+                      {broke && (
+                        <span className="ml-auto text-[10px] text-red-600">
+                          chain paused - open the failed phase and Resume to continue
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </details>
       )}
