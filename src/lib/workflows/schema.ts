@@ -132,6 +132,15 @@ export interface StepState {
   modelFrom?: string;
 }
 
+/** One link of a multi-workflow chain ("design and implement"): the workflow
+ * to run, its prepared inputs, and - once started - its run id. */
+export interface ChainLink {
+  workflowId: string;
+  title: string;
+  inputs?: Record<string, string | boolean>;
+  runId?: string;
+}
+
 export interface RunState {
   runId: string;
   workflowId: string;
@@ -158,6 +167,20 @@ export interface RunState {
   /** Reviewer feedback given at gates, keyed by the agent step it revises -
    * injected into that step's prompt on re-run (and kept in the audit). */
   revisions?: Record<string, string[]>;
+  /** Multi-workflow chain this run belongs to - the FULL ordered plan (links
+   * up to chainIndex carry their runIds; the link AT chainIndex is this run).
+   * When this run finishes with status done, the engine starts the next link
+   * with the same agent/model settings. Fail/abort pauses the chain. */
+  chain?: ChainLink[];
+  chainIndex?: number;
+  /** Unattended mode: an AI gatekeeper (review role) resolves human gates -
+   * decision + reasoning audited on the gate step; escalates to the human
+   * when unsure or when its bounded rounds run out. */
+  autoGate?: boolean;
+  /** Human-required actions the agents surfaced (parsed from their MANUAL:
+   * lines - deterministic, zero tokens). Chained runs inherit the previous
+   * phases' entries, so the LAST phase holds the full checklist. */
+  manualSteps?: { stepId: string; phase?: string; text: string }[];
 }
 
 /** How a human resolved a gate. */

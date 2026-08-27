@@ -79,7 +79,7 @@
       "title": "Implement feature + tests (agent)",
       "type": "agent",
       "role": "implement",
-      "prompt": "Implement this feature in the current project.\nRequirement: {inputs.requirement}\nApproved technical spec:\n{steps.spec.output}\n\nOrg-refresh delta since the spec was written:\n{steps.retrieve-delta.output}\nIf files are listed in that delta, re-read them and adapt the spec before coding.\nWrite or update Apex tests for everything you implement (aim for the changed classes to be covered). Follow the existing code style. Never create a parallel implementation of something that already exists. Do not deploy."
+      "prompt": "Implement this feature in the current project.\nRequirement: {inputs.requirement}\nApproved technical spec:\n{steps.spec.output}\n\nOrg-refresh delta since the spec was written:\n{steps.retrieve-delta.output}\nIf files are listed in that delta, re-read them and adapt the spec before coding.\nWrite or update Apex tests for everything you implement (aim for the changed classes to be covered). Follow the existing code style. Never create a parallel implementation of something that already exists. Do not deploy.\n\nMANUAL STEPS: if anything requires a HUMAN acting in the org that you cannot do from this machine (Setup UI toggles, secrets or Named Credential values, connected app approvals, permission set assignment in production, sandbox refreshes, feature enablement), print a line for each in exactly this form: MANUAL: <action> - <where, e.g. Setup path> - <before deploy|after deploy>. Never silently skip or fake such a step."
     },
     {
       "id": "changes",

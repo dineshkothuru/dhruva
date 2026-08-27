@@ -95,7 +95,7 @@
       "taskLoop": true,
       "tasksFile": "{inputs.tasksPath}",
       "timeoutMinutes": 30,
-      "prompt": "Implement the approved plan. The Technical Design Document at {inputs.tddPath} is the specification - follow its component designs, API names, and test strategy exactly.\nApproved build checklist:\n{steps.plan.output}\n\nOrg-refresh delta since planning:\n{steps.retrieve-delta.output}\nIf files are listed in that delta, re-read them before changing them.\nWrite or update the Apex tests the TDD's test strategy specifies. Never create a parallel implementation of something that exists. Do not deploy."
+      "prompt": "Implement the approved plan. The Technical Design Document at {inputs.tddPath} is the specification - follow its component designs, API names, and test strategy exactly.\nApproved build checklist:\n{steps.plan.output}\n\nOrg-refresh delta since planning:\n{steps.retrieve-delta.output}\nIf files are listed in that delta, re-read them before changing them.\nWrite or update the Apex tests the TDD's test strategy specifies. Never create a parallel implementation of something that exists. Do not deploy.\n\nMANUAL STEPS: if anything requires a HUMAN acting in the org that you cannot do from this machine (Setup UI toggles, secrets or Named Credential values, connected app approvals, permission set assignment in production, sandbox refreshes, feature enablement), print a line for each in exactly this form: MANUAL: <action> - <where, e.g. Setup path> - <before deploy|after deploy>. Never silently skip or fake such a step."
     },
     {
       "id": "changes",

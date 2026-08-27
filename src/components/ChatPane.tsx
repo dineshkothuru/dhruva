@@ -4,17 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { loadDefaultAgent } from "@/lib/agentStore";
 import type { AgentId } from "@/lib/agents";
 import { estimateUsage, formatUsage } from "@/lib/pricing";
-import { classifyIntake } from "@/lib/intake";
+import { classifyChain, classifyIntake, matchCatalog } from "@/lib/intake";
 import { rolesFor } from "@/lib/roleStore";
+import ChainProposalCard, { type ChainSlot, type WfLite } from "@/components/ChainProposalCard";
 
 interface Msg {
-  role: "user" | "agent" | "system" | "changes" | "proposal";
+  role: "user" | "agent" | "system" | "changes" | "proposal" | "chain";
   agent?: AgentId;
   text: string;
   changes?: { file: string; status: string }[];
   usage?: string;
   /** proposal: the task text + suggested workflow awaiting the user's choice */
   proposal?: { taskText: string; workflow: string; title: string; reason: string; resolved?: string };
+  /** chain: a multi-workflow plan awaiting the user's shaping + confirmation */
+  chain?: { taskText: string; reason: string; slots: ChainSlot[]; auto?: boolean; resolved?: string };
 }
 
 interface AgentStatus {
@@ -115,6 +118,27 @@ export default function ChatPane({
     }
   }
 
+  // full workflow catalog (standard + custom) - powers the proposal dropdowns
+  // and lets the intake suggest the team's own workflows by name
+  const [wfCatalog, setWfCatalog] = useState<WfLite[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/workflow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "list", root }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && Array.isArray(d.workflows)) setWfCatalog(d.workflows as WfLite[]);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [root]);
+
   useEffect(() => {
     let cancelled = false;
     fetch("/api/agent-status")
@@ -154,16 +178,31 @@ export default function ChatPane({
       attached.length > 0
         ? `${prompt}\n\nAttached files (read them from the project root): ${attached.join(", ")}`
         : prompt;
-    const proposal = classifyIntake(prompt);
+    const userMsg: Msg = {
+      role: "user",
+      text: prompt + (attached.length ? `\nAttached: ${attachments.map((a) => a.name).join(", ")}` : ""),
+    };
+    // multi-phase intent ("design and implement") proposes a workflow CHAIN
+    const chainProposal = classifyChain(prompt);
+    if (chainProposal) {
+      setInput("");
+      setAttachments([]);
+      setMessages((m) => [
+        ...m,
+        userMsg,
+        { role: "chain", text: "", chain: { taskText, reason: chainProposal.reason, slots: chainProposal.phases } },
+      ]);
+      return;
+    }
+    // single workflow: a catalog match (the team's own custom workflows by
+    // name) outranks the generic bug/feature/design classification
+    const proposal = matchCatalog(prompt, wfCatalog) ?? classifyIntake(prompt);
     if (proposal) {
       setInput("");
       setAttachments([]);
       setMessages((m) => [
         ...m,
-        {
-          role: "user",
-          text: prompt + (attached.length ? `\nAttached: ${attachments.map((a) => a.name).join(", ")}` : ""),
-        },
+        userMsg,
         {
           role: "proposal",
           text: "",
@@ -265,17 +304,38 @@ export default function ChatPane({
     }
   }
 
+  /** Inputs for a chat-started workflow: the definition's defaults, the task
+   * text into its requirement-shaped input, plus the design-to-implement
+   * handoff wiring. Chat-started runs never auto-deploy. */
+  function inputsForWorkflow(workflowId: string, taskText: string): Record<string, string | boolean> {
+    const def = wfCatalog?.find((w) => w.id === workflowId);
+    const out: Record<string, string | boolean> = {};
+    for (const inp of def?.inputs ?? []) {
+      if (inp.default !== undefined && !inp.hidden) out[inp.key] = inp.default;
+    }
+    if (workflowId === "implement-tdd") {
+      // the chain handoff: read the doc + build plan Solution design writes
+      out.tddPath = "docs/designs/solution-design-tdd.md";
+      out.tasksPath = "docs/designs/solution-design-tasks.json";
+      out.deploy = false;
+      return out;
+    }
+    if (workflowId === "solution-design") out.docName = "solution-design";
+    if ("deploy" in out) out.deploy = false;
+    const target =
+      def?.inputs.find((i) => i.attachTo && i.kind === "text" && !i.hidden) ??
+      def?.inputs.find((i) => i.kind === "text" && !i.hidden);
+    if (target) out[target.key] = taskText;
+    else if (!def) out.description = taskText; // catalog not loaded yet - best effort
+    return out;
+  }
+
   /** Start a workflow from an intake proposal and hand off to the run view. */
   async function startWorkflowFromProposal(msgIndex: number, workflowId: string) {
     const msg = messages[msgIndex];
     if (!msg?.proposal || msg.proposal.resolved) return;
     // synchronous guard: a double-click must not start two real runs
     markProposal(msgIndex, "starting…");
-    const inputsMap: Record<string, Record<string, string | boolean>> = {
-      "bug-fix": { description: msg.proposal.taskText, runTests: false, deploy: false },
-      "feature-dev": { requirement: msg.proposal.taskText, runTests: true, deploy: false },
-      "solution-design": { requirement: msg.proposal.taskText, docName: "solution-design" },
-    };
     try {
       const res = await fetch("/api/workflow", {
         method: "POST",
@@ -284,7 +344,7 @@ export default function ChatPane({
           action: "start",
           root,
           workflow: workflowId,
-          inputs: inputsMap[workflowId] ?? { description: msg.proposal.taskText },
+          inputs: inputsForWorkflow(workflowId, msg.proposal.taskText),
           agent,
           model: models[agent] ?? status?.[agent]?.models?.[0]?.id ?? "",
           roleModels: rolesFor(agent),
@@ -308,6 +368,85 @@ export default function ChatPane({
         i === msgIndex && msg.proposal ? { ...msg, proposal: { ...msg.proposal, resolved } } : msg,
       ),
     );
+  }
+
+  function setProposalWorkflow(msgIndex: number, workflowId: string) {
+    const def = wfCatalog?.find((w) => w.id === workflowId);
+    setMessages((m) =>
+      m.map((msg, i) =>
+        i === msgIndex && msg.proposal
+          ? { ...msg, proposal: { ...msg.proposal, workflow: workflowId, title: def?.title ?? workflowId } }
+          : msg,
+      ),
+    );
+  }
+
+  // ----- chain proposal handlers -----
+  function setChainSlots(msgIndex: number, slots: ChainSlot[]) {
+    setMessages((m) =>
+      m.map((msg, i) => (i === msgIndex && msg.chain ? { ...msg, chain: { ...msg.chain, slots } } : msg)),
+    );
+  }
+
+  function setChainAuto(msgIndex: number, auto: boolean) {
+    setMessages((m) =>
+      m.map((msg, i) => (i === msgIndex && msg.chain ? { ...msg, chain: { ...msg.chain, auto } } : msg)),
+    );
+  }
+
+  function markChain(msgIndex: number, resolved: string) {
+    setMessages((m) =>
+      m.map((msg, i) => (i === msgIndex && msg.chain ? { ...msg, chain: { ...msg.chain, resolved } } : msg)),
+    );
+  }
+
+  /** Start the whole chain: link 0 runs now, the engine auto-starts the rest
+   * as each phase finishes clean. */
+  async function runChain(msgIndex: number) {
+    const msg = messages[msgIndex];
+    const ch = msg?.chain;
+    if (!ch || ch.resolved || ch.slots.length === 0) return;
+    markChain(msgIndex, "starting…");
+    const links = ch.slots.map((sl) => {
+      const def = wfCatalog?.find((w) => w.id === sl.workflow);
+      return {
+        workflowId: sl.workflow,
+        title: def?.title ?? sl.title,
+        inputs: inputsForWorkflow(sl.workflow, ch.taskText),
+      };
+    });
+    try {
+      const res = await fetch("/api/workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "start",
+          root,
+          workflow: links[0].workflowId,
+          inputs: links[0].inputs,
+          chain: links.length > 1 ? links : undefined,
+          autoGate: ch.auto === true,
+          agent,
+          model: models[agent] ?? status?.[agent]?.models?.[0]?.id ?? "",
+          roleModels: rolesFor(agent),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        markChain(msgIndex, `failed: ${String(data.error ?? "could not start the chain")}`);
+        return;
+      }
+      markChain(
+        msgIndex,
+        links.length > 1
+          ? `chain started - "${links[0].title}" is running (run ${data.runId}); the next phase starts automatically when it finishes clean` +
+            (ch.auto ? ". Unattended: the AI gatekeeper will clear the gates (audited) and escalate to you only when unsure" : "")
+          : `started ${links[0].title} (run ${data.runId})`,
+      );
+      onRunStarted?.(String(data.runId));
+    } catch (e) {
+      setMessages((m) => [...m, { role: "system", text: String(e) }]);
+    }
   }
 
   const current = status?.[agent];
@@ -420,37 +559,70 @@ export default function ChatPane({
                   </p>
                 )}
               </div>
+            ) : m.role === "chain" && m.chain ? (
+              <div key={i}>
+                <ChainProposalCard
+                  slots={m.chain.slots}
+                  reason={m.chain.reason}
+                  resolved={m.chain.resolved}
+                  catalog={wfCatalog}
+                  starting={running}
+                  auto={m.chain.auto === true}
+                  onAuto={(v) => setChainAuto(i, v)}
+                  onChange={(slots) => setChainSlots(i, slots)}
+                  onRun={() => void runChain(i)}
+                  onJustAsk={() => {
+                    markChain(i, "answered in chat");
+                    void runAgentChat(m.chain!.taskText, false);
+                  }}
+                />
+              </div>
             ) : m.role === "proposal" && m.proposal ? (
               <div key={i} className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
                 <p className="text-sm text-sky-900">
-                  This looks like a <span className="font-semibold">{m.proposal.title}</span> task
-                  ({m.proposal.reason}).
+                  This looks like a <span className="font-semibold">{m.proposal.title}</span> task{" "}
+                  <span className="text-sky-700">({m.proposal.reason})</span>.
                 </p>
                 {m.proposal.resolved ? (
                   <p className="mt-2 text-xs text-sky-700">→ {m.proposal.resolved}</p>
                 ) : (
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <select
+                      value={m.proposal.workflow}
+                      onChange={(e) => setProposalWorkflow(i, e.target.value)}
+                      className="rounded-lg border border-sky-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 outline-none focus:border-sky-500"
+                      title="Pick any workflow - standard or your custom ones"
+                    >
+                      {!wfCatalog && <option value={m.proposal.workflow}>{m.proposal.title}</option>}
+                      {(wfCatalog ?? []).filter((w) => !w.custom).length > 0 && (
+                        <optgroup label="Standard workflows">
+                          {(wfCatalog ?? [])
+                            .filter((w) => !w.custom)
+                            .map((w) => (
+                              <option key={w.id} value={w.id}>
+                                {w.title}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
+                      {(wfCatalog ?? []).filter((w) => w.custom).length > 0 && (
+                        <optgroup label="Your custom workflows">
+                          {(wfCatalog ?? [])
+                            .filter((w) => w.custom)
+                            .map((w) => (
+                              <option key={w.id} value={w.id}>
+                                {w.title}
+                              </option>
+                            ))}
+                        </optgroup>
+                      )}
+                    </select>
                     <button
                       onClick={() => startWorkflowFromProposal(i, m.proposal!.workflow)}
                       className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
                     >
-                      Run {m.proposal.title} workflow
+                      ▶ Run workflow
                     </button>
-                    {(["bug-fix", "feature-dev", "solution-design"] as const)
-                      .filter((w) => w !== m.proposal!.workflow)
-                      .map((w) => (
-                        <button
-                          key={w}
-                          onClick={() => startWorkflowFromProposal(i, w)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
-                        >
-                          {w === "bug-fix"
-                            ? "Bug fix instead"
-                            : w === "feature-dev"
-                              ? "Feature development instead"
-                              : "Solution design instead"}
-                        </button>
-                      ))}
                     <button
                       onClick={() => {
                         markProposal(i, "answered in chat");

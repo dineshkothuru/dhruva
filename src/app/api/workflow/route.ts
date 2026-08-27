@@ -4,7 +4,7 @@ import { isAttachableRoot } from "@/lib/fsguard";
 import { isAgentId } from "@/lib/agents";
 import { isSafeModelId } from "@/lib/agents";
 import { builtinWorkflows } from "@/lib/workflows/builtins";
-import { STEP_ROLES, type StepRole } from "@/lib/workflows/schema";
+import { STEP_ROLES, type ChainLink, type StepRole } from "@/lib/workflows/schema";
 import { readProjectSettings } from "@/lib/projectSettings";
 import { ensureExtractedIn } from "@/lib/docExtract";
 import {
@@ -197,7 +197,54 @@ export async function POST(req: Request) {
         if (isSafeModelId(v) && v) roleModels[k] = v;
       }
     }
-    const run = startRun(root, def, inputs, b.agent, model, roleModels);
+    // multi-workflow chain ("design and implement"): the run started here is
+    // link 0; the engine auto-starts each following link on a clean finish.
+    // Every link must resolve to a real workflow NOW - failing at the handoff
+    // hours later would waste the finished phases.
+    let chain: ChainLink[] | undefined;
+    if (Array.isArray(b.chain) && b.chain.length >= 2 && b.chain.length <= 5) {
+      chain = [];
+      for (const raw of b.chain as unknown[]) {
+        const l = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+        if (!l || typeof l.workflowId !== "string" || l.workflowId.length > 80) {
+          return NextResponse.json({ error: "invalid chain link" }, { status: 400 });
+        }
+        const li: Record<string, string | boolean> = {};
+        if (l.inputs && typeof l.inputs === "object") {
+          for (const [k, v] of Object.entries(l.inputs)) {
+            if (typeof v === "boolean") li[k] = v;
+            else if (typeof v === "string") li[k] = v.slice(0, 8000);
+          }
+        }
+        chain.push({
+          workflowId: l.workflowId,
+          title: typeof l.title === "string" ? l.title.slice(0, 80) : l.workflowId,
+          inputs: li,
+        });
+      }
+      if (chain[0].workflowId !== def.id) {
+        return NextResponse.json({ error: "chain link 0 must be the started workflow" }, { status: 400 });
+      }
+      for (const l of chain.slice(1)) {
+        if (!(await loadWorkflow(root, l.workflowId))) {
+          return NextResponse.json(
+            { error: `chain link "${l.workflowId}" is not a known workflow` },
+            { status: 400 },
+          );
+        }
+      }
+    }
+    const run = startRun(
+      root,
+      def,
+      inputs,
+      b.agent,
+      model,
+      roleModels,
+      chain,
+      chain ? 0 : undefined,
+      b.autoGate === true,
+    );
     if (!run) return NextResponse.json({ error: "could not start run" }, { status: 500 });
     return NextResponse.json({ runId: run.runId });
   }

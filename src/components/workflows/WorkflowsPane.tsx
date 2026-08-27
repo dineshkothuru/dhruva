@@ -309,48 +309,20 @@ function StepBody({
   if (uxBlocks > 0) produced.push(`${uxBlocks} UX component designs`);
   const showSummary = !running && (did || produced.length > 0);
 
-  return (
-    <div className="relative border-t border-slate-100">
-      <button
-        onClick={() => setRaw((v) => !v)}
-        className={`absolute right-2 top-1.5 z-10 rounded-md border px-2 py-0.5 text-[10px] font-medium ${
-          raw
-            ? "border-slate-400 bg-slate-700 text-white"
-            : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
-        }`}
-        title="Toggle between the structured view and the agent's raw trace"
-      >
-        {raw ? "structured" : "raw trace"}
-      </button>
-      {raw ? (
-        <div ref={boxRef} className="max-h-80 overflow-y-auto">
-          <pre className="whitespace-pre-wrap break-words px-4 py-3 pr-20 font-mono text-[11px] text-slate-600">
-            {output}
-          </pre>
-        </div>
-      ) : (
-    <div ref={boxRef} className="max-h-80 space-y-1 overflow-y-auto px-4 py-3 pr-20">
-      {!running && (verdict || coverage) && (
-        <div
-          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-            /BLOCKED|INCOMPLETE/i.test((verdict ?? coverage)![0])
-              ? "border-red-200 bg-red-50 text-red-700"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700"
-          }`}
-        >
-          {(verdict ?? coverage)![0]}
-          {findingsCount > 0 && verdict && (
-            <span className="ml-2 font-normal">· {findingsCount} finding(s) detailed below</span>
-          )}
-        </div>
-      )}
-      {[
-        ...segs,
-        ...(findingsCount > 0 ? [{ kind: "cards" as const, lines: [] }] : []),
-        ...(reqItems.length > 0 ? [{ kind: "reqcards" as const, lines: [] }] : []),
-        ...trailingSegs,
-        ...(showSummary ? [{ kind: "summary" as const, lines: [] }] : []),
-      ].map((seg, i) => {
+  // ---- two-section layout (activity vs output): while the agent runs, WHAT
+  // IT IS READING is the story; once done, WHAT IT PRODUCED is. Activity =
+  // everything up to and including the last tool call (tool groups + the
+  // progress narration between them); it stays live while running and
+  // collapses to a single reviewable line when finished.
+  const lastToolIdx = segs.reduce((acc, sg, si) => (sg.kind === "toolgroup" ? si : acc), -1);
+  const activitySegs = lastToolIdx >= 0 ? segs.slice(0, lastToolIdx + 1) : [];
+  const postToolSegs = lastToolIdx >= 0 ? segs.slice(lastToolIdx + 1) : segs;
+
+  type RSeg = {
+    kind: "text" | "engine" | "exit" | "toolgroup" | "cards" | "reqcards" | "summary";
+    lines: string[];
+  };
+  const renderSeg = (seg: RSeg, i: number) => {
         if (seg.kind === "cards") {
           return (
             <div key={`cards-${i}`} className="space-y-2 py-1">
@@ -517,7 +489,77 @@ function StepBody({
             </p>
           );
         });
-      })}
+  };
+
+  return (
+    <div className="relative border-t border-slate-100">
+      <button
+        onClick={() => setRaw((v) => !v)}
+        className={`absolute right-2 top-1.5 z-10 rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+          raw
+            ? "border-slate-400 bg-slate-700 text-white"
+            : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
+        }`}
+        title="Toggle between the structured view and the agent's raw trace"
+      >
+        {raw ? "structured" : "raw trace"}
+      </button>
+      {raw ? (
+        <div ref={boxRef} className="max-h-80 overflow-y-auto">
+          <pre className="whitespace-pre-wrap break-words px-4 py-3 pr-20 font-mono text-[11px] text-slate-600">
+            {output}
+          </pre>
+        </div>
+      ) : (
+    <div ref={boxRef} className="max-h-80 space-y-1 overflow-y-auto px-4 py-3 pr-20">
+      {!running && (verdict || coverage) && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+            /BLOCKED|INCOMPLETE/i.test((verdict ?? coverage)![0])
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {(verdict ?? coverage)![0]}
+          {findingsCount > 0 && verdict && (
+            <span className="ml-2 font-normal">· {findingsCount} finding(s) detailed below</span>
+          )}
+        </div>
+      )}
+      {activitySegs.length > 0 &&
+        (running ? (
+          <div className="space-y-1">
+            <p className="flex items-center gap-1.5 pb-0.5 text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+              <span className="inline-block animate-pulse text-sky-500">●</span>
+              Activity - what it is reading and doing
+            </p>
+            {activitySegs.map((seg, i) => renderSeg(seg, i))}
+          </div>
+        ) : (
+          <details className="rounded-lg border border-slate-100 bg-slate-50/60">
+            <summary className="cursor-pointer px-2.5 py-1.5 text-[11px] text-slate-400 hover:text-slate-600">
+              📖 <span className="font-semibold text-slate-500">Activity</span> - what it read and
+              did{did && <span className="ml-1">· {did}</span>}
+            </summary>
+            <div className="space-y-1 border-t border-slate-100 px-2.5 py-2">
+              {activitySegs.map((seg, i) => renderSeg(seg, i))}
+            </div>
+          </details>
+        ))}
+      {!running &&
+        activitySegs.length > 0 &&
+        (postToolSegs.length > 0 || findingsCount > 0 || reqItems.length > 0) && (
+          <p className="pt-1.5 text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+            📦 Output
+          </p>
+        )}
+      {[
+        ...postToolSegs,
+        ...(findingsCount > 0 ? [{ kind: "cards" as const, lines: [] }] : []),
+        ...(reqItems.length > 0 ? [{ kind: "reqcards" as const, lines: [] }] : []),
+        ...trailingSegs,
+        ...(showSummary ? [{ kind: "summary" as const, lines: [] }] : []),
+      ].map((seg, i) => renderSeg(seg, i))}
       {running && (
         <p className="pt-1 text-[11px] text-slate-400">
           <span className="mr-1 inline-block animate-pulse text-sky-500">●</span> working…
@@ -683,6 +725,23 @@ export default function WorkflowsPane({
     if (ok && seq === stateSeq.current) setRun(data as unknown as RunState);
   }
 
+  /** Open any run by id - live runs come from engine memory; finished runs
+   * that only exist on disk come from the runs listing. Used by the chain
+   * rail to hop between a chain's phases. */
+  async function openRunById(runId: string) {
+    const seq = ++stateSeq.current;
+    const { ok, data } = await api({ action: "state", runId });
+    if (ok) {
+      if (seq === stateSeq.current) setRun(data as unknown as RunState);
+      return;
+    }
+    const r = await api({ action: "runs", root });
+    if (r.ok && seq === stateSeq.current) {
+      const found = ((r.data.runs as RunState[]) ?? []).find((x) => x.runId === runId);
+      if (found) setRun(found);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -834,6 +893,14 @@ export default function WorkflowsPane({
           >
             <span className={`mr-1 inline-flex h-1.5 w-1.5 rounded-full ${run.status === "running" ? "animate-pulse bg-sky-500" : run.status === "waiting_gate" ? "animate-pulse bg-amber-500" : run.status === "done" ? "bg-emerald-500" : "bg-red-400"}`} />{run.status.replace("_", " ")}
           </span>
+          {run.autoGate && (
+            <span
+              className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+              title="Unattended mode: an AI gatekeeper clears the human gates (every decision + reasoning is recorded in the gate's log) and escalates to you only when unsure"
+            >
+              🤖 unattended
+            </span>
+          )}
           <span className="ml-auto font-mono text-[10px] text-slate-400">run {run.runId}</span>
           {(run.status === "running" || run.status === "waiting_gate") && (
             <button
@@ -880,6 +947,114 @@ export default function WorkflowsPane({
             </>
           )}
         </p>
+
+        {run.chain && run.chain.length > 1 && (
+          <div className="mb-3 rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-white to-white px-3.5 py-2.5">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-indigo-400">
+                ⛓️ Chain
+              </span>
+              {run.chain.map((c, ci) => {
+                const idx = run.chainIndex ?? 0;
+                const live = run.status === "running" || run.status === "waiting_gate";
+                const state =
+                  ci < idx ? "done" : ci === idx ? "current" : c.runId ? "started" : "queued";
+                const clickable = !!c.runId && c.runId !== run.runId;
+                return (
+                  <span key={ci} className="flex shrink-0 items-center gap-2">
+                    {ci > 0 && (
+                      <span
+                        className={`text-sm ${
+                          ci === idx + 1 && live ? "animate-pulse text-indigo-400" : "text-slate-300"
+                        }`}
+                        title="starts automatically after a clean finish"
+                      >
+                        →
+                      </span>
+                    )}
+                    <button
+                      onClick={() => clickable && void openRunById(c.runId!)}
+                      disabled={!clickable}
+                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                        state === "done"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-400"
+                          : state === "current"
+                            ? "border-indigo-500 bg-indigo-600 text-white shadow-sm"
+                            : state === "started"
+                              ? "animate-pulse border-sky-300 bg-sky-50 text-sky-700 hover:border-sky-500"
+                              : "border-dashed border-slate-300 bg-white text-slate-400"
+                      } ${clickable ? "" : "cursor-default"}`}
+                      title={
+                        state === "done"
+                          ? "finished - open this phase's run"
+                          : state === "started"
+                            ? "running now - open the live run"
+                            : state === "current"
+                              ? "this run"
+                              : "queued - starts after the previous phase finishes clean"
+                      }
+                    >
+                      <span>
+                        {state === "done"
+                          ? "✓"
+                          : state === "current"
+                            ? live
+                              ? "●"
+                              : run.status === "done"
+                                ? "✓"
+                                : "■"
+                            : state === "started"
+                              ? "▶"
+                              : String(ci + 1)}
+                      </span>
+                      {c.title}
+                      {state === "started" && (
+                        <span className="text-[9px] font-semibold uppercase">live</span>
+                      )}
+                    </button>
+                  </span>
+                );
+              })}
+              <span className="ml-auto hidden shrink-0 pl-3 text-[10px] text-slate-400 lg:inline">
+                phase {(run.chainIndex ?? 0) + 1} of {run.chain.length} · the next phase
+                auto-starts on a clean finish; fail or abort pauses the chain
+              </span>
+            </div>
+          </div>
+        )}
+
+        {(run.manualSteps?.length ?? 0) > 0 && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-700">
+              🖐 Manual steps for a human · {run.manualSteps!.length}
+              {run.chain && run.chain.length > 1 && (
+                <span className="font-medium normal-case tracking-normal text-amber-600">
+                  (collected across the chain&apos;s phases)
+                </span>
+              )}
+            </p>
+            <p className="mt-1 text-[11px] text-amber-700/80">
+              The agents flagged these as actions they cannot perform from this machine - do them
+              in the org yourself.
+            </p>
+            <ol className="mt-2 space-y-1.5">
+              {run.manualSteps!.map((m, mi) => (
+                <li key={mi} className="flex items-start gap-2 text-xs text-amber-900">
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-200 text-[9px] font-bold text-amber-800">
+                    {mi + 1}
+                  </span>
+                  <span className="min-w-0">
+                    {m.text}
+                    <span className="ml-1.5 rounded bg-white/70 px-1.5 py-px text-[9px] font-medium text-amber-600">
+                      {m.phase && m.phase !== run.workflowTitle ? `${m.phase} · ` : ""}
+                      {m.stepId}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
 
         {Object.keys(run.inputs ?? {}).length > 0 && (
           <details className="mb-3 rounded-xl border border-slate-200 bg-white">
@@ -1384,6 +1559,14 @@ export default function WorkflowsPane({
                 }`}
               >
                 <span className="font-medium">{r.workflowTitle}</span>
+                {r.chain && r.chain.length > 1 && (
+                  <span
+                    className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-500"
+                    title={`chain: ${r.chain.map((c) => c.title).join(" → ")}`}
+                  >
+                    ⛓️ {(r.chainIndex ?? 0) + 1}/{r.chain.length}
+                  </span>
+                )}
                 <span className="text-slate-400">{new Date(r.createdAt).toLocaleString()}</span>
                 <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
                   {r.agent}

@@ -10,7 +10,7 @@ import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import { skillsPrompt } from "@/lib/projectSkills";
-import type { GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
+import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { ROLE_TIER } from "./schema";
 
 /** Deterministic workflow runner. Runs live in this server process (a local
@@ -130,6 +130,9 @@ export function startRun(
   agent: AgentId,
   model?: string,
   roleModels?: RunState["roleModels"],
+  chain?: ChainLink[],
+  chainIndex?: number,
+  autoGate?: boolean,
 ): RunState | null {
   const run: RunState = {
     runId: randomUUID().slice(0, 12),
@@ -150,6 +153,12 @@ export function startRun(
       output: "",
     })),
   };
+  if (autoGate) run.autoGate = true;
+  if (chain && chainIndex !== undefined && chain[chainIndex]) {
+    run.chain = chain.map((c) => ({ ...c }));
+    run.chain[chainIndex].runId = run.runId;
+    run.chainIndex = chainIndex;
+  }
   runs.set(run.runId, run);
   void execute(run, def); // fire and forget; UI polls state
   return run;
@@ -238,6 +247,134 @@ async function execute(run: RunState, def: WorkflowDef, startIndex = 0) {
   // later runs re-baseline - done for every terminal status incl. aborted.
   run.endCommit = (await commitRunResult(run.root, run.runId)) ?? undefined;
   await persist(run);
+  await fireChain(run);
+}
+
+/** Collect the agent's "MANUAL: <action> - <where> - <when>" lines onto the
+ * run - the human checklist. Deterministic parse, deduped by text. */
+function collectManual(run: RunState, step: StepState) {
+  const lines = step.output.match(/^\s*\*{0,2}MANUAL:\s*(.+)$/gim) ?? [];
+  if (lines.length === 0) return;
+  run.manualSteps ??= [];
+  for (const l of lines) {
+    const text = l.replace(/^\s*\*{0,2}MANUAL:\s*/i, "").replace(/\*+$/, "").trim().slice(0, 400);
+    if (text && !run.manualSteps.some((m) => m.text === text)) {
+      run.manualSteps.push({ stepId: step.id, phase: run.workflowTitle, text });
+    }
+  }
+}
+
+const MAX_AUTOGATE_ROUNDS = 3;
+
+/** Unattended mode: an AI gatekeeper (review role - different eyes than the
+ * step that produced the work) resolves a human gate. Its full trace lands in
+ * the gate step's output - the audit a human reads later. It may approve,
+ * send bounded revisions, or ESCALATE back to the real human. */
+async function gatekeeperDecision(
+  run: RunState,
+  gateDef: StepDef,
+  step: StepState,
+  round: number,
+): Promise<{ action: "approve" | "revise" | "escalate"; feedback?: string }> {
+  const agentDef = AGENTS[run.agent];
+  const model = run.roleModels?.review || agentDef.tiers[ROLE_TIER.review] || run.model;
+  const prompt =
+    `You are the GATEKEEPER for an UNATTENDED Salesforce delivery run in ${run.root} ` +
+    `(your current working directory). A human would normally review this gate; the team enabled ` +
+    `unattended mode, so YOU decide - and your reasoning becomes part of the permanent audit ` +
+    `trail. Read-only: do NOT modify any files.\n\n` +
+    `THE GATE PUT TO YOU:\n${template(gateDef.message ?? "Proceed?", run)}\n\n` +
+    `Judge strictly - approve only work you would stake your name on. Unresolved CRITICAL ` +
+    `findings mean REVISE with concrete instructions. If you are genuinely unsure, or the call ` +
+    `needs business context only a human has, ESCALATE.\n\n` +
+    `End your answer with EXACTLY this structure:\n` +
+    `REASON: <2-5 sentences - what you checked and why you decided>\n` +
+    `GATE DECISION: APPROVE | REVISE | ESCALATE\n` +
+    `FEEDBACK: <REVISE only - complete, concrete rework instructions>`;
+  step.output += `\n\n🤖 [auto-gate] round ${round}/${MAX_AUTOGATE_ROUNDS} - gatekeeper deciding (${model || "CLI default"}, review role)…\n`;
+  await persist(run);
+  const before = step.output.length;
+  const streamJson = run.agent === "claude";
+  const { args, viaStdin } = agentDef.build(prompt, model, true, streamJson);
+  const ok = await spawnToStep(
+    run,
+    step,
+    agentDef.bin,
+    args,
+    viaStdin ? prompt : undefined,
+    streamJson ? makeClaudeTraceTransform(step) : undefined,
+    10 * 60_000,
+  );
+  const out = step.output.slice(before);
+  if (!ok) return { action: "escalate" };
+  const decisions = [...out.matchAll(/GATE DECISION:\s*(APPROVE|REVISE|ESCALATE)/gi)];
+  const d = decisions[decisions.length - 1]?.[1]?.toUpperCase();
+  if (d === "APPROVE") return { action: "approve" };
+  if (d === "REVISE") {
+    const fb = out.match(/FEEDBACK:\s*([\s\S]{1,4000}?)(?=\nGATE DECISION:|\n\[exit|$)/i)?.[1]?.trim();
+    if (fb) return { action: "revise", feedback: `[auto-gate round ${round}] ${fb}` };
+  }
+  return { action: "escalate" };
+}
+
+/** Chain handoff: when a run that belongs to a multi-workflow chain finishes
+ * CLEAN, start the next link with the same agent/model settings. A failed or
+ * aborted run pauses the chain on purpose - resuming it to done re-fires. */
+async function fireChain(run: RunState) {
+  const chain = run.chain;
+  const idx = run.chainIndex ?? -1;
+  if (!chain || idx < 0 || idx + 1 >= chain.length) return;
+  const nextLink = chain[idx + 1];
+  const last = run.steps[run.steps.length - 1];
+  const note = (line: string) => {
+    if (last && !last.output.includes(line)) last.output += `\n${line}`;
+  };
+  if (run.status !== "done") {
+    note(
+      `[engine] chain paused - "${nextLink.title}" starts only after a clean finish ` +
+        `(this run ${run.status}). Resume this run to continue the chain.`,
+    );
+    await persist(run);
+    return;
+  }
+  if (nextLink.runId) return; // already fired (defensive)
+  const { loadWorkflow } = await import("./custom");
+  const def = await loadWorkflow(run.root, nextLink.workflowId);
+  if (!def) {
+    note(`[engine] chain broken - next workflow "${nextLink.workflowId}" no longer exists.`);
+    await persist(run);
+    return;
+  }
+  const inputs = { ...(nextLink.inputs ?? {}) };
+  // same server-side injection a route-started run gets (project UX settings)
+  if (def.inputs.some((i) => i.key === "uxEnabled")) {
+    const { readProjectSettings } = await import("@/lib/projectSettings");
+    const st = await readProjectSettings(run.root);
+    inputs.uxEnabled = st.ux?.enabled === true;
+    inputs.uxRules = st.ux?.rules ?? "";
+    inputs.designDir = st.ux?.designDir || "docs/design";
+  }
+  const next = startRun(
+    run.root,
+    def,
+    inputs,
+    run.agent,
+    run.model,
+    run.roleModels,
+    chain.map((c) => ({ ...c })),
+    idx + 1,
+    run.autoGate,
+  );
+  if (next) {
+    // same-tick after startRun (execute suspends at its first await), so this
+    // lands before the new run's first persist - the checklist carries over
+    if (run.manualSteps?.length) {
+      next.manualSteps = [...run.manualSteps.map((m) => ({ ...m })), ...(next.manualSteps ?? [])];
+    }
+    nextLink.runId = next.runId;
+    note(`[engine] chain: started "${nextLink.title}" (run ${next.runId})`);
+    await persist(run);
+  }
 }
 
 async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
@@ -260,22 +397,73 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
     if (stepDef.type === "gate") {
       let revisions = 0;
       let notice = ""; // survives re-render (e.g. "revision not possible")
+      let autoRound = 0;
+      let escalated = false; // gatekeeper handed this gate to the human
       for (;;) {
-        step.status = "waiting_gate";
-        step.startedAt ??= Date.now();
-        step.output = template(stepDef.message ?? "Proceed?", run) + notice;
-        run.status = "waiting_gate";
-        // register the waiter BEFORE persisting: persist rides a serialized
-        // write chain, and an abort landing in that window would otherwise
-        // find waiting_gate with no waiter to resolve - a permanent hang
-        const decisionPromise = new Promise<GateDecision>((resolve) => {
-          gateWaiters.set(run.runId, resolve);
-        });
-        await persist(run);
-        const decision = await decisionPromise;
+        let decision: GateDecision;
+        const useAuto = run.autoGate === true && !escalated && autoRound < MAX_AUTOGATE_ROUNDS;
+        if (useAuto) {
+          // unattended mode: the AI gatekeeper decides - fully audited in the
+          // gate's own log, bounded rounds, escalates to the human when unsure
+          autoRound++;
+          step.status = "running";
+          step.startedAt ??= Date.now();
+          if (!step.output) step.output = template(stepDef.message ?? "Proceed?", run);
+          if (notice) {
+            step.output += notice;
+            notice = "";
+          }
+          run.status = "running";
+          await persist(run);
+          const gk = await gatekeeperDecision(run, stepDef, step, autoRound);
+          if ((run.status as string) === "aborted") {
+            step.status = "failed";
+            step.endedAt = Date.now();
+            await persist(run);
+            return;
+          }
+          if (gk.action === "approve") {
+            decision = { action: "approve" };
+          } else if (gk.action === "revise" && gk.feedback) {
+            decision = { action: "revise", feedback: gk.feedback };
+          } else {
+            escalated = true;
+            step.output +=
+              "\n\n[engine] auto-gate escalated - the gatekeeper wants a HUMAN decision " +
+              "(its reasoning is above). Review and approve, revise, or abort.";
+            continue;
+          }
+          step.output += `\n\n🤖 auto-gate decision: ${decision.action.toUpperCase()}`;
+        } else {
+          if (run.autoGate === true && !escalated) {
+            escalated = true;
+            step.output +=
+              `\n\n[engine] auto-gate rounds exhausted (${MAX_AUTOGATE_ROUNDS}) - this gate needs YOUR decision.`;
+          }
+          step.status = "waiting_gate";
+          step.startedAt ??= Date.now();
+          if (run.autoGate === true) {
+            // append-only: the gatekeeper's audited reasoning must survive
+            if (notice) {
+              step.output += notice;
+              notice = "";
+            }
+          } else {
+            step.output = template(stepDef.message ?? "Proceed?", run) + notice;
+          }
+          run.status = "waiting_gate";
+          // register the waiter BEFORE persisting: persist rides a serialized
+          // write chain, and an abort landing in that window would otherwise
+          // find waiting_gate with no waiter to resolve - a permanent hang
+          const decisionPromise = new Promise<GateDecision>((resolve) => {
+            gateWaiters.set(run.runId, resolve);
+          });
+          await persist(run);
+          decision = await decisionPromise;
+        }
         if (decision.action === "approve") {
           run.status = "running";
-          step.output += "\n→ approved";
+          step.output += useAuto ? "\n→ approved by the AI gatekeeper (unattended mode)" : "\n→ approved";
           step.status = "done";
           step.endedAt = Date.now();
           await persist(run);
@@ -330,6 +518,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         return;
       }
       if (step.status === "running") step.status = "done";
+      if (stepDef.type === "agent") collectManual(run, step);
       // Bounded self-healing (before the human gate): a review step whose
       // verdict matches its trigger auto-revises its target with the findings
       // as feedback, then re-runs everything up to and including itself. The
@@ -418,6 +607,7 @@ async function replayRange(
       return false;
     }
     if (replayStep.status === "running") replayStep.status = "done";
+    if (replayDef.type === "agent") collectManual(run, replayStep);
     await persist(run);
   }
   return true;

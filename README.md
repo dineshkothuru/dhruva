@@ -99,7 +99,17 @@ Never commit or push from inside an attached customer project; Dhruva's own
   (`sf org login web` on the correct host), file explorer + search +
   multi-file Monaco editor with diff views.
 - **Task-first intake** - a team member types a requirement/bug (attachments:
-  images/PDF/docs); Dhruva proposes the matching workflow; a human confirms.
+  images/PDF/docs); Dhruva proposes the matching workflow - standard OR the
+  team's own custom workflows, matched by their titles; a human confirms.
+- **Workflow chains** - "design and implement" proposes a multi-phase chain
+  (each phase is any standard/custom workflow, reshaped in an interactive
+  card); the engine auto-starts the next phase on a clean finish, a chain rail
+  on the run view tracks every phase live, and fail/abort pauses the chain for
+  Resume. Optional **unattended mode**: an AI gatekeeper (review role) clears
+  the human gates - decision + reasoning written into the gate's audit log,
+  bounded revise rounds, escalates to the human when unsure. Agents flag
+  org actions they cannot perform as `MANUAL:` lines, collected across the
+  chain into a human checklist on the run view.
 - **Workflows** (10 built-in + design-your-own in the UI) - Bug fix, Feature
   development, Solution design (HLD+TDD with Mermaid ERD), Implement from TDD,
   Test generation, Retrieve/org sync, Deploy preview, Validate deploy, Run
