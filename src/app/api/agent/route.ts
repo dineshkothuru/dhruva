@@ -2,6 +2,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { AGENTS, isAgentId, isSafeModelId } from "@/lib/agents";
 import { isAttachableRoot } from "@/lib/fsguard";
+import { skillsPrompt } from "@/lib/projectSkills";
 import { takeSnapshot } from "@/lib/snapshot";
 import { hasActiveRun } from "@/lib/workflows/engine";
 
@@ -58,10 +59,13 @@ export async function POST(req: Request) {
 
   const def = AGENTS[body.agent];
   const model = isSafeModelId(body.model) ? body.model : undefined;
+  // project knowledge rides chat tasks too — AFTER the task so copilot's
+  // inline-prompt truncation can never eat the user's ask
+  const { block: skillsBlock } = await skillsPrompt(root).catch(() => ({ block: "" }));
   const fullPrompt =
-    attachments.length > 0
+    (attachments.length > 0
       ? `${prompt}\n\nAttached files (read them from the project root): ${attachments.join(", ")}`
-      : prompt;
+      : prompt) + skillsBlock;
   const readOnly = body.readOnly === true;
   const { args, viaStdin } = def.build(fullPrompt, model, readOnly);
   if (body.agent === "copilot") {

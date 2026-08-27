@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { standardsFor, persona } from "@/lib/standardsLibrary";
+import { standardsFor, persona, libraryIndex } from "@/lib/standardsLibrary";
+
+/** GET → the full shipped library (read-only browser in the UI). */
+export async function GET() {
+  return NextResponse.json(await libraryIndex());
+}
 
 /** Transparency endpoint: which standards would apply to a set of files.
  * POST {files: string[], persona?: string} → {chars, modules, personaChars} */

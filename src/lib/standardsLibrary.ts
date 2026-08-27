@@ -101,3 +101,18 @@ export async function persona(name: string): Promise<string> {
   const lib = await load();
   return lib.personas.get(name) ?? "";
 }
+
+/** The whole shipped library for the read-only UI browser — so project-skill
+ * authors can SEE what the standards already cover instead of duplicating it. */
+export async function libraryIndex(): Promise<{
+  baseline: { chars: number; body: string };
+  modules: { name: string; body: string }[];
+  personas: { name: string; body: string }[];
+}> {
+  const lib = await load();
+  return {
+    baseline: { chars: lib.baseline.length, body: lib.baseline.trim() },
+    modules: lib.modules.map((m) => ({ name: m.name, body: m.body })),
+    personas: [...lib.personas.entries()].map(([name, body]) => ({ name, body })),
+  };
+}

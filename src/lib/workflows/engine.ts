@@ -9,6 +9,7 @@ import { STANDARDS_PROMPT, checkStandards } from "@/lib/standards";
 import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
+import { skillsPrompt } from "@/lib/projectSkills";
 import type { GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { ROLE_TIER } from "./schema";
 
@@ -450,6 +451,9 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       ];
       const rules = (await standardsFor(scopeFiles).catch(() => "")) || STANDARDS_PROMPT;
       const role = def.persona ? await persona(def.persona).catch(() => "") : "";
+      // project knowledge (.sfharness/skills/*.md) — the org-specific layer,
+      // injected for every vendor; audited per step below
+      const skills = await skillsPrompt(run.root).catch(() => ({ block: "", names: [], chars: 0 }));
       // Reviewer feedback from gates: mandatory, most recent last.
       const feedback = run.revisions?.[def.id];
       const feedbackBlock =
@@ -467,7 +471,9 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         `Never analyse, design, or implement from a partially read document; if a referenced ` +
         `document cannot be fully read, say so explicitly instead of proceeding.\n\n` +
         (role ? `${role}\n\n` : "") +
-        `MANDATORY TEAM STANDARDS:\n${rules}\n\n` +
+        `MANDATORY TEAM STANDARDS:\n${rules}\n` +
+        skills.block +
+        `\n` +
         template(def.prompt ?? "", run) +
         feedbackBlock;
       // Model resolution, most specific wins:
@@ -487,6 +493,9 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
             : "CLI default";
       // the model is part of the step's log too, so the trace reads standalone
       step.output += `[engine] model requested: ${stepModel || "(CLI default)"} — ${step.modelFrom}\n`;
+      if (skills.names.length > 0) {
+        step.output += `[engine] project skills injected: ${skills.names.join(", ")} (${(skills.chars / 1000).toFixed(1)}k chars)\n`;
+      }
       step.model = stepModel || "default";
       // claude: stream-json gives a LIVE trace (tool uses + text as produced)
       // and exact token usage in the final event; others stream plain text.
