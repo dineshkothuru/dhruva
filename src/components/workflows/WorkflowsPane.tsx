@@ -301,9 +301,24 @@ export default function WorkflowsPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, jumpToRun]);
 
-  // poll the active run
+  // poll the active run.
+  //
+  // A finished run normally stops the poll - but a run that is part of a
+  // CHAIN is not the end of the story. The engine marks it done, persists,
+  // and only then starts the next phase and records its id. A poll landing in
+  // that window would see "done", stop, and leave the chain rail claiming the
+  // next phase is still queued while it is actually running. So keep polling
+  // a finished run until the next link has an id to point at.
+  const chainHasUnstartedNext =
+    !!run?.chain &&
+    (run.chainIndex ?? 0) < run.chain.length - 1 &&
+    !run.chain[(run.chainIndex ?? 0) + 1]?.runId;
   useEffect(() => {
-    if (!run || run.status === "done" || run.status === "failed" || run.status === "aborted") {
+    const settled =
+      run && (run.status === "done" || run.status === "failed" || run.status === "aborted");
+    // a failed or aborted run pauses the chain, so only a clean finish waits
+    const waitingForNextPhase = run?.status === "done" && chainHasUnstartedNext;
+    if (!run || (settled && !waitingForNextPhase)) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
       return;
@@ -316,7 +331,7 @@ export default function WorkflowsPane({
     };
     // fetchRunState is stable in behavior (api is memoized; seq is a ref)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, run]);
+  }, [api, run, chainHasUnstartedNext]);
 
   function pick(w: CatalogItem) {
     setSelected(w);
@@ -553,6 +568,33 @@ export default function WorkflowsPane({
                 auto-starts on a clean finish; fail or abort pauses the chain
               </span>
             </div>
+
+            {/* the chain has moved on - do not strand the reader on a phase
+                that is already finished */}
+            {(() => {
+              const idx = run.chainIndex ?? 0;
+              const next = run.chain[idx + 1];
+              if (run.status !== "done" || !next) return null;
+              return next.runId ? (
+                <button
+                  onClick={() => void openRunById(next.runId!)}
+                  className="mt-2 flex w-full items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-left text-[11px] text-sky-800 transition-colors hover:border-sky-300 hover:bg-sky-100"
+                >
+                  <Icon.run size={13} strokeWidth={2} className="shrink-0 animate-pulse" />
+                  <span className="min-w-0 flex-1">
+                    <span className="font-semibold">{next.title}</span> started automatically and is
+                    running now.
+                  </span>
+                  <span className="shrink-0 font-medium">Open it</span>
+                  <Icon.chevron size={12} strokeWidth={2} className="shrink-0" />
+                </button>
+              ) : (
+                <p className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                  <Icon.running size={12} strokeWidth={2} className="shrink-0 animate-pulse" />
+                  Starting <span className="font-semibold">{next.title}</span>…
+                </p>
+              );
+            })()}
           </div>
         )}
 
