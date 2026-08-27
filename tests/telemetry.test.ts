@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { CLIENT_EVENTS, durationBucket, sanitizeProps } from "@/lib/telemetry";
+import {
+  CLIENT_EVENTS,
+  costBucket,
+  countBucket,
+  durationBucket,
+  sanitizeProps,
+  tokensBucket,
+} from "@/lib/telemetry";
 
 /** The allowlist IS the privacy contract, and it is what makes always-on
  * collection acceptable. Dhruva runs inside customer codebases, so these
@@ -105,5 +112,61 @@ describe("client event vocabulary", () => {
       file: "Billing.cls",
     } as never);
     expect(out).toEqual({ feature: "workflows" });
+  });
+});
+
+describe("bucketing", () => {
+  it("buckets counts instead of reporting exact numbers", () => {
+    expect(countBucket(0)).toBe("0");
+    expect(countBucket(3)).toBe("1-9");
+    expect(countBucket(42)).toBe("10-99");
+    expect(countBucket(4200)).toBe("1k-10k");
+    expect(countBucket(99999)).toBe("10k+");
+  });
+
+  it("buckets token volume", () => {
+    expect(tokensBucket(5_000)).toBe("<10k");
+    expect(tokensBucket(75_000)).toBe("50k-200k");
+    expect(tokensBucket(5_000_000)).toBe(">1M");
+  });
+
+  it("buckets cost", () => {
+    expect(costBucket(0.02)).toBe("<$0.10");
+    expect(costBucket(2.5)).toBe("$1-5");
+    expect(costBucket(100)).toBe(">$20");
+  });
+});
+
+describe("the expanded allowlist stays closed", () => {
+  it("accepts the new analytical fields", () => {
+    const out = sanitizeProps({
+      model: "claude-opus-5",
+      tokens_bucket: "50k-200k",
+      cost_bucket: "$1-5",
+      revisions: 2,
+      findings_count: "10-99",
+      error_class: "timeout",
+      step_index: 7,
+    });
+    expect(Object.keys(out).sort()).toEqual([
+      "cost_bucket",
+      "error_class",
+      "findings_count",
+      "model",
+      "revisions",
+      "step_index",
+      "tokens_bucket",
+    ]);
+  });
+
+  it("still refuses raw text even alongside legitimate fields", () => {
+    const out = sanitizeProps({
+      model: "claude-opus-5",
+      finding_title: "Portal sharing plan is not implementable",
+      requirement: "build billing for Acme",
+      output: "the agent said...",
+      stack: "at Foo.cls line 42",
+    } as never);
+    expect(out).toEqual({ model: "claude-opus-5" });
   });
 });

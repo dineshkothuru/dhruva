@@ -50,6 +50,19 @@ const ALLOWED_PROPS = new Set([
   "unattended", // was the AI gatekeeper resolving gates
   "gate_decision", // approve | revise | abort | escalate
   "feature", // which UI feature was used, from a fixed vocabulary
+  "model", // the resolved model id, e.g. claude-opus-5 - not sensitive
+  "model_from", // role setting | shipped tier | run model | CLI default
+  "tokens_bucket", // "10k-50k" - how heavy a run is
+  "cost_bucket", // "$1-5" - API-rate equivalent, for pricing decisions
+  "revisions", // how many times a gate was sent back
+  "auto_revise_rounds", // how often the pre-gate self-heal fired
+  "project_size", // "1k-10k files" - bucketed, never a path or a name
+  "attachments", // how many documents were attached to the run
+  "skills_injected", // how many project skills were in scope
+  "task_count", // build-plan size
+  "findings_count", // bucketed count of findings a review produced
+  "step_index", // how far into the workflow something happened
+  "org_connected", // was a Salesforce org authorized (boolean only)
 ]);
 
 /** Shipped workflow ids may be transmitted; a custom workflow's id could
@@ -190,6 +203,33 @@ export function durationBucket(ms: number): string {
   if (m < 15) return "5-15m";
   if (m < 45) return "15-45m";
   return ">45m";
+}
+
+/** Counts are bucketed for the same reason durations are: a precise number
+ * can single out one run, a range answers the question just as well. */
+export function countBucket(n: number): string {
+  if (n <= 0) return "0";
+  if (n < 10) return "1-9";
+  if (n < 100) return "10-99";
+  if (n < 1_000) return "100-999";
+  if (n < 10_000) return "1k-10k";
+  return "10k+";
+}
+
+export function tokensBucket(n: number): string {
+  if (n < 10_000) return "<10k";
+  if (n < 50_000) return "10k-50k";
+  if (n < 200_000) return "50k-200k";
+  if (n < 1_000_000) return "200k-1M";
+  return ">1M";
+}
+
+export function costBucket(usd: number): string {
+  if (usd < 0.1) return "<$0.10";
+  if (usd < 1) return "$0.10-1";
+  if (usd < 5) return "$1-5";
+  if (usd < 20) return "$5-20";
+  return ">$20";
 }
 
 /** Fire-and-forget. Any failure is swallowed: analytics must never affect

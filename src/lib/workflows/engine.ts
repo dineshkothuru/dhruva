@@ -10,7 +10,8 @@ import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import { skillsPrompt } from "@/lib/projectSkills";
-import { durationBucket, track } from "@/lib/telemetry";
+import { parseFindings } from "@/lib/findings";
+import { costBucket, countBucket, durationBucket, tokensBucket, track } from "@/lib/telemetry";
 import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { ROLE_TIER } from "./schema";
 
@@ -255,14 +256,24 @@ async function execute(run: RunState, def: WorkflowDef, startIndex = 0) {
   // later runs re-baseline - done for every terminal status incl. aborted.
   run.endCommit = (await commitRunResult(run.root, run.runId)) ?? undefined;
   await persist(run);
+  const totalIn = run.steps.reduce((n, x) => n + (x.usage?.inTokens ?? 0), 0);
+  const totalOut = run.steps.reduce((n, x) => n + (x.usage?.outTokens ?? 0), 0);
+  const totalCost = run.steps.reduce((n, x) => n + (x.usage?.costUsd ?? 0), 0);
+  const revisions = Object.values(run.revisions ?? {}).reduce((n, x) => n + x.length, 0);
   void track("run_finished", {
     workflow_id: run.workflowId,
     agent: run.agent,
+    model: run.model,
     outcome: run.status,
     step_count: run.steps.length,
     chained: !!run.chain,
     unattended: run.autoGate === true,
     duration_bucket: durationBucket(Date.now() - run.createdAt),
+    tokens_bucket: tokensBucket(totalIn + totalOut),
+    cost_bucket: costBucket(totalCost),
+    revisions,
+    // how far it got - tells apart "failed at step 2" from "failed at 15"
+    step_index: run.steps.filter((x) => x.status === "done").length,
   });
   await fireChain(run);
 }
@@ -483,6 +494,8 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           workflow_id: run.workflowId,
           gate_decision: decision.action,
           unattended: useAuto,
+          revisions,
+          step_index: i,
         });
         if (decision.action === "approve") {
           run.status = "running";
@@ -542,6 +555,10 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           step_type: stepDef.type,
           step_role: stepDef.role,
           agent: run.agent,
+          model: step.model,
+          step_index: i,
+          error_class: classifyFailure(step.output),
+          duration_bucket: durationBucket((step.endedAt ?? Date.now()) - (step.startedAt ?? Date.now())),
         });
         if (step.status === "running") step.status = "failed";
         if ((run.status as string) !== "aborted") run.status = "failed";
@@ -549,6 +566,21 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         return;
       }
       if (step.status === "running") step.status = "done";
+      void track("step_finished", {
+        workflow_id: run.workflowId,
+        step_type: stepDef.type,
+        step_role: stepDef.role,
+        agent: run.agent,
+        model: step.model,
+        model_from: step.modelFrom,
+        outcome: "done",
+        step_index: i,
+        duration_bucket: durationBucket((step.endedAt ?? Date.now()) - (step.startedAt ?? Date.now())),
+        tokens_bucket: tokensBucket((step.usage?.inTokens ?? 0) + (step.usage?.outTokens ?? 0)),
+        // how much a review actually caught - only the COUNT, never a finding
+        findings_count:
+          stepDef.role === "review" ? countBucket(parseFindings(step.output).findings.length) : undefined,
+      });
       if (stepDef.type === "agent") collectManual(run, step);
       // Bounded self-healing (before the human gate): a review step whose
       // verdict matches its trigger auto-revises its target with the findings
@@ -645,6 +677,23 @@ async function replayRange(
 }
 
 /** The nearest agent step before index i - the step a gate's revision re-runs. */
+/** Reduce a failure to one of a fixed set of causes. The raw output is never
+ * transmitted; only which bucket it fell into, so failures can be ranked
+ * without exposing what the agent was working on. */
+function classifyFailure(output: string): string {
+  const t = output.slice(-4000).toLowerCase();
+  if (/timed out|timeout/.test(t)) return "timeout";
+  if (/aborted by user/.test(t)) return "user_abort";
+  if (/enoent|not recognized|command not found|is not installed/.test(t)) return "cli_missing";
+  if (/not logged in|unauthorized|authentication|invalid api key|401/.test(t)) return "auth";
+  if (/rate limit|quota|429|too many requests/.test(t)) return "rate_limit";
+  if (/permission denied|read-only|denied/.test(t)) return "permission";
+  if (/invalid model|unknown model|model not found/.test(t)) return "bad_model";
+  if (/econnreset|enotfound|network|socket hang up/.test(t)) return "network";
+  if (/exit [1-9]/.test(t)) return "nonzero_exit";
+  return "other";
+}
+
 function nearestAgentIndex(def: WorkflowDef, i: number): number {
   for (let j = i - 1; j >= 0; j--) {
     if (def.steps[j].type === "agent") return j;
