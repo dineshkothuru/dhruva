@@ -12,6 +12,16 @@ import WorkflowBuilder, { type BuilderSeed } from "@/components/workflows/Workfl
 import RequirementCards, { parseRequirements, ReqBody } from "@/components/workflows/RequirementCards";
 import { parseFindings, type Finding } from "@/lib/findings";
 
+
+/** Visual identity per role - icon tile tint, what it means, which steps use it. */
+const ROLE_META: Record<string, { icon: string; tint: string; blurb: string; steps: string[] }> = {
+  read: { icon: "🔍", tint: "bg-sky-100 text-sky-700", blurb: "investigates code and documents before anything changes", steps: ["locate", "plan", "assess"] },
+  design: { icon: "📐", tint: "bg-indigo-100 text-indigo-700", blurb: "authors designs, specs, and documents", steps: ["analyse", "spec", "write-doc"] },
+  implement: { icon: "🛠️", tint: "bg-slate-200 text-slate-700", blurb: "writes the code and tests", steps: ["implement"] },
+  review: { icon: "🧐", tint: "bg-amber-100 text-amber-700", blurb: "adversarially critiques designs and diffs", steps: ["design-review", "review"] },
+  trace: { icon: "🎯", tint: "bg-emerald-100 text-emerald-700", blurb: "verifies every requirement is covered", steps: ["coverage-check", "traceability"] },
+};
+
 const SEV_STYLE: Record<Finding["severity"], { border: string; chip: string }> = {
   critical: { border: "border-l-red-500", chip: "bg-red-100 text-red-700" },
   important: { border: "border-l-amber-400", chip: "bg-amber-100 text-amber-700" },
@@ -1228,16 +1238,22 @@ export default function WorkflowsPane({
                   />
                   Default agent - preselected for chat and every new run
                 </label>
-                <div className="mt-3 grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {STEP_ROLES.map((role) => {
                     const val = cfg[role]?.trim() ?? "";
                     const set = !!val;
-                    // must be an exact CLI model slug - the server DROPS
-                    // anything else, so warn loudly instead of failing silently
                     const invalid = set && !/^[A-Za-z0-9._-]{1,60}$/.test(val);
+                    const rm = ROLE_META[role];
+                    const autoModel = s?.tiers?.[ROLE_TIER[role]] || "cli default";
                     return (
-                      <label key={role} className="block">
-                        <span className="text-[11px] font-medium text-slate-500">{ROLE_LABEL[role]}</span>
+                      <div key={role} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md">
+                        <div className="flex items-center gap-2">
+                          <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-sm ${rm.tint}`}>{rm.icon}</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-slate-800">{ROLE_LABEL[role]}</p>
+                            <p className="truncate text-[10px] text-slate-400">{rm.blurb}</p>
+                          </div>
+                        </div>
                         <input
                           value={cfg[role] ?? ""}
                           list={`models-${roleTab}`}
@@ -1249,16 +1265,8 @@ export default function WorkflowsPane({
                           }}
                           onBlur={(e) => {
                             let v = e.target.value.trim();
-                            // model ids are case-sensitive at the CLI - when the
-                            // typed value matches a known id except for case,
-                            // auto-correct instead of failing at run time
-                            const known = [
-                              ...(s?.models ?? []).map((m) => m.id),
-                              ...loadCustomModels(roleTab),
-                            ].filter(Boolean);
-                            const match = known.find(
-                              (id) => id.toLowerCase() === v.toLowerCase() && id !== v,
-                            );
+                            const known = [...(s?.models ?? []).map((m) => m.id), ...loadCustomModels(roleTab)].filter(Boolean);
+                            const match = known.find((id) => id.toLowerCase() === v.toLowerCase() && id !== v);
                             if (match) {
                               v = match;
                               const all = loadRoles();
@@ -1266,39 +1274,36 @@ export default function WorkflowsPane({
                               saveRoles(all);
                               setRoleCfg(all);
                             }
-                            // a completed custom id becomes a suggestion everywhere
-                            if (v && !known.includes(v)) {
-                              addCustomModel(roleTab, v);
-                            }
+                            if (v && !known.includes(v)) addCustomModel(roleTab, v);
                           }}
-                          placeholder={s?.tiers?.[ROLE_TIER[role]] || "cli default"}
+                          placeholder={autoModel}
                           spellCheck={false}
-                          className={`mt-1 block w-full rounded-lg border px-2.5 py-1.5 font-mono text-[11px] outline-none focus:border-slate-400 ${
-                            invalid
-                              ? "border-red-400 bg-red-50/50"
-                              : set
-                                ? "border-sky-200 bg-sky-50/40"
-                                : "border-slate-200"
+                          className={`mt-2.5 block w-full rounded-lg border px-2.5 py-1.5 font-mono text-[11px] outline-none focus:border-slate-400 ${
+                            invalid ? "border-red-400 bg-red-50/50" : set ? "border-sky-200 bg-sky-50/40" : "border-slate-200"
                           }`}
                         />
-                        {invalid && (
-                          <span className="mt-0.5 block text-[10px] font-medium text-red-600">
-                            not a model id (letters/digits/dots/dashes only - no spaces) - would
-                            be IGNORED at run time
-                          </span>
-                        )}
-                      </label>
+                        <p className="mt-1 text-[9px] text-slate-400">
+                          {invalid ? (
+                            <span className="font-semibold text-red-600">not a model id (no spaces) - would be IGNORED</span>
+                          ) : set ? (
+                            <span className="text-sky-600">your setting</span>
+                          ) : (
+                            <>auto · {autoModel}</>
+                          )}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1 border-t border-slate-100 pt-1.5">
+                          {rm.steps.map((st) => (
+                            <span key={st} className="rounded bg-slate-100 px-1.5 py-px font-mono text-[9px] text-slate-500">{st}</span>
+                          ))}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               </div>
             );
           })()}
-          <p className="text-[10px] text-slate-400">
-            Roles → steps: Read/investigate = locate, plan, assess · Design/author = analyse, spec,
-            write-doc · Implement = implement (all workflows) · Review = design-review, code review ·
-            Trace/coverage = coverage-check, traceability.
-          </p>
+
         </div>
       </details>
 
