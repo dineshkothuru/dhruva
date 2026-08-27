@@ -85,6 +85,10 @@ export default function DiffPane({
 
   const isNew = data.before === null;
   const isDeleted = data.after === null;
+  // Identical sides render as a blank diff, which reads as "broken" rather
+  // than "nothing changed". Say which two states were compared, so the user
+  // can tell an empty diff from a failed one.
+  const identical = !isNew && !isDeleted && data.before === data.after;
 
   return (
     <div className="flex h-full flex-col">
@@ -164,6 +168,24 @@ export default function DiffPane({
         </div>
       </div>
       <div className="min-h-0 flex-1">
+        {identical ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
+            <Icon.ok size={20} strokeWidth={1.75} className="text-slate-300" />
+            <p className="text-xs font-medium text-slate-600">No differences</p>
+            <p className="max-w-sm text-[11px] leading-relaxed text-slate-500">
+              {base
+                ? "This file is identical between the run's baseline and its result."
+                : "This file is identical to the last snapshot, so nothing has changed since."}
+              {!base && (
+                <>
+                  {" "}
+                  If you expected to see a historical run&apos;s changes, that run has no pinned
+                  commits - only runs recorded after diff pinning was added can be replayed.
+                </>
+              )}
+            </p>
+          </div>
+        ) : (
         <MonacoDiff
           height="100%"
           language={lang}
@@ -195,6 +217,7 @@ export default function DiffPane({
             diffWordWrap: "on",
           }}
         />
+        )}
       </div>
     </div>
   );

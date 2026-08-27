@@ -1445,6 +1445,13 @@ export default function WorkflowsPane({
               )}
               {s.id === "changes" && run.changes && run.changes.length > 0 && (
                 <div className="border-t border-slate-100 px-4 py-2">
+                  {!run.baseCommit && (
+                    <p className="mb-1.5 flex items-start gap-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] leading-relaxed text-amber-800">
+                      <Icon.warn size={12} strokeWidth={1.75} className="mt-0.5 shrink-0" />
+                      This run has no pinned commits, so its diffs cannot be replayed. Opening a
+                      file compares it against the latest snapshot instead.
+                    </p>
+                  )}
                   {run.changes.map((c) => (
                     <button
                       key={c.file}
