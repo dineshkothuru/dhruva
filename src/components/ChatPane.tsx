@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { loadDefaultAgent } from "@/lib/agentStore";
 import type { AgentId } from "@/lib/agents";
 import { estimateUsage, formatUsage } from "@/lib/pricing";
 import { classifyChain, classifyIntake, matchCatalog } from "@/lib/intake";
 import { contextSummary, type ChatTurn } from "@/lib/chatContext";
+import { isEmptyThread, type StoredMsg } from "@/lib/chatStore";
 import { rolesFor } from "@/lib/roleStore";
 import ChainProposalCard, { type ChainSlot, type WfLite } from "@/components/ChainProposalCard";
 import { Icon } from "@/components/icons";
@@ -17,9 +18,25 @@ interface Msg {
   changes?: { file: string; status: string }[];
   usage?: string;
   /** proposal: the task text + suggested workflow awaiting the user's choice */
-  proposal?: { taskText: string; workflow: string; title: string; reason: string; resolved?: string };
+  proposal?: {
+    taskText: string;
+    workflow: string;
+    title: string;
+    reason: string;
+    resolved?: string;
+    /** the run this card started - kept structured so a reopened thread
+     * can still link to it, and so the agent can be told about it */
+    runId?: string;
+  };
   /** chain: a multi-workflow plan awaiting the user's shaping + confirmation */
-  chain?: { taskText: string; reason: string; slots: ChainSlot[]; auto?: boolean; resolved?: string };
+  chain?: {
+    taskText: string;
+    reason: string;
+    slots: ChainSlot[];
+    auto?: boolean;
+    resolved?: string;
+    runId?: string;
+  };
 }
 
 interface AgentStatus {
@@ -32,6 +49,14 @@ interface AgentStatus {
 
 const AGENT_ORDER: AgentId[] = ["copilot", "claude", "codex", "cursor"];
 const CUSTOM = "__custom__";
+
+function threadIdKey(root: string) {
+  return `${chatKey(root)}.threadId`;
+}
+
+function newThreadId() {
+  return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
 
 function chatKey(root: string) {
   return `sfdh.chat.${root.trim().replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase()}`;
@@ -92,6 +117,17 @@ export default function ChatPane({
       return [];
     }
   });
+  // Threads are files under .dhruva/chats. The id identifies the CURRENT one;
+  // starting a new chat just mints a new id, so nothing is ever deleted.
+  const [threadId, setThreadId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(threadIdKey(root)) || newThreadId();
+    } catch {
+      return newThreadId();
+    }
+  });
+  const [threads, setThreads] = useState<{ id: string; title: string; updatedAt: number }[]>([]);
+  const [showThreads, setShowThreads] = useState(false);
   const [running, setRunning] = useState(false);
   const [attachments, setAttachments] = useState<{ rel: string; name: string }[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -157,6 +193,40 @@ export default function ChatPane({
     };
   }, []);
 
+  const refreshThreads = useCallback(async () => {
+    try {
+      const r = await fetch("/api/chats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list", root }),
+      });
+      const d = await r.json();
+      if (Array.isArray(d.threads)) setThreads(d.threads);
+    } catch {
+      /* history is a convenience; chat still works without it */
+    }
+  }, [root]);
+
+  useEffect(() => {
+    void refreshThreads();
+  }, [refreshThreads]);
+
+  // write the thread to disk once it settles - .dhruva/chats survives a
+  // cleared browser, unlike the localStorage copy which is only a fast cache
+  useEffect(() => {
+    if (running || isEmptyThread(messages as unknown as StoredMsg[])) return;
+    const id = setTimeout(() => {
+      void fetch("/api/chats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", root, id: threadId, messages: toPersistable(messages) }),
+      })
+        .then(() => refreshThreads())
+        .catch(() => {});
+    }, 1200);
+    return () => clearTimeout(id);
+  }, [messages, running, root, threadId, refreshThreads]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     // Persist the transcript (skip mid-stream churn: only when not running).
@@ -218,6 +288,13 @@ export default function ChatPane({
     await runAgentChat(prompt, true, attached);
   }
 
+  /** Runs kicked off from this thread, newest last. */
+  function startedRunIds(): string[] {
+    return messages
+      .map((m) => m.chain?.runId ?? m.proposal?.runId)
+      .filter((x): x is string => !!x);
+  }
+
   /** The conversation so far, as the agent should see it. Proposal and
    * changes rows are UI furniture, not dialogue. */
   function priorTurns(): ChatTurn[] {
@@ -226,19 +303,48 @@ export default function ChatPane({
       .map((m) => ({ role: m.role as ChatTurn["role"], text: m.text }));
   }
 
-  /** Start a fresh thread. Without this the transcript - and so the context
-   * carried on every message - only ever grew. */
+  function rememberThreadId(id: string) {
+    setThreadId(id);
+    try {
+      localStorage.setItem(threadIdKey(root), id);
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  /** Start a fresh thread. The current conversation is already saved under
+   * .dhruva/chats and stays there - this only mints a new id. */
   function newChat() {
     if (running) return;
-    if (messages.length > 0 && !confirm("Start a new chat? The current conversation is cleared.")) {
-      return;
-    }
+    rememberThreadId(newThreadId());
     setMessages([]);
     setAttachments([]);
+    setShowThreads(false);
     try {
       localStorage.removeItem(chatKey(root));
     } catch {
       /* best-effort */
+    }
+    void refreshThreads();
+  }
+
+  /** Reopen an earlier conversation from disk. */
+  async function openThread(id: string) {
+    if (running) return;
+    setShowThreads(false);
+    try {
+      const r = await fetch("/api/chats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", root, id }),
+      });
+      if (!r.ok) return;
+      const t = await r.json();
+      if (!Array.isArray(t.messages)) return;
+      rememberThreadId(id);
+      setMessages(t.messages as Msg[]);
+    } catch {
+      /* leave the current thread alone on failure */
     }
   }
 
@@ -269,6 +375,9 @@ export default function ChatPane({
           // the CLIs keep no session, so the conversation travels with the
           // request; the server bounds and fences it
           history: priorTurns(),
+          // runs this conversation started, so the agent can answer questions
+          // about how they went
+          runIds: startedRunIds(),
           model: models[agent] ?? status?.[agent]?.models?.[0]?.id ?? "",
           attachments: attached,
         }),
@@ -384,17 +493,19 @@ export default function ChatPane({
         markProposal(msgIndex, `failed: ${String(data.error ?? "could not start workflow")}`);
         return;
       }
-      markProposal(msgIndex, `started ${workflowId} run ${data.runId}`);
+      markProposal(msgIndex, `started ${workflowId}`, String(data.runId));
       onRunStarted?.(String(data.runId));
     } catch (e) {
       setMessages((m) => [...m, { role: "system", text: String(e) }]);
     }
   }
 
-  function markProposal(msgIndex: number, resolved: string) {
+  function markProposal(msgIndex: number, resolved: string, runId?: string) {
     setMessages((m) =>
       m.map((msg, i) =>
-        i === msgIndex && msg.proposal ? { ...msg, proposal: { ...msg.proposal, resolved } } : msg,
+        i === msgIndex && msg.proposal
+          ? { ...msg, proposal: { ...msg.proposal, resolved, runId: runId ?? msg.proposal.runId } }
+          : msg,
       ),
     );
   }
@@ -423,9 +534,13 @@ export default function ChatPane({
     );
   }
 
-  function markChain(msgIndex: number, resolved: string) {
+  function markChain(msgIndex: number, resolved: string, runId?: string) {
     setMessages((m) =>
-      m.map((msg, i) => (i === msgIndex && msg.chain ? { ...msg, chain: { ...msg.chain, resolved } } : msg)),
+      m.map((msg, i) =>
+        i === msgIndex && msg.chain
+          ? { ...msg, chain: { ...msg.chain, resolved, runId: runId ?? msg.chain.runId } }
+          : msg,
+      ),
     );
   }
 
@@ -468,9 +583,10 @@ export default function ChatPane({
       markChain(
         msgIndex,
         links.length > 1
-          ? `chain started - "${links[0].title}" is running (run ${data.runId}); the next phase starts automatically when it finishes clean` +
+          ? `chain started - "${links[0].title}" is running; the next phase starts automatically when it finishes clean` +
             (ch.auto ? ". Unattended: the AI gatekeeper will clear the gates (audited) and escalate to you only when unsure" : "")
-          : `started ${links[0].title} (run ${data.runId})`,
+          : `started ${links[0].title}`,
+        String(data.runId),
       );
       onRunStarted?.(String(data.runId));
     } catch (e) {
@@ -521,12 +637,56 @@ export default function ChatPane({
             </span>
           ) : null;
         })()}
-        {messages.length > 0 && (
+        {threads.length > 0 && (
+          <div className="relative ml-1 shrink-0">
+            <button
+              onClick={() => setShowThreads((v) => !v)}
+              className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 hover:border-slate-300 hover:text-slate-800"
+              title="Earlier conversations, stored with the project under .dhruva/chats"
+            >
+              <Icon.history size={11} strokeWidth={1.75} />
+              History
+              <span className="text-slate-400">{threads.length}</span>
+            </button>
+            {showThreads && (
+              <>
+                <button
+                  className="fixed inset-0 z-30 cursor-default"
+                  aria-label="Close history"
+                  onClick={() => setShowThreads(false)}
+                />
+                <div className="absolute right-0 z-40 mt-1 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                  <p className="border-b border-slate-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    Earlier conversations
+                  </p>
+                  <div className="max-h-72 overflow-y-auto">
+                    {threads.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => void openThread(t.id)}
+                        className={`block w-full border-b border-slate-50 px-3 py-2 text-left last:border-0 hover:bg-slate-50 ${
+                          t.id === threadId ? "bg-slate-50" : ""
+                        }`}
+                      >
+                        <span className="block truncate text-xs text-slate-700">{t.title}</span>
+                        <span className="mt-0.5 block text-[10px] text-slate-400">
+                          {new Date(t.updatedAt).toLocaleString()}
+                          {t.id === threadId ? " \u00b7 current" : ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+        {!isEmptyThread(messages as unknown as StoredMsg[]) && (
           <button
             onClick={newChat}
             disabled={running}
             className="ml-1 flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 hover:border-slate-300 hover:text-slate-800 disabled:opacity-40"
-            title="Clear this conversation and start fresh"
+            title="Start a fresh conversation - this one is kept under .dhruva/chats and stays in History"
           >
             <Icon.add size={11} strokeWidth={2} />
             New chat

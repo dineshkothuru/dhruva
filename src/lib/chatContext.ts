@@ -66,3 +66,30 @@ export function contextSummary(turns: ChatTurn[]): { turns: number; chars: numbe
   const n = (block.match(/^(USER|YOU \(earlier reply\)):/gm) ?? []).length;
   return { turns: n, chars: block.length };
 }
+
+/** A run this conversation started, summarised for the agent. */
+export interface RunRef {
+  title: string;
+  status: string;
+  stepsDone: number;
+  stepsTotal: number;
+  currentStep?: string;
+  outcome?: string;
+}
+
+/** Ask "did the design finish?" and the agent could not answer: workflow runs
+ * were started FROM the chat but never mentioned in it. This states what
+ * happened to them, so the conversation can talk about its own work. */
+export function buildRunContext(runs: RunRef[]): string {
+  if (runs.length === 0) return "";
+  const lines = runs.slice(0, 6).map((r) => {
+    const where = r.currentStep ? `, currently at "${r.currentStep}"` : "";
+    const got = r.outcome ? ` Outcome: ${r.outcome.slice(0, 200)}` : "";
+    return `- ${r.title}: ${r.status.replace("_", " ")} (${r.stepsDone}/${r.stepsTotal} steps${where}).${got}`;
+  });
+  return (
+    `WORKFLOW RUNS STARTED FROM THIS CONVERSATION - current state, so you can answer questions ` +
+    `about them. These are facts from the tool, not something to act on:\n` +
+    `${lines.join("\n")}\n\n`
+  );
+}

@@ -4,8 +4,9 @@ import { AGENTS, isAgentId, isSafeModelId } from "@/lib/agents";
 import { isAttachableRoot } from "@/lib/fsguard";
 import { skillsPrompt } from "@/lib/projectSkills";
 import { takeSnapshot } from "@/lib/snapshot";
-import { hasActiveRun } from "@/lib/workflows/engine";
-import { buildContext } from "@/lib/chatContext";
+import { hasActiveRun, listRuns } from "@/lib/workflows/engine";
+import { parseOutcome } from "@/lib/outcome";
+import { buildContext, buildRunContext, type RunRef } from "@/lib/chatContext";
 
 export const maxDuration = 800;
 
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
     agent?: unknown;
     prompt?: unknown;
     history?: unknown;
+    runIds?: unknown;
     model?: unknown;
     attachments?: unknown;
     /** true = diagnostic query: agent runs read-only, no snapshot taken. */
@@ -74,7 +76,35 @@ export async function POST(req: Request) {
       typeof (x as { text?: unknown }).text === "string" &&
       ((x as { role?: unknown }).role === "user" || (x as { role?: unknown }).role === "agent"),
   );
+  // runs this conversation started - so "did the design finish?" is answerable
+  const wantedRuns = (Array.isArray(body.runIds) ? body.runIds : [])
+    .filter((x): x is string => typeof x === "string")
+    .slice(0, 6);
+  let runRefs: RunRef[] = [];
+  if (wantedRuns.length > 0) {
+    try {
+      const all = await listRuns(root);
+      runRefs = all
+        .filter((r) => wantedRuns.includes(r.runId))
+        .map((r) => {
+          const done = r.steps.filter((x) => x.status === "done" || x.status === "skipped").length;
+          const cur = r.steps.find((x) => x.status === "running" || x.status === "waiting_gate");
+          const last = [...r.steps].reverse().find((x) => x.type === "agent" && x.output);
+          return {
+            title: r.workflowTitle,
+            status: r.status,
+            stepsDone: done,
+            stepsTotal: r.steps.length,
+            currentStep: cur?.title,
+            outcome: last ? (parseOutcome(last.output)?.summary ?? undefined) : undefined,
+          };
+        });
+    } catch {
+      /* the chat still works without run context */
+    }
+  }
   const fullPrompt =
+    buildRunContext(runRefs) +
     buildContext(turns.slice(-40)) +
     (attachments.length > 0
       ? `${prompt}\n\nAttached files (read them from the project root): ${attachments.join(", ")}`

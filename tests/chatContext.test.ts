@@ -5,6 +5,8 @@ import {
   MAX_CONTEXT_CHARS,
   MAX_TURNS,
   type ChatTurn,
+  buildRunContext,
+  type RunRef,
 } from "@/lib/chatContext";
 
 const t = (role: ChatTurn["role"], text: string): ChatTurn => ({ role, text });
@@ -81,5 +83,48 @@ describe("contextSummary", () => {
     const s = contextSummary([t("user", "a"), t("agent", "b"), t("user", "c")]);
     expect(s.turns).toBe(3);
     expect(s.chars).toBeGreaterThan(0);
+  });
+});
+
+
+/** A chain started from chat used to be invisible to that same chat: asking
+ * "did the design finish?" got a blank look. */
+describe("buildRunContext", () => {
+  const r = (over: Partial<RunRef> = {}): RunRef => ({
+    title: "Solution design",
+    status: "running",
+    stepsDone: 4,
+    stepsTotal: 13,
+    ...over,
+  });
+
+  it("says nothing when the conversation started no runs", () => {
+    expect(buildRunContext([])).toBe("");
+  });
+
+  it("reports progress so the agent can answer 'how far along is it?'", () => {
+    const block = buildRunContext([r({ currentStep: "Design critique" })]);
+    expect(block).toContain("Solution design");
+    expect(block).toContain("4/13 steps");
+    expect(block).toContain("Design critique");
+  });
+
+  it("carries the run's stated outcome when it has one", () => {
+    const block = buildRunContext([r({ status: "done", outcome: "17 requirement designs" })]);
+    expect(block).toContain("17 requirement designs");
+  });
+
+  it("normalises waiting_gate into something readable", () => {
+    expect(buildRunContext([r({ status: "waiting_gate" })])).toContain("waiting gate");
+  });
+
+  it("marks the block as facts, not instructions to act on", () => {
+    expect(buildRunContext([r()])).toContain("not something to act on");
+  });
+
+  it("bounds how many runs it will describe", () => {
+    const many = Array.from({ length: 20 }, (_, i) => r({ title: `wf${i}` }));
+    const block = buildRunContext(many);
+    expect(block.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(6);
   });
 });
