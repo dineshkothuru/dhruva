@@ -174,6 +174,9 @@ function StepBody({
   const coverage = output.match(/COVERAGE:\s*(COMPLETE|INCOMPLETE)[^\n]*/i);
   const parsed = parseFindings(output);
   const findingsCount = parsed.findings.length;
+  // per-requirement design blocks (analyse output) render as cards too
+  const reqFirst = output.search(/^### REQ-\d+/m);
+  const reqItems = reqFirst >= 0 ? parseRequirements(output) : [];
 
   const isTool = (t: string) =>
     /^[⚙●○◦]\s?/.test(t) || /^[│|├└╰]\s?/.test(t) || /^[Xx✗]\s+\S/.test(t) || /^\/\s?\S/.test(t);
@@ -197,8 +200,60 @@ function StepBody({
     }
     return out;
   };
-  const segs = buildSegs(parsed.before);
-  const trailingSegs = buildSegs(parsed.trailing);
+  let beforeText = parsed.before;
+  let trailingText = parsed.trailing;
+  if (reqItems.length > 0) {
+    beforeText = output.slice(0, reqFirst);
+    const tailM = output.match(/((?:\n\[(?:engine|agent error|exit)[^\n]*)+)\s*$/);
+    trailingText = tailM ? tailM[1] : "";
+  }
+  const segs = buildSegs(beforeText);
+  const trailingSegs = buildSegs(trailingText);
+
+  // ---- end-of-step summary: WHAT it did + WHAT it produced (deterministic)
+  const allTool = [...segs, ...trailingSegs]
+    .filter((s) => s.kind === "toolgroup")
+    .flatMap((s) => s.lines);
+  const didVerbs = new Map<string, number>();
+  for (const l of allTool) {
+    const m = l.match(/^[●⚙Xx✗]\s*([A-Za-z_-]+)/);
+    if (m) didVerbs.set(m[1], (didVerbs.get(m[1]) ?? 0) + 1);
+  }
+  const blockedN = allTool.filter((l) => /denied/i.test(l)).length;
+  const did =
+    [...didVerbs.entries()].map(([v, n]) => (n > 1 ? `${v} ×${n}` : v)).join(", ") +
+    (blockedN ? ` · ${blockedN} blocked by read-only rules` : "");
+  const produced: string[] = [];
+  if (reqItems.length > 0) {
+    const byStatus = new Map<string, number>();
+    for (const r of reqItems) byStatus.set(r.status, (byStatus.get(r.status) ?? 0) + 1);
+    produced.push(
+      `${reqItems.length} requirement designs (${[...byStatus.entries()].map(([s, n]) => `${n} ${s.toLowerCase()}`).join(", ")})`,
+    );
+  }
+  if (findingsCount > 0 && verdict) produced.push(`${findingsCount} findings · ${verdict[0]}`);
+  else if (verdict) produced.push(verdict[0]);
+  const covLines = output.match(/^\s*(?:(?:REQ|UC|UX)-\w+|\d+\.)[^\n]*?\b(COVERED|IMPLEMENTED|PARTIAL|MISSING|DIVERGES|SKIPPED)\b/gim) ?? [];
+  if (coverage && covLines.length > 0) {
+    const c = (w: string) => covLines.filter((l) => new RegExp(`\\b${w}\\b`, "i").test(l)).length;
+    const bits = [
+      c("COVERED") + c("IMPLEMENTED") ? `${c("COVERED") + c("IMPLEMENTED")} covered` : "",
+      c("PARTIAL") ? `${c("PARTIAL")} partial` : "",
+      c("MISSING") ? `${c("MISSING")} missing` : "",
+      c("DIVERGES") ? `${c("DIVERGES")} diverge` : "",
+    ].filter(Boolean);
+    produced.push(`${coverage[0]} (${bits.join(", ")})`);
+  } else if (coverage) produced.push(coverage[0]);
+  const taskMarks = output.match(/━━ (?:T|fix)-\d+ \((\d+)\/(\d+)\)/g) ?? [];
+  if (taskMarks.length > 0) {
+    const total = taskMarks[taskMarks.length - 1].match(/\/(\d+)\)/)?.[1];
+    produced.push(`${taskMarks.length}/${total ?? taskMarks.length} build-plan tasks executed`);
+  }
+  const filesLine = output.match(/FILES:\s*([^\n]+)/);
+  if (filesLine) produced.push(`${filesLine[1].split(",").length} file(s) named for retrieval`);
+  const uxBlocks = (output.match(/^UX-\d+/gm) ?? []).length;
+  if (uxBlocks > 0) produced.push(`${uxBlocks} UX component designs`);
+  const showSummary = !running && (did || produced.length > 0);
 
   return (
     <div className="relative border-t border-slate-100">
@@ -235,13 +290,66 @@ function StepBody({
           )}
         </div>
       )}
-      {[...segs, ...(findingsCount > 0 ? [{ kind: "cards" as const, lines: [] }] : []), ...trailingSegs].map((seg, i) => {
+      {[
+        ...segs,
+        ...(findingsCount > 0 ? [{ kind: "cards" as const, lines: [] }] : []),
+        ...(reqItems.length > 0 ? [{ kind: "reqcards" as const, lines: [] }] : []),
+        ...trailingSegs,
+        ...(showSummary ? [{ kind: "summary" as const, lines: [] }] : []),
+      ].map((seg, i) => {
         if (seg.kind === "cards") {
           return (
             <div key={`cards-${i}`} className="space-y-2 py-1">
               {parsed.findings.map((f) => (
                 <FindingCard key={f.id} f={f} />
               ))}
+            </div>
+          );
+        }
+        if (seg.kind === "reqcards") {
+          return (
+            <div key={`reqs-${i}`} className="space-y-1.5 py-1">
+              {reqItems.map((r) => (
+                <details key={r.id} className="rounded-lg border border-slate-200 bg-white">
+                  <summary className="flex cursor-pointer flex-wrap items-center gap-1.5 px-3 py-1.5">
+                    <span className="font-mono text-[10px] text-slate-400">{r.id}</span>
+                    <span className="text-xs font-semibold text-slate-800">{r.title}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase ${
+                        r.status.toUpperCase() === "ALREADY IMPLEMENTED"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : r.status.toUpperCase() === "PARTIAL"
+                            ? "bg-amber-50 text-amber-700"
+                            : "bg-sky-50 text-sky-700"
+                      }`}
+                    >
+                      {r.status}
+                    </span>
+                  </summary>
+                  <pre className="whitespace-pre-wrap break-words border-t border-slate-100 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
+                    {r.body}
+                  </pre>
+                </details>
+              ))}
+            </div>
+          );
+        }
+        if (seg.kind === "summary") {
+          return (
+            <div key={`sum-${i}`} className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+                Step summary
+              </p>
+              {did && (
+                <p className="mt-1 text-[11px] text-slate-600">
+                  <span className="font-semibold">Did:</span> {did}
+                </p>
+              )}
+              {produced.length > 0 && (
+                <p className="mt-0.5 text-[11px] text-slate-600">
+                  <span className="font-semibold">Produced:</span> {produced.join(" · ")}
+                </p>
+              )}
             </div>
           );
         }
@@ -314,11 +422,47 @@ function StepBody({
             </details>
           );
         }
-        return seg.lines.map((t, n) => (
-          <p key={`${i}-${n}`} className="text-xs leading-relaxed text-slate-700">
-            {t}
-          </p>
-        ));
+        return seg.lines.map((t, n) => {
+          // task-loop section markers become visual dividers
+          const task = t.match(/^━+\s*((?:T|fix)-\d+)\s*\((\d+)\/(\d+)\):\s*(.*?)\s*━*$/);
+          if (task) {
+            return (
+              <div key={`${i}-${n}`} className="mt-2 flex items-center gap-2 border-t border-slate-200 pt-2">
+                <span className="rounded-full bg-slate-800 px-2 py-0.5 font-mono text-[10px] font-semibold text-white">
+                  {task[1]}
+                </span>
+                <span className="text-xs font-semibold text-slate-700">{task[4]}</span>
+                <span className="ml-auto text-[10px] text-slate-400">
+                  task {task[2]} of {task[3]}
+                </span>
+              </div>
+            );
+          }
+          // coverage/traceability verdict lines get status chips
+          const cov = t.match(/^\s*((?:REQ|UC|UX)-\w+|\d+\.)\s*[:.\-\s]*(.*?)\s*[-—:]*\s*\b(COVERED|IMPLEMENTED|PARTIAL|MISSING|DIVERGES|SKIPPED)\b(.*)$/i);
+          if (cov) {
+            const st = cov[3].toUpperCase();
+            const chip =
+              st === "COVERED" || st === "IMPLEMENTED"
+                ? "bg-emerald-100 text-emerald-700"
+                : st === "PARTIAL" || st === "SKIPPED"
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-red-100 text-red-700";
+            return (
+              <p key={`${i}-${n}`} className="flex flex-wrap items-baseline gap-1.5 text-xs leading-relaxed text-slate-700">
+                <span className="font-mono text-[10px] font-semibold text-slate-500">{cov[1].replace(/\.$/, "")}</span>
+                <span>{cov[2]}</span>
+                <span className={`rounded-full px-1.5 py-px text-[9px] font-semibold ${chip}`}>{st}</span>
+                {cov[4] && <span className="text-slate-500">{cov[4].trim()}</span>}
+              </p>
+            );
+          }
+          return (
+            <p key={`${i}-${n}`} className="text-xs leading-relaxed text-slate-700">
+              {t}
+            </p>
+          );
+        });
       })}
       {running && (
         <p className="pt-1 text-[11px] text-slate-400">
