@@ -118,7 +118,12 @@ export default function ProjectSkills({
     setError(null);
     setBusy(true);
     try {
-      const slug = name.trim().toLowerCase().replace(/\s+/g, "-");
+      const slug = name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60);
       const r = await fetch("/api/skills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

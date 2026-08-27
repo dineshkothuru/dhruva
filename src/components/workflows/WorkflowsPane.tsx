@@ -226,7 +226,11 @@ function StepBody({
   const findingsCount = parsed.findings.length;
   // per-requirement design blocks (analyse output) render as cards too
   const reqFirst = output.search(/^### REQ-\d+/m);
-  const reqItems = reqFirst >= 0 ? parseRequirements(output) : [];
+  // req blocks end where the findings begin - otherwise the LAST req card
+  // swallows the whole findings text into its DESIGN field
+  const findFirst = output.search(/^\*{0,2}F\d+[\s:(]/m);
+  const reqSource = findFirst > reqFirst && findFirst >= 0 ? output.slice(0, findFirst) : output;
+  const reqItems = reqFirst >= 0 ? parseRequirements(reqSource) : [];
 
   const isTool = (t: string) =>
     /^[⚙●○◦]\s?/.test(t) || /^[│|├└╰]\s?/.test(t) || /^[Xx✗]\s+\S/.test(t) || /^\/\s?\S/.test(t);
@@ -350,8 +354,8 @@ function StepBody({
         if (seg.kind === "cards") {
           return (
             <div key={`cards-${i}`} className="space-y-2 py-1">
-              {parsed.findings.map((f) => (
-                <FindingCard key={f.id} f={f} />
+              {parsed.findings.map((f, fi) => (
+                <FindingCard key={`${f.id}-${fi}`} f={f} />
               ))}
             </div>
           );
@@ -406,7 +410,7 @@ function StepBody({
         if (seg.kind === "exit") {
           const ok = seg.lines[0] === "[exit 0]";
           return (
-            <div key={i} className="pt-1">
+            <div key={`exit-${i}`} className="pt-1">
               <span
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                   ok ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
@@ -422,7 +426,7 @@ function StepBody({
           const bad = /abort|error|timed out|failed|killed/i.test(t);
           return (
             <p
-              key={i}
+              key={`eng-${i}-${seg.lines[0].slice(0, 24)}`}
               className={`rounded px-2 py-1 text-[11px] ${
                 bad ? "bg-red-50 text-red-700" : "bg-slate-50 text-slate-500"
               }`}
@@ -444,7 +448,7 @@ function StepBody({
             [...verbs.entries()].map(([v, n]) => (n > 1 ? `${v} ×${n}` : v)).join(", ") ||
             `${seg.lines.length} line${seg.lines.length === 1 ? "" : "s"}`;
           return (
-            <details key={i} open={running} className="rounded-lg border border-slate-100 bg-slate-50">
+            <details key={`tool-${i}-${seg.lines[0].slice(0, 24)}`} open={running} className="rounded-lg border border-slate-100 bg-slate-50">
               <summary className="cursor-pointer px-2 py-1 text-[11px] text-slate-400 hover:text-slate-600">
                 🔧 {summary}
                 {denials.length > 0 && (
@@ -553,7 +557,8 @@ export default function WorkflowsPane({
   const [explain, setExplain] = useState<Record<string, string>>({});
   const [explaining, setExplaining] = useState<string | null>(null);
 
-  async function explainFailure(stepId: string, stepTitle: string, output: string) {
+  async function explainFailure(rawStepId: string, stepTitle: string, output: string) {
+    const stepId = `${run?.runId}:${rawStepId}`;
     if (explaining) return;
     setExplaining(stepId);
     setExplain((e) => ({ ...e, [stepId]: "" }));
@@ -1008,8 +1013,8 @@ export default function WorkflowsPane({
                         </p>
                         {gateParsed.findings.length > 0 ? (
                           <div className="mt-2 max-h-96 space-y-2 overflow-y-auto">
-                            {gateParsed.findings.map((f) => (
-                              <FindingCard key={f.id} f={f} />
+                            {gateParsed.findings.map((f, fi) => (
+                              <FindingCard key={`${f.id}-${fi}`} f={f} />
                             ))}
                           </div>
                         ) : (
@@ -1141,13 +1146,13 @@ export default function WorkflowsPane({
               )}
               {s.status === "failed" && s.output && (
                 <div className="border-t border-slate-100 px-4 py-2">
-                  {explain[s.id] === undefined ? (
+                  {explain[`${run.runId}:${s.id}`] === undefined ? (
                     <button
                       onClick={() => explainFailure(s.id, s.title, s.output)}
                       disabled={explaining !== null}
                       className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40"
                     >
-                      {explaining === s.id ? "Diagnosing…" : "🛟 Explain & suggest fix"}
+                      {explaining === `${run.runId}:${s.id}` ? "Diagnosing…" : "🛟 Explain & suggest fix"}
                     </button>
                   ) : (
                     <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
@@ -1155,7 +1160,7 @@ export default function WorkflowsPane({
                         Diagnosis ({agent})
                       </p>
                       <pre className="whitespace-pre-wrap break-words text-xs text-slate-700">
-                        {explain[s.id] || "analysing…"}
+                        {explain[`${run.runId}:${s.id}`] || "analysing…"}
                       </pre>
                     </div>
                   )}

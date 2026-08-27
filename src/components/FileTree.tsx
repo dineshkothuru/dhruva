@@ -202,6 +202,7 @@ export default function FileTree({
       return;
     }
     setSearching(true);
+    setResults(null); // a NEW query must not leave the previous results clickable
     debounce.current = setTimeout(async () => {
       try {
         const res = await fetch("/api/search", {

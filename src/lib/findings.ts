@@ -22,11 +22,11 @@ export function parseFindings(text: string): {
   findings: Finding[];
   trailing: string;
 } {
-  const first = text.search(/\*{0,2}F\d+[\s:(]/);
+  const first = text.search(/^\*{0,2}F\d+[\s:(]/m);
   if (first === -1) return { before: text, findings: [], trailing: "" };
   const before = text.slice(0, first);
   const rest = text.slice(first);
-  const parts = rest.split(/(?=\*{0,2}F\d+[\s:(])/).filter((p) => p.trim());
+  const parts = rest.split(/(?=^\*{0,2}F\d+[\s:(])/m).filter((p) => p.trim());
   const findings: Finding[] = [];
   let trailing = "";
   for (const p of parts) {
@@ -43,7 +43,7 @@ export function parseFindings(text: string): {
     const body = p;
     const grab = (label: string) =>
       strip(
-        body.match(new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n\\s*(?:Where|Problem|Fix):|\\n\\s*\\*{0,2}F\\d+[\\s:(]|\\nVERDICT:|\\n\\[|$)`))?.[1] ?? "",
+        body.match(new RegExp(`${label}:\\s*([\\s\\S]*?)(?=\\n\\s*(?:Where|Problem|Fix):|\\n\\s*\\*{0,2}F\\d+[\\s:(]|\\nVERDICT:|\\n\\[(?:exit|engine|agent error)|$)`))?.[1] ?? "",
       );
     // whatever follows the Fix that is verdict/exit/engine noise goes to trailing
     const tail = body.match(/\n(VERDICT:[\s\S]*|\[exit[\s\S]*)/);
