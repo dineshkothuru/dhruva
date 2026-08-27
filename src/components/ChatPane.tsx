@@ -5,6 +5,7 @@ import { loadDefaultAgent } from "@/lib/agentStore";
 import type { AgentId } from "@/lib/agents";
 import { estimateUsage, formatUsage } from "@/lib/pricing";
 import { classifyChain, classifyIntake, matchCatalog } from "@/lib/intake";
+import type { LlmIntake } from "@/lib/intakeLlm";
 import { contextSummary, type ChatTurn } from "@/lib/chatContext";
 import { isEmptyThread, type StoredMsg } from "@/lib/chatStore";
 import { findRelatedRuns, type RelatedRun } from "@/lib/relatedRuns";
@@ -166,6 +167,8 @@ export default function ChatPane({
   // full workflow catalog (standard + custom) - powers the proposal dropdowns
   // and lets the intake suggest the team's own workflows by name
   const [wfCatalog, setWfCatalog] = useState<WfLite[] | null>(null);
+  // true while the model is deciding which workflow(s) the message needs
+  const [routing, setRouting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -278,7 +281,83 @@ export default function ChatPane({
       role: "user",
       text: prompt + (attached.length ? `\nAttached: ${attachments.map((a) => a.name).join(", ")}` : ""),
     };
-    // multi-phase intent ("design and implement") proposes a workflow CHAIN
+    // Ask the model what this request needs. It picks from the catalog and the
+    // server validates every id against it, so it can only choose, never
+    // invent. 204 means no usable answer (CLI missing, garbage, timeout) and we
+    // fall back to the keyword classifier below; an empty list is a real answer
+    // ("this is a question") and goes straight to chat.
+    let llm: LlmIntake | null = null;
+    let llmAnswered = false;
+    setRouting(true);
+    try {
+      const res = await fetch("/api/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root, agent, text: prompt, attachments: attached }),
+      });
+      if (res.ok && res.status !== 204) {
+        llm = (await res.json()) as LlmIntake;
+        llmAnswered = true;
+      }
+    } catch {
+      /* offline or route unavailable - the keyword classifier still works */
+    } finally {
+      setRouting(false);
+    }
+
+    if (llm && llm.workflows.length > 1) {
+      setInput("");
+      setAttachments([]);
+      setMessages((m) => [
+        ...m,
+        userMsg,
+        {
+          role: "chain",
+          text: "",
+          chain: {
+            taskText,
+            reason: llm!.reason,
+            slots: llm!.workflows,
+            related: findRelatedRuns(prompt, runs),
+          },
+        },
+      ]);
+      return;
+    }
+    if (llm && llm.workflows.length === 1) {
+      const only = llm.workflows[0];
+      setInput("");
+      setAttachments([]);
+      setMessages((m) => [
+        ...m,
+        userMsg,
+        {
+          role: "proposal",
+          text: "",
+          proposal: {
+            taskText,
+            workflow: only.workflow,
+            title: only.title,
+            reason: llm!.reason,
+            related: findRelatedRuns(prompt, runs),
+          },
+        },
+      ]);
+      return;
+    }
+    if (llmAnswered) {
+      // the model read it and said it is a question - honour that instead of
+      // letting the keyword classifier over-match it into a workflow
+      setInput("");
+      setAttachments([]);
+      await runAgentChat(prompt, true, attached);
+      return;
+    }
+
+    // FALLBACK ONLY (no usable answer from the router): the deterministic
+    // keyword classifier. Kept for offline use and when the CLI is not
+    // installed; it is why "Pls design and implement" once proposed
+    // implement-tdd, so it is no longer the primary path.
     const chainProposal = classifyChain(prompt);
     if (chainProposal) {
       setInput("");
@@ -1023,10 +1102,10 @@ export default function ChatPane({
           />
           <button
             onClick={send}
-            disabled={running || !input.trim() || !current?.installed}
+            disabled={running || routing || !input.trim() || !current?.installed}
             className="self-end rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-40"
           >
-            {running ? "Running…" : "Send"}
+            {running ? "Running…" : routing ? "Reading…" : "Send"}
           </button>
         </div>
       </div>
