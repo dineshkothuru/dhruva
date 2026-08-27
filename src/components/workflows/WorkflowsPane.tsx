@@ -95,6 +95,8 @@ function StepBody({
   running: boolean;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
+  // structured view by default; the toggle shows the untouched raw trace
+  const [raw, setRaw] = useState(false);
   useEffect(() => {
     if (running) boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight });
   }, [output, running]);
@@ -125,26 +127,71 @@ function StepBody({
     );
   }
 
+  // ---- agent trace: structured for humans. Narration stays prominent; tool
+  // activity collapses into groups; denials are highlighted; a verdict banner
+  // summarizes review steps at the top. All deterministic parsing.
   const lines = output.split("\n");
+  const verdict = output.match(/VERDICT:\s*(APPROVED|READY|BLOCKED)[^\n]*/i);
+  const coverage = output.match(/COVERAGE:\s*(COMPLETE|INCOMPLETE)[^\n]*/i);
+  const findingsCount = (output.match(/\*{0,2}F\d+[\s:(]/g) ?? []).length;
+
+  const isTool = (t: string) =>
+    /^[⚙●○◦]\s?/.test(t) || /^[│|├└╰]\s?/.test(t) || /^[Xx✗]\s+\S/.test(t) || /^\/\s?\S/.test(t);
+  type Seg = { kind: "text" | "engine" | "exit" | "toolgroup"; lines: string[] };
+  const segs: Seg[] = [];
+  for (const raw of lines) {
+    const t = raw.trimEnd();
+    if (!t) continue;
+    const kind: Seg["kind"] = /^\[exit -?\d+\]$/.test(t)
+      ? "exit"
+      : t.startsWith("[engine]") || t.startsWith("[agent error]")
+        ? "engine"
+        : isTool(t)
+          ? "toolgroup"
+          : "text";
+    const last = segs[segs.length - 1];
+    if (kind === "toolgroup" && last?.kind === "toolgroup") last.lines.push(t);
+    else segs.push({ kind, lines: [t] });
+  }
+
   return (
-    <div ref={boxRef} className="max-h-80 space-y-0.5 overflow-y-auto border-t border-slate-100 px-4 py-3">
-      {lines.map((line, i) => {
-        const t = line.trimEnd();
-        if (!t) return null;
-        if (t.startsWith("⚙")) {
-          return (
-            <div
-              key={i}
-              className="flex items-center gap-1.5 rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-slate-500"
-            >
-              <span className="text-sky-500">⚙</span>
-              <span className="truncate">{t.slice(1).trim()}</span>
-            </div>
-          );
-        }
-        const exit = t.match(/^\[exit (-?\d+)\]$/);
-        if (exit) {
-          const ok = exit[1] === "0";
+    <div className="relative border-t border-slate-100">
+      <button
+        onClick={() => setRaw((v) => !v)}
+        className={`absolute right-2 top-1.5 z-10 rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+          raw
+            ? "border-slate-400 bg-slate-700 text-white"
+            : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
+        }`}
+        title="Toggle between the structured view and the agent's raw trace"
+      >
+        {raw ? "structured" : "raw trace"}
+      </button>
+      {raw ? (
+        <div ref={boxRef} className="max-h-80 overflow-y-auto">
+          <pre className="whitespace-pre-wrap break-words px-4 py-3 pr-20 font-mono text-[11px] text-slate-600">
+            {output}
+          </pre>
+        </div>
+      ) : (
+    <div ref={boxRef} className="max-h-80 space-y-1 overflow-y-auto px-4 py-3 pr-20">
+      {!running && (verdict || coverage) && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+            /BLOCKED|INCOMPLETE/i.test((verdict ?? coverage)![0])
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {(verdict ?? coverage)![0]}
+          {findingsCount > 0 && verdict && (
+            <span className="ml-2 font-normal">· {findingsCount} finding(s) detailed below</span>
+          )}
+        </div>
+      )}
+      {segs.map((seg, i) => {
+        if (seg.kind === "exit") {
+          const ok = seg.lines[0] === "[exit 0]";
           return (
             <div key={i} className="pt-1">
               <span
@@ -152,28 +199,65 @@ function StepBody({
                   ok ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
                 }`}
               >
-                {ok ? "completed" : `exited ${exit[1]}`}
+                {ok ? "completed" : seg.lines[0].replace(/[[\]]/g, "").replace("exit", "exited")}
               </span>
             </div>
           );
         }
-        if (t.startsWith("[engine]") || t.startsWith("[agent error]")) {
+        if (seg.kind === "engine") {
+          const t = seg.lines[0];
+          const bad = /abort|error|timed out|failed|killed/i.test(t);
           return (
-            <p key={i} className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">
+            <p
+              key={i}
+              className={`rounded px-2 py-1 text-[11px] ${
+                bad ? "bg-red-50 text-red-700" : "bg-slate-50 text-slate-500"
+              }`}
+            >
               {t}
             </p>
           );
         }
-        return (
-          <p key={i} className="text-xs leading-relaxed text-slate-700">
+        if (seg.kind === "toolgroup") {
+          const denials = seg.lines.filter((l) => /denied/i.test(l));
+          return (
+            <details key={i} open={running} className="rounded-lg border border-slate-100 bg-slate-50">
+              <summary className="cursor-pointer px-2 py-1 text-[11px] text-slate-400 hover:text-slate-600">
+                🔧 tool activity ({seg.lines.length} line{seg.lines.length === 1 ? "" : "s"})
+                {denials.length > 0 && (
+                  <span className="ml-2 rounded bg-amber-100 px-1.5 text-[9px] font-semibold text-amber-700">
+                    {denials.length} blocked by read-only rules
+                  </span>
+                )}
+              </summary>
+              <div className="space-y-0.5 px-2 pb-1.5">
+                {seg.lines.map((l, n) => (
+                  <p
+                    key={n}
+                    className={`truncate font-mono text-[10px] ${
+                      /denied/i.test(l) ? "text-amber-700" : "text-slate-500"
+                    }`}
+                    title={l}
+                  >
+                    {l}
+                  </p>
+                ))}
+              </div>
+            </details>
+          );
+        }
+        return seg.lines.map((t, n) => (
+          <p key={`${i}-${n}`} className="text-xs leading-relaxed text-slate-700">
             {t}
           </p>
-        );
+        ));
       })}
       {running && (
         <p className="pt-1 text-[11px] text-slate-400">
           <span className="mr-1 inline-block animate-pulse text-sky-500">●</span> working…
         </p>
+      )}
+    </div>
       )}
     </div>
   );
