@@ -547,6 +547,50 @@ export default function WorkflowsPane({
             </dl>
           </details>
         )}
+        {/* the journey at a glance: where the run is, what's left, where the
+            human comes in (gates marked). Pure render - zero tokens. */}
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <div className="flex flex-wrap items-center gap-y-2">
+            {run.steps.map((s, i) => (
+              <span key={s.id} className="flex items-center">
+                {i > 0 && <span className="mx-1 h-px w-3 bg-slate-200" />}
+                <span
+                  className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                    s.status === "done"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : s.status === "running"
+                        ? "border-sky-300 bg-sky-50 text-sky-700 ring-2 ring-sky-100"
+                        : s.status === "waiting_gate"
+                          ? "border-amber-300 bg-amber-50 text-amber-700 ring-2 ring-amber-100"
+                          : s.status === "failed"
+                            ? "border-red-200 bg-red-50 text-red-600"
+                            : s.status === "skipped"
+                              ? "border-slate-100 bg-slate-50 text-slate-300 line-through"
+                              : "border-slate-200 bg-white text-slate-400"
+                  }`}
+                  title={`${s.title} (${s.type}) - ${s.status}`}
+                >
+                  {s.type === "gate" ? "🙋" : s.status === "done" ? "✓" : s.status === "failed" ? "✗" : s.status === "running" ? "●" : "○"}
+                  <span className="max-w-24 truncate">{s.id}</span>
+                </span>
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            {(() => {
+              const cur = run.steps.find((s) => s.status === "running" || s.status === "waiting_gate");
+              const doneN = run.steps.filter((s) => s.status === "done" || s.status === "skipped").length;
+              if (run.status === "done") return "Run complete - every step finished.";
+              if (run.status === "failed" || run.status === "aborted")
+                return "Run stopped - use Resume to continue from the first incomplete step.";
+              if (cur?.status === "waiting_gate")
+                return `🙋 YOUR decision: "${cur.title}" - the run is paused until you act (${doneN}/${run.steps.length} steps done).`;
+              if (cur) return `Working: "${cur.title}" (${doneN}/${run.steps.length} steps done). 🙋 marks where you decide.`;
+              return `${doneN}/${run.steps.length} steps done.`;
+            })()}
+          </p>
+        </div>
+
         <div className="space-y-2">
           {run.steps.map((s) => (
             <details
