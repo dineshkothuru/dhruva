@@ -1214,9 +1214,9 @@ export default function WorkflowsPane({
                 >
                   <button
                     onClick={() => setRun(head)}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-slate-50"
+                    className="flex w-full flex-wrap items-center gap-x-2.5 gap-y-1 px-3 py-2 text-left text-xs hover:bg-slate-50"
                   >
-                    <span className="font-medium">
+                    <span className="min-w-0 flex-1 truncate font-medium">
                       {isChain ? plan!.map((c) => c.title).join(" -> ") : head.workflowTitle}
                     </span>
                     {isChain && (
@@ -1226,16 +1226,20 @@ export default function WorkflowsPane({
                         {plan!.length}
                       </span>
                     )}
-                    <span className="text-slate-400">
+                    <span className="hidden shrink-0 text-slate-400 sm:inline">
                       {new Date(head.createdAt).toLocaleString()}
                     </span>
                     <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
                       {head.agent}
                       {head.model ? ` \u00b7 ${head.model}` : ""}
                     </span>
-                    {cost > 0 && <span className="text-[11px] text-slate-400">{fmtCost(cost)}</span>}
+                    {cost > 0 && (
+                      <span className="hidden shrink-0 text-[11px] text-slate-400 md:inline">
+                        {fmtCost(cost)}
+                      </span>
+                    )}
                     <span
-                      className={`ml-auto text-[11px] font-semibold uppercase ${
+                      className={`ml-auto shrink-0 text-[11px] font-semibold uppercase ${
                         state === "done"
                           ? "text-emerald-600"
                           : state === "running" || state === "waiting_gate"

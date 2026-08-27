@@ -5,6 +5,7 @@ import { loadDefaultAgent } from "@/lib/agentStore";
 import type { AgentId } from "@/lib/agents";
 import { estimateUsage, formatUsage } from "@/lib/pricing";
 import { classifyChain, classifyIntake, matchCatalog } from "@/lib/intake";
+import { contextSummary, type ChatTurn } from "@/lib/chatContext";
 import { rolesFor } from "@/lib/roleStore";
 import ChainProposalCard, { type ChainSlot, type WfLite } from "@/components/ChainProposalCard";
 import { Icon } from "@/components/icons";
@@ -217,6 +218,30 @@ export default function ChatPane({
     await runAgentChat(prompt, true, attached);
   }
 
+  /** The conversation so far, as the agent should see it. Proposal and
+   * changes rows are UI furniture, not dialogue. */
+  function priorTurns(): ChatTurn[] {
+    return messages
+      .filter((m) => (m.role === "user" || m.role === "agent") && m.text.trim())
+      .map((m) => ({ role: m.role as ChatTurn["role"], text: m.text }));
+  }
+
+  /** Start a fresh thread. Without this the transcript - and so the context
+   * carried on every message - only ever grew. */
+  function newChat() {
+    if (running) return;
+    if (messages.length > 0 && !confirm("Start a new chat? The current conversation is cleared.")) {
+      return;
+    }
+    setMessages([]);
+    setAttachments([]);
+    try {
+      localStorage.removeItem(chatKey(root));
+    } catch {
+      /* best-effort */
+    }
+  }
+
   /** Plain agent chat (streaming) - also the "just chat" path of a proposal. */
   async function runAgentChat(prompt: string, addUserMsg: boolean, attached: string[] = []) {
     if (running) return;
@@ -241,6 +266,9 @@ export default function ChatPane({
           root,
           agent,
           prompt,
+          // the CLIs keep no session, so the conversation travels with the
+          // request; the server bounds and fences it
+          history: priorTurns(),
           model: models[agent] ?? status?.[agent]?.models?.[0]?.id ?? "",
           attachments: attached,
         }),
@@ -481,6 +509,29 @@ export default function ChatPane({
             </button>
           );
         })}
+        {(() => {
+          const ctx = contextSummary(priorTurns());
+          return ctx.turns > 0 ? (
+            <span
+              className="ml-2 hidden shrink-0 items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500 md:flex"
+              title={`The agent is sent the last ${ctx.turns} message(s) of this conversation (~${(ctx.chars / 1000).toFixed(1)}k chars) so follow-up questions make sense. Start a new chat to clear it.`}
+            >
+              <Icon.chain size={11} strokeWidth={1.75} className="text-slate-400" />
+              {ctx.turns} in context
+            </span>
+          ) : null;
+        })()}
+        {messages.length > 0 && (
+          <button
+            onClick={newChat}
+            disabled={running}
+            className="ml-1 flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 hover:border-slate-300 hover:text-slate-800 disabled:opacity-40"
+            title="Clear this conversation and start fresh"
+          >
+            <Icon.add size={11} strokeWidth={2} />
+            New chat
+          </button>
+        )}
         {current?.installed && current.models?.length > 0 && (
           <div className="ml-auto flex items-center gap-1.5">
             {isCustomModel && (

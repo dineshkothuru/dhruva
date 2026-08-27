@@ -5,6 +5,7 @@ import { isAttachableRoot } from "@/lib/fsguard";
 import { skillsPrompt } from "@/lib/projectSkills";
 import { takeSnapshot } from "@/lib/snapshot";
 import { hasActiveRun } from "@/lib/workflows/engine";
+import { buildContext } from "@/lib/chatContext";
 
 export const maxDuration = 800;
 
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
     root?: unknown;
     agent?: unknown;
     prompt?: unknown;
+    history?: unknown;
     model?: unknown;
     attachments?: unknown;
     /** true = diagnostic query: agent runs read-only, no snapshot taken. */
@@ -62,10 +64,22 @@ export async function POST(req: Request) {
   // project knowledge rides chat tasks too - AFTER the task so copilot's
   // inline-prompt truncation can never eat the user's ask
   const { block: skillsBlock } = await skillsPrompt(root).catch(() => ({ block: "" }));
+  // The CLIs are one-shot processes with no session to resume, so a
+  // conversation only exists if we carry it in the prompt. Bounded and fenced
+  // by buildContext; the client posts the raw turns.
+  const turns = (Array.isArray(body.history) ? body.history : []).filter(
+    (x): x is { role: "user" | "agent"; text: string } =>
+      !!x &&
+      typeof x === "object" &&
+      typeof (x as { text?: unknown }).text === "string" &&
+      ((x as { role?: unknown }).role === "user" || (x as { role?: unknown }).role === "agent"),
+  );
   const fullPrompt =
+    buildContext(turns.slice(-40)) +
     (attachments.length > 0
       ? `${prompt}\n\nAttached files (read them from the project root): ${attachments.join(", ")}`
-      : prompt) + skillsBlock;
+      : prompt) +
+    skillsBlock;
   const readOnly = body.readOnly === true;
   const { args, viaStdin } = def.build(fullPrompt, model, readOnly);
   if (body.agent === "copilot") {
