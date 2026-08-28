@@ -498,6 +498,17 @@ export default function WorkflowsPane({
           >
             <span className={`mr-1 inline-flex h-1.5 w-1.5 rounded-full ${run.status === "running" ? "animate-pulse bg-sky-500" : run.status === "waiting_gate" ? "animate-pulse bg-amber-500" : run.status === "done" ? "bg-emerald-500" : "bg-red-400"}`} />{run.status.replace("_", " ")}
           </span>
+          {/* A run that found the requirement already satisfied ends "done"
+              having deliberately built nothing. Without saying so, an emerald
+              DONE badge reads as a successful build and deploy. */}
+          {run.noWork && (
+            <span
+              className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-600"
+              title="The design found the requirement already satisfied, so nothing was implemented, validated or deployed."
+            >
+              no changes needed
+            </span>
+          )}
           {run.autoGate && (
             <span
               className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-700"
@@ -538,6 +549,99 @@ export default function WorkflowsPane({
               ⟳ Resume run
             </button>
           )}
+          {/* A run that died after the implement step leaves half-finished
+              edits behind. The shadow store already holds the pre-run state, so
+              undoing them is one command - it just had no button.
+
+              Two scopes, because a rebaseline step moves the diff base after an
+              org refresh: "changes" is what the run reports having changed and
+              keeps the retrieved org files; "run" goes back to before the run
+              began and drops them too. The second only appears when a
+              rebaseline actually moved the base, so it is offered exactly when
+              it would do something different. */}
+          {(run.status === "failed" || run.status === "aborted") &&
+            (run.changes?.length ?? 0) > 0 && (
+              <button
+                onClick={async () => {
+                  const n = run.changes?.length ?? 0;
+                  if (
+                    !confirm(
+                      "Put " +
+                        n +
+                        " file(s) back to the state this run measured its changes against?" +
+                        " Files this run created are deleted; files it edited are restored" +
+                        " from that snapshot. This cannot be undone.",
+                    )
+                  ) {
+                    return;
+                  }
+                  const { ok, data } = await api({ action: "restore", root, runId: run.runId });
+                  if (!ok) {
+                    alert(String(data.error ?? "could not restore the files"));
+                    return;
+                  }
+                  const restored = (data.restored as string[] | undefined)?.length ?? 0;
+                  const removed = (data.removed as string[] | undefined)?.length ?? 0;
+                  const failed = (data.failed as { file: string }[] | undefined) ?? [];
+                  const NL = String.fromCharCode(10);
+                  const summary = [
+                    restored + " file(s) restored, " + removed + " created file(s) deleted.",
+                  ];
+                  if (failed.length) {
+                    summary.push("", failed.length + " could not be put back:");
+                    for (const f of failed) summary.push("  " + f.file);
+                  }
+                  alert(summary.join(NL));
+                  await fetchRunState(run.runId);
+                }}
+                className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+                title="Restore the files this run reports changing, from the snapshot it measured them against. Files retrieved from the org are kept."
+              >
+                ↺ Undo file changes
+              </button>
+            )}
+          {(run.status === "failed" || run.status === "aborted") &&
+            !!run.startCommit &&
+            !!run.baseCommit &&
+            run.startCommit !== run.baseCommit && (
+              <button
+                onClick={async () => {
+                  if (
+                    !confirm(
+                      "Put the whole project back to how it was BEFORE this run started?" +
+                        " This also undoes the org refresh the run performed, so files it" +
+                        " retrieved from the org are removed too. This cannot be undone.",
+                    )
+                  ) {
+                    return;
+                  }
+                  const { ok, data } = await api({
+                    action: "restore",
+                    root,
+                    runId: run.runId,
+                    scope: "run",
+                  });
+                  if (!ok) {
+                    alert(String(data.error ?? "could not restore the files"));
+                    return;
+                  }
+                  const restored = (data.restored as string[] | undefined)?.length ?? 0;
+                  const removed = (data.removed as string[] | undefined)?.length ?? 0;
+                  const NL = String.fromCharCode(10);
+                  alert(
+                    [
+                      "Back to the state before the run started.",
+                      restored + " file(s) restored, " + removed + " file(s) removed.",
+                    ].join(NL),
+                  );
+                  await fetchRunState(run.runId);
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                title="Go further back: the project as it was before this run began, including undoing the org refresh"
+              >
+                ↺ …and the org refresh
+              </button>
+            )}
         </div>
         <p className="mb-3 text-[11px] text-slate-500">
           <span className="mr-2 rounded-md bg-slate-100 px-1.5 py-0.5 font-medium">

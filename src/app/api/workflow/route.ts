@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { changesSince, restoreFiles } from "@/lib/snapshot";
 import path from "node:path";
 import { isAttachableRoot } from "@/lib/fsguard";
 import { isAgentId } from "@/lib/agents";
@@ -21,6 +22,7 @@ import {
   resolveGate,
   resumeRun,
   startRun,
+  hasActiveRun,
 } from "@/lib/workflows/engine";
 
 /** Workflow control plane.
@@ -115,6 +117,65 @@ export async function POST(req: Request) {
     return NextResponse.json({ runs: await listRuns(root) });
   }
 
+  /** Put a failed or aborted run's file changes back.
+   *
+   * A run that dies after the implement step leaves half-finished edits in the
+   * project, and undoing them by hand from a change list - with no record of
+   * what the files looked like before - was the only way out, even though the
+   * shadow store had been holding that exact state the whole time.
+   *
+   * Only for a run that has FINISHED badly. A running run is still writing, and
+   * restoring under it would fight the agent; a successful run's changes are the
+   * point of the run and are not undone here. */
+  if (b.action === "restore") {
+    if (typeof b.runId !== "string") {
+      return NextResponse.json({ error: "runId required" }, { status: 400 });
+    }
+    if (hasActiveRun(root)) {
+      return NextResponse.json(
+        { error: "a run is in progress - stop it before restoring files" },
+        { status: 409 },
+      );
+    }
+    const run = (await listRuns(root)).find((r) => r.runId === b.runId);
+    if (!run) return NextResponse.json({ error: "no such run" }, { status: 404 });
+    if (run.status !== "failed" && run.status !== "aborted") {
+      return NextResponse.json(
+        { error: `this run is "${run.status}" - only a failed or aborted run can be restored` },
+        { status: 400 },
+      );
+    }
+    // Two honest reference points, because a rebaseline step deliberately moves
+    // the diff base after an org refresh:
+    //   "changes" -> baseCommit: exactly what the run reports having changed.
+    //                The org files the retrieve pulled down are KEPT.
+    //   "run"     -> startCommit: the project as it was before the run began,
+    //                which also undoes that org refresh.
+    // Default to "changes": it matches the list the user is looking at, and it
+    // is the less destructive of the two.
+    const wholeRun = b.scope === "run";
+    const commit = wholeRun ? (run.startCommit ?? run.baseCommit) : run.baseCommit;
+    if (!commit) {
+      return NextResponse.json(
+        { error: "this run has no baseline snapshot to restore from" },
+        { status: 400 },
+      );
+    }
+    // Undoing the whole run means every file that moved since it started, not
+    // just the ones its own change list names - the retrieve's files are not in
+    // that list precisely because the rebaseline excluded them.
+    const files = wholeRun
+      ? ((await changesSince(root, commit)) ?? []).map((c) => c.file)
+      : (run.changes ?? []).map((c) => c.file);
+    if (files.length === 0) {
+      return NextResponse.json({ restored: [], removed: [], failed: [], note: "no changes to undo" });
+    }
+    return NextResponse.json({
+      ...(await restoreFiles(root, commit, files)),
+      scope: wholeRun ? "run" : "changes",
+    });
+  }
+
   if (b.action === "resume") {
     if (typeof b.runId !== "string") {
       return NextResponse.json({ error: "runId required" }, { status: 400 });
@@ -138,7 +199,10 @@ export async function POST(req: Request) {
   }
 
   if (b.action === "pending") {
-    return NextResponse.json({ pendingGates: pendingGateCount(root) });
+    return NextResponse.json({
+      pendingGates: pendingGateCount(root),
+      activeRun: hasActiveRun(root),
+    });
   }
 
   if (b.action === "save-custom") {
@@ -245,7 +309,21 @@ export async function POST(req: Request) {
       chain ? 0 : undefined,
       b.autoGate === true,
     );
-    if (!run) return NextResponse.json({ error: "could not start run" }, { status: 500 });
+    if (!run) {
+      // startRun refuses a second run on a project: one working tree and one
+      // snapshot store, neither divisible between two runs.
+      if (hasActiveRun(root)) {
+        return NextResponse.json(
+          {
+            error:
+              "a run is already active on this project - wait for it to finish, or stop it first. " +
+              "Two runs would edit the same files and each would report the other's changes.",
+          },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ error: "could not start run" }, { status: 500 });
+    }
     return NextResponse.json({ runId: run.runId });
   }
 
