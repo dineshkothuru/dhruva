@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import pkg from "../../package.json";
 import type { DetectionResult } from "@/lib/types";
 import FileTree from "@/components/FileTree";
+import OrgBrowser from "@/components/OrgBrowser";
 import ProjectSkills from "@/components/ProjectSkills";
 import ProjectSettingsPanel from "@/components/ProjectSettingsPanel";
 import TeamStandards from "@/components/TeamStandards";
@@ -91,6 +92,15 @@ export default function Home() {
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [jumpToRun, setJumpToRun] = useState<string | null>(null);
   const [activeFile, setActiveFile] = useState<string | null>(null);
+  // Which side of the project the sidebar shows: the local folder, or the org.
+  const [treeSide, setTreeSide] = useState<"local" | "org">("local");
+  // Bumped after an org retrieve writes files, to remount the local tree so
+  // the newly downloaded metadata actually appears without a manual refresh.
+  const [treeNonce, setTreeNonce] = useState(0);
+  // Stable identity on purpose: OrgBrowser holds this in effect dependencies,
+  // and an inline arrow would re-fire them on every render of this page - which
+  // polls, so that is several times a second.
+  const refreshLocalTree = useCallback(() => setTreeNonce((n) => n + 1), []);
 
   function openFile(rel: string) {
     setOpenFiles((fs) => (fs.includes(rel) ? fs : [...fs, rel]));
@@ -285,6 +295,9 @@ export default function Home() {
   // gate indicator: poll the cheap in-memory count so an approval waiting on
   // a human never sits unnoticed while they're in the editor or chat
   const [pendingGates, setPendingGates] = useState(0);
+  // Whether a run holds the working tree. The Org Browser pauses downloads
+  // while it does, so retrieved files are never counted as the run's own work.
+  const [runActive, setRunActive] = useState(false);
   useEffect(() => {
     if (!connected || !result?.path) return;
     const root = result.path;
@@ -292,7 +305,10 @@ export default function Home() {
     const tick = async () => {
       try {
         const { ok, data } = await postJson("/api/workflow", { action: "pending", root });
-        if (!cancelled && ok) setPendingGates(Number(data.pendingGates ?? 0));
+        if (!cancelled && ok) {
+          setPendingGates(Number(data.pendingGates ?? 0));
+          setRunActive(data.activeRun === true);
+        }
       } catch {
         /* indicator is best-effort */
       }
@@ -501,19 +517,50 @@ export default function Home() {
 
           {result && connected && (
             <div className="mt-4">
-              <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">
-                Files
+              {/* Local is what is on disk, Org is what Salesforce holds. On a
+                  brownfield project those differ, and which one you are looking
+                  at has to be unambiguous - hence a tab, not a toggle. */}
+              <div className="mb-1.5 flex items-center gap-1 border-b border-slate-200">
+                {(["local", "org"] as const).map((side) => (
+                  <button
+                    key={side}
+                    onClick={() => setTreeSide(side)}
+                    className={`-mb-px border-b-2 px-2 py-1 text-xs font-medium transition-colors ${
+                      treeSide === side
+                        ? "border-indigo-500 text-indigo-700"
+                        : "border-transparent text-slate-400 hover:text-slate-700"
+                    }`}
+                    title={
+                      side === "local"
+                        ? "Files in this project folder"
+                        : "Metadata in the connected org - click any row to download it"
+                    }
+                  >
+                    {side === "local" ? "Local" : "Org"}
+                  </button>
+                ))}
               </div>
-              <FileTree
-                key={result.path}
-                root={result.path}
-                onOpenFile={openFile}
-                selected={activeFile}
-                defaultDir={
-                  result.packageDirectories?.find((d) => d.default)?.path ??
-                  result.packageDirectories?.[0]?.path
-                }
-              />
+
+              {treeSide === "local" ? (
+                <FileTree
+                  key={result.path + ":" + treeNonce}
+                  root={result.path}
+                  onOpenFile={openFile}
+                  selected={activeFile}
+                  defaultDir={
+                    result.packageDirectories?.find((d) => d.default)?.path ??
+                    result.packageDirectories?.[0]?.path
+                  }
+                  onRefresh={refreshLocalTree}
+                />
+              ) : (
+                <OrgBrowser
+                  key={result.path}
+                  root={result.path}
+                  onRetrieved={refreshLocalTree}
+                  runActive={runActive}
+                />
+              )}
             </div>
           )}
 

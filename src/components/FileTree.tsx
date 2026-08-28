@@ -166,10 +166,14 @@ export default function FileTree({
   onOpenFile,
   selected,
   defaultDir,
+  onRefresh,
 }: {
   root: string;
   onOpenFile: (rel: string) => void;
   selected: string | null;
+  /** Re-read the folder from disk - for a file written outside the app. Sits
+   * beside the search box, in the same place as the Org tab's refresh. */
+  onRefresh?: () => void;
   /** The project's default package directory (e.g. "force-app") - expanded
    * on load along with its main/default chain. */
   defaultDir?: string;
@@ -234,13 +238,24 @@ export default function FileTree({
 
   return (
     <div className="pb-4">
-      <input
-        value={query}
-        onChange={(e) => onQueryChange(e.target.value)}
-        placeholder="Search files…"
-        spellCheck={false}
-        className="mb-2 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-slate-400"
-      />
+      <div className="mb-2 flex items-center gap-1">
+        <input
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Search files…"
+          spellCheck={false}
+          className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-slate-400"
+        />
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            className="shrink-0 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+            title="Re-read this folder from disk"
+          >
+            ↻
+          </button>
+        )}
+      </div>
 
       {query.trim().length >= 2 ? (
         searching && results === null ? (

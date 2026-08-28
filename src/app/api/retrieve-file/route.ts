@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { isAttachableRoot, resolveInside } from "@/lib/fsguard";
+import { hasActiveRun } from "@/lib/workflows/engine";
 
 /** Retrieve ONE source file fresh from the connected org (the VS Code
  * "SFDX: Retrieve Source from Org" parity for the editor).
@@ -22,6 +23,16 @@ export async function POST(req: Request) {
   if (!rel || !resolveInside(root, rel)) {
     return NextResponse.json({ error: "path escapes the project" }, { status: 400 });
   }
+  // Same reason the Org Browser pauses: a retrieve mid-run writes into the
+  // working tree the run is measuring, so the file lands in the run's own
+  // change list and may overwrite what a step is about to edit.
+  if (hasActiveRun(root)) {
+    return NextResponse.json(
+      { error: "a workflow run is in progress - retrieve is paused until it finishes" },
+      { status: 409 },
+    );
+  }
+
   // shell reaches cmd.exe - keep the arg free of metacharacters
   if (/["'`^&|<>%$;\r\n\t]/.test(rel)) {
     return NextResponse.json({ error: "invalid characters in path" }, { status: 400 });
