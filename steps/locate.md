@@ -4,6 +4,7 @@ title: Locate root cause (agent, read-only)
 type: agent
 role: read
 readOnly: true
+emits: work
 ---
 You are investigating a bug. DO NOT modify any files in this step.
 Bug report: {inputs.description}

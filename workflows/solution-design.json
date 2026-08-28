@@ -44,6 +44,10 @@
     "design-review",
     "approve-design",
     {
+      "use": "solution-design.work-check",
+      "as": "work-check"
+    },
+    {
       "use": "solution-design.ux-design",
       "as": "ux-design"
     },

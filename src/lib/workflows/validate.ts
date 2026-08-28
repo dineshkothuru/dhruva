@@ -8,6 +8,7 @@ const STEP_TYPES = new Set([
   "changes",
   "verify",
   "tasks-check",
+  "work-check",
 ]);
 const ROLES = new Set(["read", "design", "implement", "review", "trace"]);
 const SLUG = /^[a-z0-9][a-z0-9-]{1,40}$/;
@@ -97,7 +98,9 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
         step.artifact = s.artifact;
       }
       if (typeof s.reviewOf === "string" && SLUG.test(s.reviewOf)) step.reviewOf = s.reviewOf;
-      if (s.emits === "findings" || s.emits === "coverage") step.emits = s.emits;
+      if (s.emits === "findings" || s.emits === "coverage" || s.emits === "work") {
+        step.emits = s.emits;
+      }
     }
     if (s.type === "cli") {
       if (s.bin !== "sf" && s.bin !== "git") throw new Error(`cli step "${s.id}": bin must be sf or git`);

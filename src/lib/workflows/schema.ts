@@ -35,7 +35,8 @@ export type StepType =
   | "gate"
   | "changes"
   | "verify"
-  | "tasks-check";
+  | "tasks-check"
+  | "work-check";
 
 export interface StepDef {
   id: string;
@@ -92,7 +93,7 @@ export interface StepDef {
    * contract and produces nothing parseable fails loudly instead of degrading
    * to a text slice, which is how a review yielding zero findings once fed a
    * rework 4,000 characters of terminal trace. */
-  emits?: "findings" | "coverage";
+  emits?: "findings" | "coverage" | "work";
   /** agent (review steps): the id of the step whose artifact this reviews.
    * The ENGINE writes the parsed findings into that file's "## Review"
    * section, so the reviewer itself stays readOnly and never gains write
@@ -202,6 +203,18 @@ export interface RunState {
   steps: StepState[];
   /** Changed files as of the last "changes" step. */
   changes?: { file: string; status: string }[];
+  /** Set by a work-check step when the design leaves nothing to build. Every
+   * step after it is skipped and the run closes as "no changes needed". */
+  noWork?: boolean;
+  /** The state of the project when this run STARTED, recorded once and never
+   * moved.
+   *
+   * Distinct from baseCommit, which is the current diff base and is moved
+   * forward on purpose by a `rebaseline` step after an org refresh. Both are
+   * needed: the change list must exclude the retrieve's files, while undo needs
+   * somewhere to put the project back to. One field cannot do both - it did,
+   * and after a rebaseline the true pre-run state was simply gone. */
+  startCommit?: string;
   /** Shadow-git commits pinning this run's before/after states - historical
    * runs stay diffable after later runs re-baseline HEAD. */
   baseCommit?: string;

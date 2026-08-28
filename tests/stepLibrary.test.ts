@@ -17,8 +17,11 @@ beforeAll(() => {
  *
  * It was first captured BEFORE the library existed and proved the extraction
  * changed nothing - 94 inline definitions became library files referenced by 11
- * workflows with byte-identical results. It was then re-baselined once, for the
- * deliberate design-artifact change to `analyse` and `design-review`.
+ * workflows with byte-identical results. It has been re-baselined twice since,
+ * both times deliberately: for the design-artifact change to `analyse` and
+ * `design-review`, and for the work-check step added to every design phase
+ * (4 new steps, plus `emits: work` on `spec`, `locate` and `plan`; every prompt
+ * byte-identical, which is what the diff was read for before accepting it).
  *
  * From here it guards against accidental drift: edit a step file and this test
  * tells you exactly which workflow, step and field moved. Re-baseline only when
@@ -33,10 +36,10 @@ describe("the step library resolves to the agreed definitions", () => {
     }
   });
 
-  it("covers all 11 workflows and 94 step instances", async () => {
+  it("covers all 11 workflows and 98 step instances", async () => {
     const now = await builtinWorkflows();
     expect(Object.keys(now)).toHaveLength(11);
-    expect(Object.values(now).reduce((n, d) => n + d.steps.length, 0)).toBe(94);
+    expect(Object.values(now).reduce((n, d) => n + d.steps.length, 0)).toBe(98);
   });
 });
 

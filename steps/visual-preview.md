@@ -9,5 +9,6 @@ args:
   - app
 onlyIf: visualTest
 detached: true
+optional: true
 ---
 

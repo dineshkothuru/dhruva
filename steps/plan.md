@@ -4,6 +4,7 @@ title: Read the TDD and plan the build (agent, read-only)
 type: agent
 role: read
 readOnly: true
+emits: work
 ---
 Read the approved Technical Design Document at {inputs.tddPath} in this project. DO NOT modify any files in this step.
 Scope note from the requester (may narrow the work): {inputs.scope}

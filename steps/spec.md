@@ -4,6 +4,7 @@ title: Draft technical spec (agent, read-only)
 type: agent
 role: design
 readOnly: true
+emits: work
 ---
 Binary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.
 You are designing a Salesforce implementation for a requirement. DO NOT modify any files in this step.

@@ -52,6 +52,10 @@
       "as": "approve-plan"
     },
     {
+      "use": "implement-tdd.work-check",
+      "as": "work-check"
+    },
+    {
       "use": "retrieve-fresh",
       "title": "Retrieve fresh copies of files to be modified"
     },

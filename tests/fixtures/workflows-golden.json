@@ -41,13 +41,19 @@
         "type": "agent",
         "prompt": "You are investigating a bug. DO NOT modify any files in this step.\nBug report: {inputs.description}\nInvestigate the local codebase and report the diagnosis in EXACTLY this structure:\nSYMPTOMS: <what is broken - error messages, logs, observed behavior from the report>\nREPRODUCTION: <numbered steps that trigger it, ending in the observed failure; 'not reproducible locally' plus why, if so>\nEXPECTED vs ACTUAL: <one line each>\nEVIDENCE: <what you checked - classes read, automation traced, config examined>\nDATA FLOW: <trace from entry point to the failure point; where it diverges from expected>\nROOT CAUSE: <the actual cause, not a symptom or a guess - with the exact file and line/element reference. If you cannot establish it with evidence, say UNCONFIRMED and list the candidates>\nIMPACT: <severity critical/high/medium/low + which users/features are affected + since when if determinable, else 'unknown'>\nFIX PLAN: <the concrete fix for exactly this root cause, files to change, and the test that will prove it>\nUI BUGS (component not rendering, field missing, wrong layout, broken interaction): the sections still apply, read them as follows. DATA FLOW = the render/event path - flexipage/layout -> component -> wire/controller -> data -> conditional rendering, or click -> handler -> apex -> response. EVIDENCE = markup AND configuration: the component HTML/JS, field-level security, page layouts/flexipages and visibility filters, record types, validation rules, permission sets - many UI symptoms are config visibility, not code. You cannot see a browser: reason from the reported description/screenshots, mark REPRODUCTION as 'visual - verify via the Local Dev preview' where applicable, and say so when the root cause needs on-screen confirmation.\nEnd your reply with one line listing every involved file as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls, force-app/main/default/classes/ExampleTest.cls",
         "readOnly": true,
-        "role": "read"
+        "role": "read",
+        "emits": "work"
       },
       {
         "id": "approve-plan",
         "title": "Approve fix plan",
         "type": "gate",
         "message": "Review the root-cause analysis and fix plan above. Proceed with implementing it?"
+      },
+      {
+        "id": "work-check",
+        "title": "Is the bug still there to fix?",
+        "type": "work-check"
       },
       {
         "id": "retrieve-fresh",
@@ -159,6 +165,7 @@
           "dev",
           "app"
         ],
+        "optional": true,
         "detached": true,
         "onlyIf": "visualTest"
       },
@@ -249,13 +256,19 @@
         "type": "agent",
         "prompt": "Binary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.\nYou are designing a Salesforce implementation for a requirement. DO NOT modify any files in this step.\nRequirement: {inputs.requirement}\nStudy the existing codebase first (reuse existing classes/objects/patterns - never plan a parallel implementation of something that exists).\nReply in EXACTLY this structure:\n1. USE CASES - extract them from the requirement with stable ids:\n   UC-1: <title> - <actor> wants to <action> so that <outcome>.  (happy paths)\n   UC-E1: <title> - what happens when <error/edge condition>.    (error & edge cases - think bulk loads, missing permissions, null data, concurrent edits)\n2. SCOPE - 'In scope' bullet list and 'Out of scope' bullet list (with why), so the reviewer sees the boundary explicitly.\n3. TECHNICAL SPEC - (a) approach, (b) components to create or modify with exact API names, (c) test plan covering every UC id above.\n4. OPEN QUESTIONS - anything unresolved that could change the design ('none' if none).\nEnd your reply with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls",
         "readOnly": true,
-        "role": "design"
+        "role": "design",
+        "emits": "work"
       },
       {
         "id": "approve-spec",
         "title": "Approve technical spec",
         "type": "gate",
         "message": "Review the technical spec above. Proceed with implementation?"
+      },
+      {
+        "id": "work-check",
+        "title": "Anything left to build?",
+        "type": "work-check"
       },
       {
         "id": "retrieve-fresh",
@@ -376,6 +389,7 @@
           "dev",
           "app"
         ],
+        "optional": true,
         "detached": true,
         "onlyIf": "visualTest"
       },
@@ -459,13 +473,19 @@
         "type": "agent",
         "prompt": "Read the approved Technical Design Document at {inputs.tddPath} in this project. DO NOT modify any files in this step.\nScope note from the requester (may narrow the work): {inputs.scope}\nCross-check the TDD against the current codebase (components it references, reuse it assumes). If the TDD has a Build Plan section (task table T-1, T-2… with depends_on), use ITS order as the checklist; otherwise produce the implementation checklist in dependency order yourself. Either way: each component to create or modify, and flag anything in the TDD that no longer matches the codebase.\nEnd with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls",
         "readOnly": true,
-        "role": "read"
+        "role": "read",
+        "emits": "work"
       },
       {
         "id": "approve-plan",
         "title": "Approve the build plan",
         "type": "gate",
         "message": "Review the implementation checklist above (revise with instructions if the order or scope needs changing). Proceed with the build?"
+      },
+      {
+        "id": "work-check",
+        "title": "Anything left to build?",
+        "type": "work-check"
       },
       {
         "id": "retrieve-fresh",
@@ -590,6 +610,7 @@
           "dev",
           "app"
         ],
+        "optional": true,
         "detached": true,
         "onlyIf": "visualTest"
       },
@@ -879,6 +900,11 @@
         "type": "gate",
         "message": "HUMAN GATE - you are shown: (1) the per-requirement design cards, (2) the design critique's unresolved findings (red panel, with each affected card flagged 'reviewer objects'). Decide: approve as-is, reject/comment individual cards, use 'Revise with ALL findings' to adopt the critique wholesale, or type your own instructions. Only after your approval are the HLD/TDD documents written.",
         "reviseTarget": "analyse"
+      },
+      {
+        "id": "work-check",
+        "title": "Anything left to design for?",
+        "type": "work-check"
       },
       {
         "id": "ux-design",

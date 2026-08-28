@@ -36,6 +36,10 @@
     "spec",
     "approve-spec",
     {
+      "use": "feature-dev.work-check",
+      "as": "work-check"
+    },
+    {
       "use": "retrieve-fresh",
       "title": "Retrieve fresh copies of files to be modified"
     },

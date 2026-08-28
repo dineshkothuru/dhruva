@@ -39,6 +39,10 @@
       "as": "approve-plan"
     },
     {
+      "use": "bug-fix.work-check",
+      "as": "work-check"
+    },
+    {
       "use": "retrieve-fresh",
       "title": "Retrieve fresh copies of affected files from the org"
     },

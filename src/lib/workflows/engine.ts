@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import type { AgentId } from "@/lib/agents";
 import { AGENTS } from "@/lib/agents";
@@ -10,6 +10,8 @@ import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import { skillsPrompt } from "@/lib/projectSkills";
+import { workRemaining, WORK_INSTRUCTION } from "@/lib/workflows/workRemaining";
+import { resolveInside } from "@/lib/fsguard";
 import { OUTCOME_INSTRUCTION } from "@/lib/outcome";
 import { writeTranscript } from "@/lib/runTranscript";
 import { checkCoverage } from "./traceability";
@@ -159,7 +161,23 @@ export function startRun(
   chain?: ChainLink[],
   chainIndex?: number,
   autoGate?: boolean,
+  /** A chained phase inherits the previous phase's commits instead of taking
+   * its own baseline - see the snapshot step for why. */
+  inherit?: { baseCommit?: string; startCommit?: string },
 ): RunState | null {
+  // One project, one run at a time.
+  //
+  // Every run on a project shares one working tree and one snapshot store, and
+  // neither can be divided. Two runs editing the same files interfere directly:
+  // one agent's edit lands on top of the other's, and each run's change list -
+  // which the reviewer, verify-standards and the deploy all read - contains the
+  // other's files. Pinning each run to its own baseline commit fixed the
+  // bookkeeping, but no commit can separate work done in the same folder.
+  //
+  // The guard lives here rather than in the route so every caller is covered:
+  // the API, a chained next phase, and anything added later.
+  if (hasActiveRun(root)) return null;
+
   const run: RunState = {
     runId: randomUUID().slice(0, 12),
     workflowId: def.id,
@@ -180,6 +198,10 @@ export function startRun(
     })),
   };
   if (autoGate) run.autoGate = true;
+  if (inherit?.baseCommit) run.baseCommit = inherit.baseCommit;
+  // The chain's original "before" carries across every phase: a chain is one
+  // piece of work, so undo on phase 3 must still reach the state before phase 1.
+  if (inherit?.startCommit) run.startCommit = inherit.startCommit;
   void track("run_started", {
     workflow_id: def.id,
     agent,
@@ -405,6 +427,7 @@ async function fireChain(run: RunState) {
     chain.map((c) => ({ ...c })),
     idx + 1,
     run.autoGate,
+    { baseCommit: run.baseCommit, startCommit: run.startCommit ?? run.baseCommit },
   );
   if (next) {
     // same-tick after startRun (execute suspends at its first await), so this
@@ -414,6 +437,16 @@ async function fireChain(run: RunState) {
     }
     nextLink.runId = next.runId;
     note(`[engine] chain: started "${nextLink.title}" (run ${next.runId})`);
+    await persist(run);
+  } else {
+    // startRun refuses while another run holds the project. This run has
+    // already finished, so a refusal here means something else was started
+    // alongside it - say so rather than leaving the chain silently stalled with
+    // no explanation of why the next phase never appeared.
+    note(
+      `[engine] chain: could not start "${nextLink.title}" - another run is active on this ` +
+        `project. Start it again once that run finishes.`,
+    );
     await persist(run);
   }
 }
@@ -428,6 +461,15 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
     }
     if (stepDef.onlyIf && !run.inputs[stepDef.onlyIf]) {
       step.status = "skipped";
+      await persist(run);
+      continue;
+    }
+    // A work-check found the requirement already satisfied. Everything after it
+    // exists to build, verify or ship a change that is not going to be made -
+    // including the human gates, because there is nothing to approve.
+    if (run.noWork) {
+      step.status = "skipped";
+      step.output = "skipped - no changes needed (see the work check above)";
       await persist(run);
       continue;
     }
@@ -895,26 +937,95 @@ async function runStepTracked(run: RunState, def: StepDef, step: StepState): Pro
   return ok;
 }
 
+/** Backslashes to forward slashes. A char code rather than a regex literal:
+ * the escape in /\\/g has been silently eaten by tooling more than once
+ * in this file, and the result parses as an unterminated regex. */
+function toPosix(p: string): string {
+  return p.split(String.fromCharCode(92)).join("/");
+}
+
+/** The design text a work-check should read.
+ *
+ * Named explicitly by the step rather than inferred: `artifact` for a workflow
+ * whose design step writes a curated document, `reviewOf` for one whose design
+ * lives in the step output. Both are existing conventions, and being explicit
+ * matters here more than convenience - this is the input to a decision that can
+ * end a run, so it must be obvious from the workflow file which text drives it.
+ *
+ * The artifact wins when both are present: it is the curated design, whereas
+ * the output is a transcript that happens to contain one. */
+async function designText(run: RunState, def: StepDef): Promise<string> {
+  if (def.artifact) {
+    const abs = resolveInside(run.root, toPosix(template(def.artifact, run)));
+    if (abs) {
+      const text = await fs.readFile(abs, "utf8").catch(() => "");
+      if (text.trim()) return text;
+    }
+  }
+  if (def.reviewOf) {
+    return run.steps.find((s) => s.id === def.reviewOf)?.output ?? "";
+  }
+  return "";
+}
+
 async function runStep(run: RunState, def: StepDef, step: StepState): Promise<boolean> {
   switch (def.type) {
     case "snapshot": {
+      // A chained phase keeps the baseline it inherited rather than taking a
+      // new one. Its FIRST snapshot would otherwise commit everything the
+      // earlier phase produced, making that work part of the baseline and so
+      // invisible: a design -> implement chain would report the implementation
+      // only, and the documents the design phase wrote would vanish from the
+      // chain's account of itself.
+      //
+      // Only the opening snapshot is skipped. A `rebaseline` later in the same
+      // phase is a deliberate "the org refresh is not our change" and still
+      // moves the baseline.
+      const isChainedPhase = (run.chainIndex ?? 0) > 0;
+      const first = run.steps.findIndex((s) => s.type === "snapshot") === run.steps.indexOf(step);
+      if (isChainedPhase && first && run.baseCommit) {
+        step.output =
+          `keeping the baseline inherited from the previous phase (${run.baseCommit.slice(0, 8)})\n` +
+          "[engine] a fresh snapshot here would absorb the previous phase's work into the baseline";
+        step.status = "skipped";
+        return true;
+      }
       const ok = await takeSnapshot(run.root);
-      if (ok) run.baseCommit = (await headCommit(run.root)) ?? undefined;
+      if (ok) {
+        run.baseCommit = (await headCommit(run.root)) ?? undefined;
+        // Recorded once. A later rebaseline moves baseCommit on purpose; this
+        // stays put so undo always has the run's true starting state.
+        run.startCommit ??= run.baseCommit;
+      }
       step.output = ok ? "baseline snapshot taken" : "snapshot unavailable (git missing?)";
       return ok;
     }
     case "changes": {
       // pin what this diff is AGAINST before anything moves HEAD on
       step.baseCommit = (await headCommit(run.root)) ?? undefined;
-      const changes = await changesSince(run.root);
+      // Diff against THIS run's baseline, not whatever HEAD is now. HEAD is
+      // shared by every run on the project, so another run snapshotting would
+      // otherwise swallow this run's work into the baseline and report nothing.
+      const changes = await changesSince(run.root, run.baseCommit);
       if (changes === null) {
         step.output = "snapshot store unavailable";
         return false;
       }
       run.changes = changes;
+      // A zero-change run is a legitimate outcome - the requirement may already
+      // be satisfied on disk - but it must never READ like a successful build
+      // and deploy. Every step downstream of here needs changed files, so they
+      // will all skip; saying so once, here, is what makes the trace honest.
       step.output = changes.length
         ? changes.map((c) => `${c.status.padEnd(8)} ${c.file}`).join("\n")
-        : "no files changed";
+        : [
+            "no files changed - nothing was produced by this run",
+            "",
+            "[engine] the steps that follow all act on changed files, so they will be",
+            "skipped. Nothing has been validated, tested or deployed.",
+            "If you expected changes, check the implement step's output: the usual",
+            "cause is that the requirement was already satisfied on disk.",
+          ].join("\n");
       return true;
     }
     case "gate": {
@@ -969,6 +1080,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         // written out longhand in five separate review steps before this.
         (def.emits === "findings" ? FINDINGS_INSTRUCTION : "") +
         (def.emits === "coverage" ? COVERAGE_INSTRUCTION : "") +
+        (def.emits === "work" ? WORK_INSTRUCTION : "") +
         MANUAL_INSTRUCTION +
         OUTCOME_INSTRUCTION;
       // Model resolution, most specific wins:
@@ -1091,6 +1203,48 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       if (!step.usage) step.usage = estimateUsage(run.agent, stepModel, prompt, step.output);
       return ok;
     }
+    case "work-check": {
+      // Does the approved design leave anything to build? Counted from the
+      // design's own per-item statuses, so CODE decides whether to proceed
+      // rather than an agent being asked to implement nothing.
+      const design = await designText(run, def);
+      if (!design) {
+        step.output =
+          "[engine] no design output found to check - continuing as though work remains";
+        return true;
+      }
+      const report = workRemaining(design);
+      const lines = [`basis: ${report.basis}`];
+      if (report.total > 0) {
+        lines.push(`items: ${report.total}, already implemented: ${report.satisfied}`);
+        if (report.pendingIds.length > 0) {
+          lines.push(`still to build: ${report.pendingIds.join(", ")}`);
+        }
+      }
+
+      if (report.verdict === "none") {
+        run.noWork = true;
+        step.output = [
+          "NO CHANGES NEEDED - the requirement is already satisfied in this project.",
+          "",
+          ...lines,
+          "",
+          "[engine] the remaining steps are skipped: there is nothing to implement,",
+          "validate or deploy. Nothing in this project was modified.",
+        ].join("\n");
+        return true;
+      }
+
+      // "unknown" continues. A design with no status structure must never be
+      // read as "nothing to do" - only an explicit, complete statement of
+      // satisfaction may close a run.
+      step.output = [
+        report.verdict === "some" ? "Work remains - continuing." : "Cannot tell - continuing.",
+        "",
+        ...lines,
+      ].join("\n");
+      return true;
+    }
     case "tasks-check": {
       // Deterministic validation of the agent-produced tasks file - bad
       // structure is caught by CODE before anything consumes it.
@@ -1158,13 +1312,23 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       }
       const args = expandArgs(def.args ?? [], run);
       if (!args) {
-        if (def.optional) {
-          step.output = "nothing to act on - step skipped";
-          step.status = "skipped";
-          return true;
-        }
-        step.output = "no changed files to act on - nothing to validate/deploy";
-        return false;
+        // expandArgs returns null ONLY when a file-list placeholder resolved to
+        // zero files - never for a malformed command. So this is a no-work
+        // condition, not a failure, and it must not be treated as one.
+        //
+        // It used to fail the run unless the step was `optional`, which
+        // conflated two different things. `optional` is about tolerating a
+        // command that RAN AND FAILED - a failed validation must always fail the
+        // run. Having nothing to validate is not a failed validation. A real
+        // feature-dev run died here: the requirement was already satisfied on
+        // disk, the implement step correctly reported PRODUCED: nothing, and the
+        // run was then marked FAILED at validate - reading as a broken run when
+        // nothing was broken.
+        step.output =
+          "no changed files - nothing for this step to act on\n" +
+          "[engine] skipped, not failed: an empty change set is not a validation failure";
+        step.status = "skipped";
+        return true;
       }
       if (def.detached) {
         // long-lived server (e.g. sf lightning dev app): visible console the
@@ -1184,10 +1348,18 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
           return true;
         } catch (e) {
           step.output = `could not launch: ${String(e)}`;
+          // a visual preview that cannot start (plugin missing, no display) is
+          // not a reason to abandon a finished implementation
+          if (def.optional) {
+            step.output += `
+[engine] this step is optional - the run continues.`;
+            step.status = "skipped";
+            return true;
+          }
           return false;
         }
       }
-      return spawnToStep(
+      const cliOk = await spawnToStep(
         run,
         step,
         def.bin,
@@ -1196,6 +1368,18 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         undefined,
         (def.timeoutMinutes ?? 15) * 60_000,
       );
+      // An optional step is best-effort: it must not take the run down with it.
+      // `optional` used to cover only "nothing to expand", so a command that
+      // ran and failed still killed the run - which is how a retrieve of
+      // not-yet-existing metadata ended a feature-dev run at step four.
+      if (!cliOk && def.optional) {
+        step.output +=
+          `\n[engine] this step is optional - the run continues. Nothing here is ` +
+          `required for the next step; read the output above if the result matters to you.`;
+        step.status = "skipped";
+        return true;
+      }
+      return cliOk;
     }
   }
 }
@@ -1245,7 +1429,12 @@ function expandArgs(argv: string[], run: RunState): string[] | null {
       // file names can be agent-created - sanitize like any templated value
       for (const f of files.slice(0, 50)) out.push("--source-dir", cliSafe(f.file));
     } else if (a === "{affectedSourceDirs}") {
-      const files = run.affected ?? [];
+      // Only paths that EXIST locally. --source-dir refreshes a local copy, so
+      // a component the design is about to CREATE has nothing to refresh: on an
+      // empty project "create a Student object" named files that were not in the
+      // org or on disk, sf errored on the missing path, and the run died at the
+      // retrieve step before writing a line of metadata.
+      const files = (run.affected ?? []).filter((f) => existsSync(path.join(run.root, f)));
       if (files.length === 0) return null;
       for (const f of files.slice(0, 30)) out.push("--source-dir", cliSafe(f));
     } else if (a.startsWith("{flag:")) {
