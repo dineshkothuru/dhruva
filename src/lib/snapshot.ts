@@ -41,6 +41,32 @@ async function clearStaleLock(root: string) {
   }
 }
 
+/** Never snapshot the shadow store itself, deps, or the customer's git. */
+const EXCLUDES = [SHADOW_DIRNAME, ".git", "node_modules", ".sfdx", ".sf"];
+
+/** Make sure every entry in EXCLUDES is in the shadow repo's exclude file, and
+ * report the ones that had to be added.
+ *
+ * This runs on EVERY snapshot, not just at creation, because the list can
+ * change under an existing project. It did: the state directory was renamed
+ * .sfharness -> .dhruva, and repos created before that kept excluding the old
+ * name. The harness then snapshotted its own run json and shadow git on every
+ * step, and since the change list is capped, that noise crowded out the real
+ * files completely - one measured run had 200 changed files, all of them
+ * .dhruva bookkeeping and not one line of the Apex the run had just written.
+ * Everything downstream reads that list: the reviewer, verify-standards, and
+ * the deploy's file arguments. */
+async function reconcileExclude(root: string): Promise<string[]> {
+  const p = path.join(shadowGitDir(root), "info", "exclude");
+  const cur = await fs.readFile(p, "utf8").catch(() => "");
+  const lines = cur.split(/\r?\n/).map((l) => l.trim());
+  const missing = EXCLUDES.filter((e) => !lines.includes(e));
+  if (missing.length === 0) return [];
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  await fs.writeFile(p, [...lines.filter(Boolean), ...missing, ""].join("\n"), "utf8");
+  return missing;
+}
+
 async function ensureShadow(root: string): Promise<boolean> {
   const gitDir = shadowGitDir(root);
   const exists = await fs
@@ -51,10 +77,9 @@ async function ensureShadow(root: string): Promise<boolean> {
     await fs.mkdir(gitDir, { recursive: true });
     const init = await runGit(root, ["init", "-q"]);
     if (!init.ok) return false;
-    // never snapshot the shadow store itself, deps, or the customer's git
     await fs.writeFile(
       path.join(gitDir, "info", "exclude"),
-      [SHADOW_DIRNAME, ".git", "node_modules", ".sfdx", ".sf", ""].join("\n"),
+      [...EXCLUDES, ""].join("\n"),
       "utf8",
     );
     await runGit(root, ["config", "user.email", "harness@local"]);
@@ -77,6 +102,12 @@ async function ensureShadow(root: string): Promise<boolean> {
     }
   } catch {
     /* no customer git - nothing to exclude */
+  }
+  // An exclude only silences UNTRACKED files. Anything already committed under
+  // a newly excluded path keeps reporting as modified forever, so untrack it
+  // once. --ignore-unmatch: most of these were never tracked.
+  for (const e of await reconcileExclude(root)) {
+    await runGit(root, ["rm", "-r", "--cached", "-q", "--ignore-unmatch", e]);
   }
   return true;
 }
