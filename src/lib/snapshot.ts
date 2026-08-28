@@ -1,4 +1,5 @@
 import path from "node:path";
+import { resolveInside } from "@/lib/fsguard";
 import { promises as fs } from "node:fs";
 import { execFile } from "node:child_process";
 
@@ -103,13 +104,52 @@ async function ensureShadow(root: string): Promise<boolean> {
   } catch {
     /* no customer git - nothing to exclude */
   }
-  // An exclude only silences UNTRACKED files. Anything already committed under
-  // a newly excluded path keeps reporting as modified forever, so untrack it
-  // once. --ignore-unmatch: most of these were never tracked.
-  for (const e of await reconcileExclude(root)) {
-    await runGit(root, ["rm", "-r", "--cached", "-q", "--ignore-unmatch", e]);
-  }
+  await reconcileExclude(root);
+  await reconcileIndex(root);
   return true;
+}
+
+/** Untrack anything the index still holds under an excluded path.
+ *
+ * An exclude only silences UNTRACKED files. A file already in the index stays
+ * tracked, and `changesSince` diffs against HEAD, so it reports as changed on
+ * every run forever.
+ *
+ * This used to run only for exclude entries that had just been ADDED to the
+ * file, which made it a one-shot: once ".dhruva" was in info/exclude,
+ * reconcileExclude returned nothing and the untracking never ran again. A real
+ * project was found with 2276 of the harness's own paths still tracked, so
+ * every run reported .dhruva/shadow.git/index, logs/HEAD and refs/heads/master
+ * as modified - the five files any git command touches. One run showed eleven
+ * changed files of which five were the harness watching itself work.
+ *
+ * So the check is now on the INDEX rather than on the exclude file, and it runs
+ * on every ensure. It is cheap when there is nothing to do: one ls-files per
+ * entry, and the rm only fires when that returns something.
+ *
+ * The removal is COMMITTED here rather than left staged. Untracking alone would
+ * make things worse before better: HEAD still holds the paths, so the next
+ * `diff HEAD` would report all 2276 as DELETED - trading five noise rows for
+ * two thousand. Committing moves HEAD past them in the same breath, so the
+ * repo is clean from the next diff onward whatever runs next. */
+async function reconcileIndex(root: string): Promise<void> {
+  let removed = false;
+  for (const e of EXCLUDES) {
+    const tracked = await runGit(root, ["ls-files", "--", e]);
+    if (!tracked.ok || !tracked.stdout.trim()) continue;
+    const rm = await runGit(root, ["rm", "-r", "--cached", "-q", "--ignore-unmatch", e]);
+    if (rm.ok) removed = true;
+  }
+  if (!removed) return;
+  // A one-time migration per project, so the commit is worth its own message
+  // in the shadow log rather than being folded into a baseline.
+  await runGit(root, [
+    "commit",
+    "-q",
+    "-m",
+    "harness: untrack excluded paths",
+    "--allow-empty",
+  ]);
 }
 
 /** Commit the current state as the "before" baseline. Returns false when git
@@ -128,8 +168,27 @@ export interface ChangedFile {
   status: "modified" | "added" | "deleted";
 }
 
-/** Changes in the work tree since the last snapshot. */
-export async function changesSince(root: string): Promise<ChangedFile[] | null> {
+/** Changes in the work tree since a baseline.
+ *
+ * `since` is the commit the CALLER took as its baseline - a run passes its own,
+ * so its change list cannot be emptied by someone else moving HEAD.
+ *
+ * The store is one repo with one HEAD, shared by every run on the project. Two
+ * runs used to be enough to lose a run's work from its own list: run A
+ * snapshots and starts editing, run B snapshots its baseline, HEAD moves
+ * forward over everything A has written, and A's diff against HEAD reports
+ * nothing. The reviewer, verify-standards and the deploy all read that list, so
+ * an emptied list means a run reviews, verifies and deploys nothing while
+ * reporting success.
+ *
+ * Pinning the baseline fixes the bookkeeping. It does NOT make concurrent runs
+ * safe - one working tree means A's diff still contains B's files, whichever
+ * commit it is measured against - which is why a second run on the same project
+ * is refused outright. */
+export async function changesSince(
+  root: string,
+  since?: string,
+): Promise<ChangedFile[] | null> {
   if (!(await ensureShadow(root))) return null;
   // No baseline yet (first use): take one now - current state becomes the
   // reference, so "no changes" is the correct answer.
@@ -137,11 +196,20 @@ export async function changesSince(root: string): Promise<ChangedFile[] | null> 
   if (!head.ok) {
     return (await takeSnapshot(root)) ? [] : null;
   }
+
+  // A caller-supplied commit is only used once this repo confirms it has it:
+  // a stale or foreign hash would otherwise turn the diff into "everything".
+  let base = "HEAD";
+  if (since && COMMIT_RE.test(since)) {
+    const known = await runGit(root, ["cat-file", "-e", `${since}^{commit}`]);
+    if (known.ok) base = since;
+  }
+
   await clearStaleLock(root);
   await runGit(root, ["add", "-A", "-N"]); // track new files without staging content
   // --no-renames: a renamed file must surface as delete+add, or it would be
   // invisible to verify/review/deploy (the parser reads A/M/D lines only)
-  const res = await runGit(root, ["diff", "--no-renames", "--name-status", "HEAD"]);
+  const res = await runGit(root, ["diff", "--no-renames", "--name-status", base]);
   if (!res.ok) return null;
   const out: ChangedFile[] = [];
   for (const line of res.stdout.split("\n")) {
@@ -194,6 +262,70 @@ export async function commitRunResult(root: string, runId: string): Promise<stri
 }
 
 /** One file's content at a specific pinned commit; null when it didn't exist. */
+export interface RestoreResult {
+  restored: string[];
+  removed: string[];
+  failed: { file: string; reason: string }[];
+}
+
+/** Put the given files back the way they were at `commit`.
+ *
+ * For when a run fails or is aborted after it has already edited the project.
+ * Until now the only way back was to undo an agent's work by hand, from a
+ * change list, with no record of what the files looked like before - even though
+ * the harness had been holding that exact state in the shadow store the whole
+ * time.
+ *
+ * A file that did not exist at `commit` was created by the run, so restoring it
+ * means deleting it. A file that did exist is checked out over the current one.
+ * Each file is handled independently and failures are reported per file: a
+ * partial restore with a list of what did not work beats an all-or-nothing
+ * operation that leaves the caller guessing.
+ *
+ * This only touches the paths it is given, which are the run's own recorded
+ * changes - never a sweep of the working tree. */
+export async function restoreFiles(
+  root: string,
+  commit: string,
+  files: string[],
+): Promise<RestoreResult> {
+  const out: RestoreResult = { restored: [], removed: [], failed: [] };
+  if (!COMMIT_RE.test(commit)) {
+    return { ...out, failed: files.map((f) => ({ file: f, reason: "no baseline commit" })) };
+  }
+  if (!(await ensureShadow(root))) {
+    return { ...out, failed: files.map((f) => ({ file: f, reason: "snapshot store unavailable" })) };
+  }
+  await clearStaleLock(root);
+
+  for (const raw of files) {
+    const rel = raw.replace(/\\/g, "/");
+    // Never step outside the project, whatever the recorded change list says.
+    const abs = resolveInside(root, rel);
+    if (!abs) {
+      out.failed.push({ file: rel, reason: "path escapes the project" });
+      continue;
+    }
+
+    const existed = await runGit(root, ["cat-file", "-e", `${commit}:${rel}`]);
+    if (existed.ok) {
+      const res = await runGit(root, ["checkout", commit, "--", rel]);
+      if (res.ok) out.restored.push(rel);
+      else out.failed.push({ file: rel, reason: "could not restore from the snapshot" });
+      continue;
+    }
+
+    // Not in the baseline: the run created it, so removing it is the restore.
+    try {
+      await fs.rm(abs, { force: true });
+      out.removed.push(rel);
+    } catch (e) {
+      out.failed.push({ file: rel, reason: String(e).slice(0, 200) });
+    }
+  }
+  return out;
+}
+
 export async function contentAt(root: string, commit: string, rel: string): Promise<string | null> {
   if (!COMMIT_RE.test(commit)) return null;
   const res = await runGit(root, ["show", `${commit}:${rel.replace(/\\/g, "/")}`]);
