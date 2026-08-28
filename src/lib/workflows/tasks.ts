@@ -59,23 +59,31 @@ export function validateTasks(raw: unknown): { data: TasksFile | null; errors: s
     if (typeof t.title !== "string" || !t.title.trim()) errors.push(`${id}: title required`);
     if (!Array.isArray(t.files)) errors.push(`${id}: files must be a list`);
     const files = (Array.isArray(t.files) ? t.files : [])
-      .filter((f): f is string => typeof f === "string" && f.length < 300)
+      // Salesforce retrieves routinely produce paths past 260 characters - the
+      // shadow repo turns on core.longpaths for exactly that reason - so a
+      // length limit here silently drops the deepest metadata files from the
+      // task that is supposed to edit them
+      .filter((f): f is string => typeof f === "string" && f.length > 0)
       .map((f) => f.replace(/\\/g, "/"));
     for (const f of files) {
       if (f.includes("..") || path.isAbsolute(f)) errors.push(`${id}: file path must be project-relative ("${f}")`);
     }
     tasks.push({
       id,
-      title: String(t.title ?? "").slice(0, 200),
+      title: String(t.title ?? ""),
       depends_on: (Array.isArray(t.depends_on) ? t.depends_on : []).filter(
         (x): x is string => typeof x === "string",
       ),
       files,
-      test_scenarios: (Array.isArray(t.test_scenarios) ? t.test_scenarios : [])
-        .filter((x): x is string => typeof x === "string")
-        .map((x) => x.slice(0, 300)),
+      // no cap: a test scenario is an instruction to the implementer, and the
+      // tail is where the assertion usually lives
+      test_scenarios: (Array.isArray(t.test_scenarios) ? t.test_scenarios : []).filter(
+        (x): x is string => typeof x === "string",
+      ),
       traces: (Array.isArray(t.traces) ? t.traces : []).filter((x): x is string => typeof x === "string"),
-      change: typeof t.change === "string" ? t.change.slice(0, 1000) : undefined,
+      // no cap: "the mechanism - what edit, where" IS the task's substance,
+      // the equivalent of a prompt
+      change: typeof t.change === "string" ? t.change : undefined,
       status: t.status === "completed" ? "completed" : "pending",
       reviews: (Array.isArray(t.reviews) ? t.reviews : []).filter(
         (r): r is { at: string; comment: string } =>
@@ -173,7 +181,7 @@ export async function reopenFromFindings(
   const reopened: string[] = [];
   for (const m of found) {
     const ids = m[1].split(/\s*,\s*/);
-    const comment = m[2].trim().replace(/\*+$/, "").slice(0, 500);
+    const comment = m[2].trim().replace(/\*+$/, "");
     for (const id of ids) {
       const t = data.tasks.find((x) => x.id === id);
       if (!t) continue;

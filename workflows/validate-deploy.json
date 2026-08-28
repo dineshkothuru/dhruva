@@ -22,30 +22,10 @@
     }
   ],
   "steps": [
+    "approve",
     {
-      "id": "approve",
-      "title": "Approve validation",
-      "type": "gate",
-      "message": "Run a check-only deploy of {inputs.target} against the default org (compiles + runs the chosen tests; nothing is saved)?"
-    },
-    {
-      "id": "validate",
-      "title": "Check-only deploy",
-      "type": "cli",
-      "bin": "sf",
-      "args": [
-        "project",
-        "deploy",
-        "start",
-        "--dry-run",
-        "--source-dir",
-        "{inputs.target}",
-        "--test-level",
-        "{inputs.testLevel}",
-        "--json",
-        "--wait",
-        "60"
-      ]
+      "use": "validate-deploy.validate",
+      "as": "validate"
     }
   ]
 }

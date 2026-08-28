@@ -64,6 +64,47 @@ const WF_META: Record<string, { icon: IconType; tint: string }> = {
 
 /** Custom workflows auto-pick a fitting identity from their title/description
  * keywords - deterministic, so the same workflow always gets the same face. */
+/** One row per EXECUTION, not per step.
+ *
+ * A step can run several times - an auto-revise replays its target, a gate
+ * revision replays it again - and the replay overwrites the step's fields. The
+ * finished attempts are kept on `step.attempts`, so the history renders them as
+ * their own rows, oldest first, with the current state last. A design reworked
+ * three times shows four rows instead of one. */
+export type StepRow = RunState["steps"][number] & {
+  rowKey: string;
+  attemptNo: number;
+  attemptsTotal: number;
+  supersededBy?: string;
+  /** the step's position in the workflow, used only to order rows that have
+   * not started and therefore have no timestamp */
+  order: number;
+};
+
+export function stepRows(run: RunState): StepRow[] {
+  const out: StepRow[] = [];
+  run.steps.forEach((s, order) => {
+    const earlier = s.attempts ?? [];
+    const total = earlier.length + 1;
+    earlier.forEach((a, n) => {
+      out.push({ ...s, ...a, rowKey: `${s.id}#${n}`, attemptNo: n + 1, attemptsTotal: total, order });
+    });
+    out.push({ ...s, rowKey: s.id, attemptNo: total, attemptsTotal: total, order });
+  });
+  // CHRONOLOGICAL, not grouped by step. Grouping listed every run of `analyse`
+  // and then every run of `design-review`, so a three-round rework read as
+  // analyse/analyse/analyse/review/review/review - which is not what happened.
+  // The truth interleaves: design, review, redesign, re-review, and so on.
+  // Steps that have not started yet keep the workflow's declared order, at the
+  // end, because they have no time to sort by.
+  return out.sort((a, b) => {
+    if (a.startedAt && b.startedAt) return a.startedAt - b.startedAt;
+    if (a.startedAt) return -1;
+    if (b.startedAt) return 1;
+    return a.order - b.order;
+  });
+}
+
 function wfIdentity(w: { id: string; title: string; description: string }): {
   icon: IconType;
   tint: string;
@@ -343,6 +384,29 @@ export default function WorkflowsPane({
         i.default ?? (i.kind === "boolean" ? false : i.kind === "select" ? (i.options?.[0] ?? "") : "");
     setInputs(init);
   }
+
+  /** Close the start form and delete anything staged but never used.
+   *
+   * The modal used to just clear its state, so a file attached and then
+   * abandoned stayed on disk forever - the reason one project accumulated
+   * thirteen copies of one document. A run that DID start has already moved
+   * what it referenced into its own folder, so nothing it owns is at risk. */
+  const closeStartForm = useCallback(() => {
+    const names = attachments
+      .map((a) => a.rel)
+      .filter((r) => r.startsWith(".dhruva/tmp/attachments/"))
+      .map((r) => r.split("/").pop() ?? "")
+      .filter(Boolean);
+    setSelected(null);
+    setAttachments([]);
+    if (names.length > 0 && root) {
+      void fetch("/api/upload/discard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root, names }),
+      }).catch(() => {});
+    }
+  }, [attachments, root]);
 
   /** The input the attach button lives on (and where file refs are appended). */
   function isAttachTarget(i: { key: string; kind: string; attachTo?: boolean }): boolean {
@@ -710,9 +774,9 @@ export default function WorkflowsPane({
         </div>
 
         <div className="space-y-2">
-          {run.steps.map((s) => (
+          {stepRows(run).map((s) => (
             <details
-              key={s.id}
+              key={s.rowKey}
               open={s.status === "running" || s.status === "waiting_gate" || s.status === "failed"}
               className={`rounded-xl border border-l-4 transition-shadow ${
                 STATUS_EDGE[s.status] ?? "border-l-slate-200"
@@ -755,6 +819,22 @@ export default function WorkflowsPane({
                   >
                     {s.title}
                   </span>
+                  {/* a step that ran more than once says which run this row is,
+                      and why it was replaced - otherwise four identical titles
+                      in a row are unreadable */}
+                  {s.attemptsTotal > 1 && (
+                    <span
+                      className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600"
+                      title={
+                        s.supersededBy
+                          ? `Superseded by ${s.supersededBy}`
+                          : "The latest run of this step"
+                      }
+                    >
+                      run {s.attemptNo} of {s.attemptsTotal}
+                      {s.supersededBy ? ` · ${s.supersededBy}` : ""}
+                    </span>
+                  )}
                   {/* a step that has not run yet says so, instead of being an
                       unexplained empty row */}
                   {s.status === "pending" && (
@@ -947,6 +1027,8 @@ export default function WorkflowsPane({
                 <StepBody
                   output={s.output}
                   type={s.type}
+                  baseCommit={s.baseCommit}
+                  onOpenDiff={onOpenDiff}
                   // never show "working…" unless the RUN itself is still live
                   running={
                     s.status === "running" &&
@@ -1457,7 +1539,7 @@ export default function WorkflowsPane({
       {selected && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-6"
-          onClick={(e) => e.target === e.currentTarget && !starting && setSelected(null)}
+          onClick={(e) => e.target === e.currentTarget && !starting && closeStartForm()}
         >
           <div className="mt-10 w-full max-w-xl rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
@@ -1466,7 +1548,7 @@ export default function WorkflowsPane({
                 <p className="mt-0.5 text-xs text-slate-500">{selected.description}</p>
               </div>
               <button
-                onClick={() => !starting && setSelected(null)}
+                onClick={() => !starting && closeStartForm()}
                 className="rounded-md px-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                 title="Close"
               >
@@ -1573,7 +1655,7 @@ export default function WorkflowsPane({
                 ))}
               </select>
               <button
-                onClick={() => !starting && setSelected(null)}
+                onClick={() => !starting && closeStartForm()}
                 className="ml-auto rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
               >
                 Cancel

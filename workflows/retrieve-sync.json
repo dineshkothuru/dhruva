@@ -12,30 +12,10 @@
   ],
   "steps": [
     {
-      "id": "snapshot",
-      "title": "Snapshot current local state",
-      "type": "snapshot"
+      "use": "snapshot",
+      "title": "Snapshot current local state"
     },
-    {
-      "id": "retrieve",
-      "title": "Retrieve from org",
-      "type": "cli",
-      "bin": "sf",
-      "args": [
-        "project",
-        "retrieve",
-        "start",
-        "--source-dir",
-        "{inputs.target}",
-        "--json",
-        "--wait",
-        "60"
-      ]
-    },
-    {
-      "id": "drift",
-      "title": "Org drift vs previous local state",
-      "type": "changes"
-    }
+    "retrieve",
+    "drift"
   ]
 }

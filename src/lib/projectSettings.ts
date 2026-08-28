@@ -9,7 +9,9 @@ import { promises as fs } from "node:fs";
 export interface ProjectSettings {
   ux?: {
     enabled: boolean;
-    /** Standing design-inputs folder (style guides, conventions). */
+    /** Standing UX reference folder - style guides, mockups, conventions the
+     * team keeps and the ux-design step READS. Not per-run: it outlives any
+     * single run, unlike everything under .dhruva/runs/<runId>/. */
     designDir: string;
     /** The team's specific UX rules, injected into the ux-design prompt. */
     rules: string;
@@ -31,7 +33,7 @@ export async function readProjectSettings(root: string): Promise<ProjectSettings
         designDir:
           typeof raw.ux.designDir === "string" && !raw.ux.designDir.includes("..")
             ? raw.ux.designDir.slice(0, 200)
-            : "dhruva-docs/design",
+            : ".dhruva/uxdesignfiles",
         rules: typeof raw.ux.rules === "string" ? raw.ux.rules : "",
       };
     }

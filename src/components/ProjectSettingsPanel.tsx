@@ -15,7 +15,7 @@ interface UxSettings {
 }
 
 export default function ProjectSettingsPanel({ root }: { root: string }) {
-  const [ux, setUx] = useState<UxSettings>({ enabled: false, designDir: "dhruva-docs/design", rules: "" });
+  const [ux, setUx] = useState<UxSettings>({ enabled: false, designDir: ".dhruva/uxdesignfiles", rules: "" });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function ProjectSettingsPanel({ root }: { root: string }) {
             <input
               value={ux.designDir}
               onChange={(e) => setUx({ ...ux, designDir: e.target.value })}
-              onBlur={() => void save({ ...ux, designDir: ux.designDir.trim() || "dhruva-docs/design" })}
+              onBlur={() => void save({ ...ux, designDir: ux.designDir.trim() || ".dhruva/uxdesignfiles" })}
               spellCheck={false}
               className="mt-1 block w-full rounded-lg border border-slate-200 px-2.5 py-1.5 font-mono text-[11px] outline-none focus:border-slate-400"
             />

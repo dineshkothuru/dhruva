@@ -93,6 +93,11 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
         }
       }
       if (s.taskLoop === true) step.taskLoop = true;
+      if (typeof s.artifact === "string" && s.artifact.length <= 200 && !s.artifact.includes("..")) {
+        step.artifact = s.artifact;
+      }
+      if (typeof s.reviewOf === "string" && SLUG.test(s.reviewOf)) step.reviewOf = s.reviewOf;
+      if (s.emits === "findings" || s.emits === "coverage") step.emits = s.emits;
     }
     if (s.type === "cli") {
       if (s.bin !== "sf" && s.bin !== "git") throw new Error(`cli step "${s.id}": bin must be sf or git`);
@@ -203,6 +208,26 @@ export function checkWorkflowSemantics(def: WorkflowDef): string[] {
         new RegExp(s.autoRevise.trigger);
       } catch {
         problems.push(`step "${s.id}": autoRevise trigger is not a valid regex`);
+      }
+      // a step that drives a rework must declare what it emits, so the engine
+      // can tell "found nothing" from "produced nothing parseable"
+      if (!s.emits) {
+        problems.push(
+          `step "${s.id}": autoRevise needs an "emits" contract (findings | coverage)`,
+        );
+      }
+    }
+    // a reviewOf must name an EARLIER step that actually authors an artifact
+    if (s.reviewOf) {
+      const t = stepIds.indexOf(s.reviewOf);
+      if (t === -1) {
+        problems.push(`step "${s.id}": reviewOf "${s.reviewOf}" does not exist`);
+      } else if (t >= idx) {
+        problems.push(`step "${s.id}": reviewOf "${s.reviewOf}" must run before it`);
+      } else if (!def.steps[t].artifact) {
+        problems.push(
+          `step "${s.id}": reviewOf "${s.reviewOf}" declares no artifact to write the review into`,
+        );
       }
     }
     // tasks-check and taskLoop need the tasks file path

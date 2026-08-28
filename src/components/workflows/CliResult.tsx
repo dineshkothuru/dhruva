@@ -123,9 +123,11 @@ export default function CliResult({ output }: { output: string }) {
           Files ({result.files.length})
         </p>
         <Table
-          head={["State", "Type", "Name"]}
+          head={["State", "Type", "File"]}
           rows={result.files.map((f: any) => ({
-            cells: [String(f.state ?? ""), String(f.type ?? ""), String(f.fullName ?? f.filePath ?? "")],
+            // the PATH is what a reader acts on - the metadata API name alone
+            // does not say which file on disk was replaced
+            cells: [String(f.state ?? ""), String(f.type ?? ""), String(f.filePath ?? f.fullName ?? "")],
             bad: String(f.state ?? "").toLowerCase() === "failed",
           }))}
         />

@@ -2,7 +2,23 @@ import { describe, expect, it } from "vitest";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { checkWorkflowSemantics, validateWorkflowDef } from "@/lib/workflows/validate";
+import { isStepRef, loadStepLibrary, resolveStep, type StepRef } from "@/lib/workflows/steps";
+import { CATEGORIES } from "@/components/workflows/StepTrace";
+import { builtinWorkflows } from "@/lib/workflows/builtins";
 import type { WorkflowDef } from "@/lib/workflows/schema";
+
+process.env.DHRUVA_STEPS_DIR ??= path.resolve(__dirname, "../steps");
+
+/** Shipped workflows name their steps from the library, so a raw file has to be
+ * resolved before it can be validated - the resolved shape is what runs. */
+async function resolved(raw: unknown): Promise<unknown> {
+  const library = await loadStepLibrary();
+  const d = raw as { steps?: unknown[] };
+  if (Array.isArray(d?.steps)) {
+    d.steps = d.steps.map((s) => (isStepRef(s) ? resolveStep(s as string | StepRef, library) : s));
+  }
+  return d;
+}
 
 /** Every shipped workflow must satisfy the SAME contract user-authored
  * customs do. This is the guard that stops a hand-edited JSON file from
@@ -31,7 +47,7 @@ describe("shipped workflow definitions", () => {
         continue;
       }
       try {
-        const def = validateWorkflowDef(parsed);
+        const def = validateWorkflowDef(await resolved(parsed));
         if (ids.has(def.id)) failures.push(`${f}: duplicate workflow id "${def.id}"`);
         ids.add(def.id);
         for (const p of checkWorkflowSemantics(def)) failures.push(`${f}: ${p}`);
@@ -153,27 +169,53 @@ describe("checkWorkflowSemantics", () => {
   });
 });
 
-describe("design outputs cannot overwrite each other", () => {
-  it("stamps every design artefact with the run id", async () => {
-    const raw = await fs.readFile(path.resolve(__dirname, "../workflows/solution-design.json"), "utf8");
-    // every deliverable path the workflow writes must carry {runId}
-    const written = raw.match(/dhruva-docs\/designs\/\{inputs\.docName\}[A-Za-z{}.-]*/g) ?? [];
-    expect(written.length).toBeGreaterThan(0);
-    for (const p of written) expect(p).toContain("{runId}");
-  });
+/** Artefact paths a prompt writes, without regex escaping games: split on
+ * whitespace and keep the tokens that start in the run folder. */
+function artefactPaths(text: string): string[] {
+  return text
+    .split(/[\s"`(),]+/)
+    .filter((w) => w.startsWith(".dhruva/runs/"))
+    .map((w) => w.replace(/[.,;:]+$/, ""));
+}
 
-  it("leaves no fixed filename that a second run would clobber", async () => {
+describe("design outputs cannot overwrite each other", () => {
+  it("puts every written artefact under the run's own folder", async () => {
+    // The run id used to be stamped into each FILENAME in one shared folder.
+    // It is now the folder itself, so a second run cannot reach the first's
+    // files at all - and the paths no longer depend on the doc name, which is
+    // what silently broke a chain with a custom docName.
     for (const f of ["solution-design.json", "ux-design.json"]) {
       const raw = await fs.readFile(path.resolve(__dirname, "../workflows", f), "utf8");
-      expect(raw).not.toMatch(/dhruva-docs\/designs\/\{inputs\.docName\}-(hld|tdd|tasks|ux)/);
+      const def = (await resolved(JSON.parse(raw))) as { steps: { prompt?: string }[] };
+      const text = def.steps.map((s) => s.prompt ?? "").join("\n");
+      const written = artefactPaths(text);
+      expect(written.length, `${f} writes no artefact`).toBeGreaterThan(0);
+      for (const p of written) expect(p, `${f}: ${p}`).toContain("{runId}");
+    }
+  });
+
+  it("no artefact path depends on the document name any more", async () => {
+    for (const f of ["solution-design.json", "ux-design.json", "implement-tdd.json"]) {
+      const raw = await fs.readFile(path.resolve(__dirname, "../workflows", f), "utf8");
+      const def = (await resolved(JSON.parse(raw))) as { steps: { prompt?: string }[] };
+      const text = def.steps.map((s) => s.prompt ?? "").join("\n");
+      const paths = artefactPaths(text);
+      for (const p of paths) expect(p, `${f}: ${p}`).not.toContain("docName");
+    }
+  });
+
+  it("nothing writes to the old shared folder", async () => {
+    for (const f of await fs.readdir(dir)) {
+      if (!f.endsWith(".json")) continue;
+      const raw = await fs.readFile(path.join(dir, f), "utf8");
+      expect(raw, f).not.toContain("dhruva-docs/designs/");
     }
   });
 
   it("implement-tdd no longer defaults to a fixed design filename", async () => {
     const raw = await fs.readFile(path.resolve(__dirname, "../workflows/implement-tdd.json"), "utf8");
     const def = JSON.parse(raw) as { inputs: { key: string; default?: string }[] };
-    const tdd = def.inputs.find((i) => i.key === "tddPath");
-    expect(tdd?.default).toBe("");
+    expect(def.inputs.find((i) => i.key === "tddPath")?.default).toBe("");
   });
 });
 
@@ -184,5 +226,24 @@ describe("deliverables live in their own folder", () => {
       // no bare docs/designs path may remain
       expect(raw).not.toMatch(/(?<!dhruva-)docs\/designs/);
     }
+  });
+});
+
+/** The catalog groups workflows by category, and an unlisted one falls through
+ * to the FIRST group rather than erroring - so a new workflow whose id nobody
+ * added here appears under "Development" with no warning at all. Cheap to
+ * guard, invisible to debug. */
+describe("every shipped workflow is categorised", () => {
+  it("no workflow silently falls into the first group", async () => {
+    const listed = new Set(CATEGORIES.flatMap(([, ids]) => ids));
+    const shipped = Object.keys(await builtinWorkflows());
+    const uncategorised = shipped.filter((id) => !listed.has(id));
+    expect(uncategorised, `add these to CATEGORIES in StepTrace.tsx`).toEqual([]);
+  });
+
+  it("no category names a workflow that no longer exists", async () => {
+    const shipped = new Set(Object.keys(await builtinWorkflows()));
+    const stale = CATEGORIES.flatMap(([, ids]) => ids).filter((id) => !shipped.has(id));
+    expect(stale, `these ids are in CATEGORIES but not shipped`).toEqual([]);
   });
 });

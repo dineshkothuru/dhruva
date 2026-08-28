@@ -12,7 +12,23 @@ import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/
 import { skillsPrompt } from "@/lib/projectSkills";
 import { OUTCOME_INSTRUCTION } from "@/lib/outcome";
 import { writeTranscript } from "@/lib/runTranscript";
-import { parseFindings, reviewFeedback } from "@/lib/findings";
+import { checkCoverage } from "./traceability";
+import { adoptForRun } from "@/lib/attachments";
+import {
+  COVERAGE_INSTRUCTION,
+  FINDINGS_INSTRUCTION,
+  parseFindings,
+  reviewFeedback,
+} from "@/lib/findings";
+import {
+  designFromOutput,
+  madeProgress,
+  openFindings,
+  statedOutcomes,
+  writeDesign,
+  writeReview,
+  type ReviewRecord,
+} from "./artifacts";
 import { costBucket, countBucket, durationBucket, tokensBucket, track } from "@/lib/telemetry";
 import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { ROLE_TIER } from "./schema";
@@ -177,7 +193,21 @@ export function startRun(
     run.chainIndex = chainIndex;
   }
   runs.set(run.runId, run);
-  void execute(run, def); // fire and forget; UI polls state
+  // Take ownership of the files this run references before the first step
+  // reads them: staged uploads move into .dhruva/runs/<runId>/attachments and
+  // the recorded inputs are rewritten, so the audit points at the copy this
+  // run actually used rather than a shared folder anyone can overwrite.
+  void (async () => {
+    for (const [k, v] of Object.entries(run.inputs)) {
+      if (typeof v !== "string" || !v.includes(".dhruva/tmp/attachments/")) continue;
+      const { text, moved } = await adoptForRun(run.root, run.runId, v).catch(() => ({
+        text: v,
+        moved: [] as string[],
+      }));
+      if (moved.length > 0) run.inputs[k] = text;
+    }
+    void execute(run, def); // fire and forget; UI polls state
+  })();
   return run;
 }
 
@@ -289,6 +319,24 @@ async function execute(run: RunState, def: WorkflowDef, startIndex = 0) {
   await fireChain(run);
 }
 
+/** The manual-step contract, in ONE place next to the parser below.
+ *
+ * collectManual runs on EVERY agent step, but the instruction to emit these
+ * lines was copied into five step files - and had already drifted into two
+ * wordings. Any step can discover that a human must click something in Setup;
+ * only five were told they could say so. */
+const MANUAL_INSTRUCTION =
+  `
+
+MANUAL STEPS: if anything needs a HUMAN acting in the org that you cannot do ` +
+  `from this machine (Setup toggles, secrets or Named Credential values, connected app ` +
+  `approvals, production permission set assignment, sandbox refreshes, feature enablement), ` +
+  `print one line each in exactly this form:
+` +
+  `MANUAL: <action> - <where, e.g. Setup path> - <before deploy|after deploy>
+` +
+  `Never silently skip or fake one. Print nothing if there are none.`;
+
 /** Collect the agent's "MANUAL: <action> - <where> - <when>" lines onto the
  * run - the human checklist. Deterministic parse, deduped by text. */
 function collectManual(run: RunState, step: StepState) {
@@ -390,7 +438,17 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
     if (stepDef.type === "gate") {
       let revisions = 0;
       let notice = ""; // survives re-render (e.g. "revision not possible")
-      const auto = run.autoGate === true;
+      // Auto-approve clears a gate the preceding review PASSED. It does not
+      // launder a failed one: on a real run the reviewer blocked the design
+      // four times running and auto-approve sent it to the build anyway, with
+      // five unresolved criticals and nothing anywhere announcing it.
+      const blocked = blockedReviewBefore(run, def, i);
+      const auto = run.autoGate === true && !blocked;
+      if (run.autoGate === true && blocked) {
+        notice +=
+          `\n\n[engine] auto-approve held back - the review before this gate did not pass ` +
+          `(${blocked}). This gate needs YOUR decision.`;
+      }
       for (;;) {
         let decision: GateDecision;
         if (auto) {
@@ -469,7 +527,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         step.status = "running";
         run.status = "running";
         await persist(run);
-        if (!(await replayRange(run, def, from, i))) return;
+        if (!(await replayRange(run, def, from, i, `gate revision ${revisions}`))) return;
         // loop: gate again on the revised state
       }
       continue;
@@ -479,7 +537,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
     step.startedAt = Date.now();
     await persist(run);
     try {
-      const ok = await runStep(run, stepDef, step);
+      const ok = await runStepTracked(run, stepDef, step);
       step.endedAt = Date.now();
       if (!ok) {
         // WHICH KIND of step failed - never the message, which routinely
@@ -531,11 +589,38 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         }
         const from = def.steps.findIndex((s) => s.id === ar.target);
         const max = Math.min(Math.max(ar.maxRounds ?? 1, 1), 3);
+        // When the target owns an artifact, the round is recorded into it and
+        // the loop stops early on a round that closes nothing - a stall is not
+        // worth another 15 minutes. Without an artifact this stays exactly as
+        // it was: the trigger regex alone.
+        const artifactRel = stepDef.reviewOf
+          ? def.steps.find((s) => s.id === stepDef.reviewOf)?.artifact
+          : undefined;
+        const relPath = artifactRel ? template(artifactRel, run).replace(/\\/g, "/") : "";
+        let prevRound: ReviewRecord | null = null;
+        let stalled = false;
+        let rounds = 0; // survives the loop, so the final state can be recorded
+        let recordedOutput = "";
         for (
           let round = 1;
-          re && from >= 0 && from < i && round <= max && re.test(step.output);
+          re && from >= 0 && from < i && round <= max && !stalled && re.test(step.output);
           round++
         ) {
+          rounds = round;
+          if (relPath) {
+            const rec = await recordRound(run, relPath, step.output, round, step);
+            recordedOutput = step.output;
+            if (rec && !madeProgress(prevRound, rec)) {
+              step.output +=
+                `\n\n[engine] auto-revise stopped at round ${round}: the last round closed no ` +
+                `finding and did not reduce the criticals. Spending the remaining ` +
+                `${max - round + 1} round(s) on it would repeat the same work - over to you.`;
+              stalled = true;
+              await persist(run);
+              break;
+            }
+            prevRound = rec;
+          }
           // reviewer "REOPEN T-n: comment" lines reopen those tasks so the
           // implement task-loop reworks only what the reviewer flagged
           if (stepDef.tasksFile) {
@@ -546,13 +631,19 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
             }
           }
           const targetId = def.steps[from].id;
-          run.revisions ??= {};
-          (run.revisions[targetId] ??= []).push(
-            `[auto-revise round ${round} - findings from ${stepDef.id}]\n${reviewFeedback(step.output)}`,
-          );
+          // Inject the findings into the prompt ONLY when the target has no
+          // artifact. With one, the same findings already reached it through
+          // the file its prompt reads, and injecting them again sends the whole
+          // set twice - two copies that can disagree if either write failed.
+          if (!def.steps[from].artifact) {
+            run.revisions ??= {};
+            (run.revisions[targetId] ??= []).push(
+              `[auto-revise round ${round} - findings from ${stepDef.id}]\n${reviewFeedback(step.output)}`,
+            );
+          }
           step.output += `\n\n[engine] auto-revise round ${round}/${max}: replaying ${targetId}`;
           await persist(run);
-          if (!(await replayRange(run, def, from, i + 1))) return;
+          if (!(await replayRange(run, def, from, i + 1, `auto-revise round ${round}`))) return;
           // the replay rewrote this step's output - restore the round marker
           // so the trace SHOWS the self-healing happened (audit readability)
           step.output =
@@ -560,6 +651,13 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
             `with the previous findings as mandatory feedback; below is the RE-REVIEW of the ` +
             `reworked output\n\n` + step.output;
           await persist(run);
+        }
+        // The loop exits on the review that finally PASSED (or on running out
+        // of rounds), and that last review has not been recorded yet - without
+        // this the artifact's final state would be the last needs_work round
+        // and never show the pass that ended the loop.
+        if (relPath && step.output !== recordedOutput) {
+          await recordRound(run, relPath, step.output, rounds + 1, step);
         }
       }
     } catch (e) {
@@ -576,6 +674,78 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
   await persist(run);
 }
 
+/** Fold one review round into the artifact and return what it found, so the
+ * caller can tell a round that moved from a round that went in circles.
+ * Findings carry over by id: anything open before and not reported again is
+ * recorded as closed. */
+async function recordRound(
+  run: RunState,
+  rel: string,
+  reviewOutput: string,
+  round: number,
+  step: StepState,
+): Promise<ReviewRecord | null> {
+  try {
+    const abs = path.join(run.root, rel);
+    const before = openFindings(await fs.readFile(abs, "utf8").catch(() => ""));
+    const findings = parseFindings(reviewOutput).findings;
+    const nowIds = new Set(findings.map((f) => f.id));
+    // What the reviewer SAID beats what the engine can infer. A finding it
+    // called PARTIAL or STILL OPEN stays open even when it dropped out of the
+    // findings list; absence only closes a finding it said nothing about.
+    const said = statedOutcomes(reviewOutput);
+    const rec: ReviewRecord = {
+      round,
+      verdict: /VERDICT:\s*(APPROVED|PASS)/i.test(reviewOutput) ? "pass" : "needs_work",
+      findings,
+      closed: before
+        .map((f) => f.id)
+        .filter(
+          (id) =>
+            !said.partial.has(id) &&
+            !said.stillOpen.has(id) &&
+            (said.resolved.has(id) || !nowIds.has(id)),
+        ),
+    };
+    const disputed = [...said.partial, ...said.stillOpen].filter((id) => !nowIds.has(id));
+    if (disputed.length > 0) {
+      step.output +=
+        `
+[engine] kept open on the reviewer's own word: ${disputed.join(", ")} - ` +
+        `reported PARTIAL or STILL OPEN but absent from the findings list.`;
+    }
+    await writeReview(run.root, rel, rec);
+    return rec;
+  } catch {
+    return null; // the artifact is best-effort; never break a run over it
+  }
+}
+
+/** Did the review immediately before this gate end unresolved?
+ *
+ * Looks back from the gate to the nearest review-role step and reads its
+ * verdict. Returns a short reason when it did NOT pass, or "" when it passed,
+ * when there is no review to consult, or when the step produced no verdict at
+ * all - absence of evidence must not become an accusation, so an unparseable
+ * review is treated as "nothing to hold back on" and the gate behaves as it
+ * did before. */
+function blockedReviewBefore(run: RunState, def: WorkflowDef, gateIndex: number): string {
+  for (let k = gateIndex - 1; k >= 0; k--) {
+    const d = def.steps[k];
+    if (d.type === "gate") break; // an earlier gate already had its own say
+    if (d.type !== "agent" || d.role !== "review") continue;
+    const out = run.steps.find((s) => s.id === d.id)?.output ?? "";
+    const verdict = out.match(/VERDICT:\s*([A-Z_]+)/i)?.[1]?.toUpperCase();
+    if (!verdict) return "";
+    if (verdict === "APPROVED" || verdict === "PASS") return "";
+    const open = parseFindings(out).findings.filter((f) => f.severity === "critical").length;
+    return open > 0
+      ? `${d.id}: ${verdict}, ${open} critical finding${open === 1 ? "" : "s"} open`
+      : `${d.id}: ${verdict}`;
+  }
+  return "";
+}
+
 /** Re-run steps [from, to) against the current run state (revision feedback
  * already recorded). Gates inside the range were already approved and are
  * never replayed. Returns false when a replayed step fails (run marked). */
@@ -584,18 +754,38 @@ async function replayRange(
   def: WorkflowDef,
   from: number,
   to: number,
+  reason = "replayed",
 ): Promise<boolean> {
   for (let k = from; k < to; k++) {
     const replayDef = def.steps[k];
     if (replayDef.type === "gate") continue;
     if (replayDef.onlyIf && !run.inputs[replayDef.onlyIf]) continue;
     const replayStep = run.steps.find((s) => s.id === replayDef.id)!;
+    // Keep the attempt that is about to be overwritten. Without this the run
+    // history shows a single row for a step that ran three times, and every
+    // earlier version is lost - the audit says a design was reworked but not
+    // what any round of it said.
+    if (replayStep.output) {
+      (replayStep.attempts ??= []).push({
+        output: replayStep.output,
+        status: replayStep.status,
+        startedAt: replayStep.startedAt,
+        endedAt: replayStep.endedAt,
+        usage: replayStep.usage,
+        model: replayStep.model,
+        supersededBy: reason,
+      });
+    }
     replayStep.output = "";
     replayStep.usage = undefined;
     replayStep.status = "running";
     replayStep.startedAt = Date.now();
+    // and clear the previous run's end time - leaving it made a re-running
+    // step carry an endedAt EARLIER than its startedAt, which renders as a
+    // negative duration and reads as "already finished"
+    replayStep.endedAt = undefined;
     await persist(run);
-    const ok = await runStep(run, replayDef, replayStep);
+    const ok = await runStepTracked(run, replayDef, replayStep);
     replayStep.endedAt = Date.now();
     if (!ok) {
       if (replayStep.status === "running") replayStep.status = "failed";
@@ -635,6 +825,76 @@ function nearestAgentIndex(def: WorkflowDef, i: number): number {
   return -1;
 }
 
+/** Run a step and, when it declares one, write its artifact.
+ *
+ * This wrapper exists because there are TWO paths into a step: the executor's
+ * main loop and replayRange, which a rework uses. Putting the artifact write in
+ * the main loop alone meant the revised design was never written back - the
+ * reviewer would have re-read the FIRST design on every round, which is exactly
+ * the bug this whole change is meant to remove. Every path goes through here. */
+/** A declared contract that produced nothing parseable is a FAILURE, not a
+ * quiet fallback. This is the exact shape of the bug that started all of it: a
+ * review yielding zero parseable findings degraded to a text slice, and the
+ * rework was handed 4,000 characters of terminal trace instead. */
+function contractHeld(def: StepDef, output: string): string {
+  if (def.emits === "findings") {
+    if (parseFindings(output).findings.length > 0) return "";
+    if (/VERDICT:\s*(APPROVED|PASS)/i.test(output)) return ""; // a clean pass has none
+    return `declared emits: "findings" but produced no parseable finding and no passing verdict`;
+  }
+  if (def.emits === "coverage") {
+    return /COVERAGE:\s*(COMPLETE|INCOMPLETE)/i.test(output)
+      ? ""
+      : `declared emits: "coverage" but produced no COVERAGE: line`;
+  }
+  return "";
+}
+
+async function runStepTracked(run: RunState, def: StepDef, step: StepState): Promise<boolean> {
+  const ok = await runStep(run, def, step);
+  if (ok && def.emits) {
+    const broken = contractHeld(def, step.output);
+    if (broken) {
+      step.output +=
+        `\n[engine] output contract not met - ${broken}. The step is failed rather than ` +
+        `passed on, because everything downstream reads that contract.`;
+      await persist(run);
+      return false;
+    }
+  }
+  if (ok && def.artifact && step.output) {
+    const rel = template(def.artifact, run).replace(/\\/g, "/");
+    // the transcript is not the design: strip the CLI's own trace and trailer
+    const design = designFromOutput(step.output);
+    // an empty extraction would blank the artifact and take the previous design
+    // with it - keep what is already on disk instead
+    if (design.trim().length === 0) {
+      step.output += `\n[engine] nothing but tool trace in this step's output - ${rel} left as it was`;
+    } else {
+      await writeDesign(run.root, rel, design).catch(() => {
+        step.output += `\n[engine] could not write ${rel} - the next rework will not see this design`;
+      });
+      // Count the source document's own units against what the design claims.
+      // Arithmetic, not opinion: the BRD numbers itself, so a dropped AC is a
+      // fact rather than something a reviewer has to happen to notice.
+      const cov = await checkCoverage(
+        run.root,
+        String(run.inputs.requirement ?? ""),
+        design,
+      ).catch(() => null);
+      if (cov && cov.uncited.length > 0) {
+        step.output +=
+          `\n[engine] requirement coverage: ${cov.units.length - cov.uncited.length}/${
+            cov.units.length
+          } source units claimed by a BRD-REF. NOT claimed by any REQ block: ${cov.uncited.join(", ")}`;
+      } else if (cov) {
+        step.output += `\n[engine] requirement coverage: all ${cov.units.length} source units claimed.`;
+      }
+    }
+  }
+  return ok;
+}
+
 async function runStep(run: RunState, def: StepDef, step: StepState): Promise<boolean> {
   switch (def.type) {
     case "snapshot": {
@@ -644,6 +904,8 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       return ok;
     }
     case "changes": {
+      // pin what this diff is AGAINST before anything moves HEAD on
+      step.baseCommit = (await headCommit(run.root)) ?? undefined;
       const changes = await changesSince(run.root);
       if (changes === null) {
         step.output = "snapshot store unavailable";
@@ -701,9 +963,13 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         `\n` +
         template(def.prompt ?? "", run) +
         feedbackBlock +
-        // one source of truth for the outcome contract: the engine appends it
-        // so every agent step gets it, INCLUDING user-authored custom
-        // workflows, and the prompt can never drift from the parser
+        // One source of truth per machine-read contract: the engine appends
+        // them, so every step gets the exact text its parser expects and a
+        // prompt can never drift from the parser. The findings shape was
+        // written out longhand in five separate review steps before this.
+        (def.emits === "findings" ? FINDINGS_INSTRUCTION : "") +
+        (def.emits === "coverage" ? COVERAGE_INSTRUCTION : "") +
+        MANUAL_INSTRUCTION +
         OUTCOME_INSTRUCTION;
       // Model resolution, most specific wins:
       // 1. the user's per-ROLE model for this run (the Models-by-role setting)
@@ -1078,6 +1344,17 @@ function spawnToStep(
     return Promise.resolve(false);
   }
   return new Promise((resolve) => {
+    // One settle point. A timed-out step must end at its budget even if the
+    // process ignores the kill and keeps streaming, and the child's later
+    // "close" must not then append an exit line to a step already finished.
+    let settled = false;
+    const settle = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      activeChildren.delete(run.runId);
+      void persist(run);
+      resolve(ok);
+    };
     const child = spawn(bin, args, {
       cwd: run.root,
       shell: true,
@@ -1086,11 +1363,18 @@ function spawnToStep(
     });
     activeChildren.set(run.runId, child);
     const timer = setTimeout(() => {
-      step.output += "\n[engine] step timed out";
+      step.output +=
+        `\n[engine] step timed out after ${Math.round(timeoutMs / 60_000)} minutes - ` +
+        `giving up on it. Anything the agent writes from here is NOT captured.`;
       // shell:true means child is cmd.exe - kill the whole tree or the real
       // CLI survives as an orphan still editing the project
       if (child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: false });
       child.kill();
+      // Settle NOW rather than waiting for the child's "close". The kill does
+      // not always take: on a real run a 30-minute task carried on for 72,
+      // because this handler only asked the process to die and then went on
+      // waiting for it. A budget that a failed kill can extend is not a budget.
+      settle(false);
     }, timeoutMs);
     // EPIPE when the CLI exits before draining (e.g. expired login) must not
     // crash the server process
@@ -1123,19 +1407,17 @@ function spawnToStep(
       clearTimeout(timer);
       activeChildren.delete(run.runId);
       step.output += `\n[engine] could not start ${bin}: ${e.message}`;
-      void persist(run);
-      resolve(false);
+      settle(false);
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      activeChildren.delete(run.runId);
+      // a step already settled by the timeout must not gain a late exit line
+      if (settled) return;
       // flush the transform's trailing partial line (a final stream-json
       // result event without a newline carries the exact usage)
       if (transform) push("\n");
       step.output += `\n[exit ${code}]`;
-      // step boundary: flush the debounced audit write immediately
-      void persist(run);
-      resolve(code === 0);
+      settle(code === 0);
     });
   });
 }

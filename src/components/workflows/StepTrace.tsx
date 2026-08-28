@@ -152,10 +152,15 @@ export default function StepBody({
   output: rawOutput,
   type,
   running,
+  baseCommit,
+  onOpenDiff,
 }: {
   output: string;
   type: string;
   running: boolean;
+  /** changes steps: the commit this diff was taken against */
+  baseCommit?: string;
+  onOpenDiff?: (rel: string, pin?: { base?: string; end?: string }) => void;
 }) {
   // The agent states its own outcome in a fixed block when the workflow asks
   // for one. That is authoritative; the pattern-counting further down stays
@@ -322,8 +327,6 @@ export default function StepBody({
   }
 
   if (type === "changes" && !running) {
-    // the run view renders this list with working diff links; showing the raw
-    // text here as well would just duplicate it
     if (/no files changed/i.test(output)) {
       return (
         <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
@@ -331,7 +334,60 @@ export default function StepBody({
         </p>
       );
     }
-    return null;
+    // This used to return null on the assumption that the run view already
+    // shows the list. It does - but only for ONE changes step, because each
+    // overwrites run.changes. A workflow with two of them (retrieve-delta, then
+    // changes) left the first as a row that would not open, hiding the whole
+    // org-drift report it exists to produce.
+    const files = output
+      .split(/\r?\n/)
+      .map((l) => l.match(/^(modified|added|deleted)\s+(.+)$/))
+      .filter((m): m is RegExpMatchArray => !!m)
+      .map((m) => ({ status: m[1], file: m[2].trim() }));
+    if (files.length === 0) {
+      return (
+        <div className="max-h-72 overflow-y-auto border-t border-slate-100">
+          <pre className="whitespace-pre-wrap break-words px-4 py-3 font-mono text-xs text-slate-600">
+            {output}
+          </pre>
+        </div>
+      );
+    }
+    return (
+      <div className="border-t border-slate-100">
+        <p className="px-4 pt-2.5 text-[11px] text-slate-500">
+          {files.length} file{files.length === 1 ? "" : "s"} differed from the snapshot taken
+          before this step
+          {onOpenDiff && baseCommit ? " - open one to see the diff" : ""}
+        </p>
+        <div className="max-h-72 overflow-y-auto px-2 pb-2 pt-1">
+          {files.map((c) => {
+            const row = (
+              <>
+                <span className="mr-2 text-[11px] font-semibold uppercase text-amber-600">
+                  {c.status}
+                </span>
+                {c.file}
+              </>
+            );
+            return onOpenDiff && baseCommit ? (
+              <button
+                key={c.file}
+                onClick={() => onOpenDiff(c.file, { base: baseCommit })}
+                className="block w-full truncate rounded-md px-2 py-1 text-left font-mono text-xs hover:bg-slate-100"
+                title="Open diff against the snapshot before this step"
+              >
+                {row}
+              </button>
+            ) : (
+              <p key={c.file} className="truncate px-2 py-1 font-mono text-xs text-slate-600">
+                {row}
+              </p>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
   // anything else (streaming cli, engine notices) stays terminal-style

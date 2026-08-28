@@ -15,6 +15,48 @@ export interface Finding {
 
 const strip = (s: string) => s.replace(/\*+/g, "").trim();
 
+/** The findings contract, in ONE place next to the parser that reads it.
+ *
+ * This text used to be written out longhand in every review step - five copies
+ * of the shape `parseFindings` expects, free to drift apart one edit at a time.
+ * The outcome block had exactly that problem and was fixed the same way: the
+ * engine appends the constant, and a test round-trips it through the parser.
+ *
+ * A step opts in with `emits: "findings"`. */
+export const FINDINGS_INSTRUCTION =
+  `
+
+Report each finding in this exact shape (it is machine-parsed - keep the ` +
+  `labels verbatim):
+` +
+  `F<n> (critical | important | nit) [refs: <the REQ-/UX-/task ids this finding ` +
+  `concerns, comma-separated; '-' only for a truly global finding>]: <short title>
+` +
+  `  Where: <file / component / section>
+` +
+  `  Problem: <what is wrong>
+` +
+  `  Fix: <the concrete change to make>
+` +
+  `critical = would break in production or violates a blocking standard; ` +
+  `important = should be fixed before deploy; nit = style/polish, never blocks.
+` +
+  `Number findings sequentially from F1. Reference requirements inline as REQ-xxx, ` +
+  `NEVER as "### REQ-" headings - those are parsed as design blocks.
+` +
+  `Then end with exactly one line:
+` +
+  `VERDICT: APPROVED - or - VERDICT: BLOCKED, followed by the critical/important ` +
+  `finding ids. nit-only findings never block.`;
+
+/** The coverage contract, read by the engine's autoRevise trigger. */
+export const COVERAGE_INSTRUCTION =
+  `
+
+End with exactly one line, machine-parsed, labels verbatim:
+` +
+  `COVERAGE: COMPLETE - or - COVERAGE: INCOMPLETE - items <ids>`;
+
 /** Extract findings and the text before them. `trailing` carries verdict/exit
  * lines that follow the last finding (rendered separately by callers). */
 export function parseFindings(text: string): {
@@ -53,7 +95,7 @@ export function parseFindings(text: string): {
       severity: (neu ? neu[2] : old![3]) as Finding["severity"],
       refs: [
         ...new Set(neu?.[3] ? (neu[3].match(/(?:REQ|UX|T|AC)-\d+/g) ?? []) : (body.match(/REQ-\d+/g) ?? [])),
-      ].slice(0, 4),
+      ],
       title: strip(neu ? neu[4] : old![2]).replace(/\s*\(critical\)|\s*\(important\)|\s*\(nit\)/g, ""),
       where: grab("Where"),
       problem: grab("Problem"),

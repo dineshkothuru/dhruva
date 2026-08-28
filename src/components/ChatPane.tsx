@@ -266,6 +266,26 @@ export default function ChatPane({
     }
   }, [messages, running, root]);
 
+  /** Delete a staged upload from disk as well as from the form. Removing the
+   * chip used to drop only the reference, leaving the file behind forever - one
+   * project ended up with thirteen copies of the same document. */
+  async function discardStaged(rels: string[]) {
+    const names = rels
+      .filter((r) => r.startsWith(".dhruva/tmp/attachments/"))
+      .map((r) => r.split("/").pop() ?? "")
+      .filter(Boolean);
+    if (names.length === 0 || !root) return;
+    try {
+      await fetch("/api/upload/discard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root, names }),
+      });
+    } catch {
+      /* the file simply stays staged; never block the user on cleanup */
+    }
+  }
+
   async function send() {
     const prompt = input.trim();
     if (!prompt || running) return;
@@ -569,8 +589,11 @@ export default function ChatPane({
       // The chain handoff. Design outputs are stamped with the run that made
       // them, so this points at the PREVIOUS phase - the engine substitutes
       // its id when the handoff fires.
-      out.tddPath = "dhruva-docs/designs/solution-design-{prevRunId}-tdd.md";
-      out.tasksPath = "dhruva-docs/designs/solution-design-{prevRunId}-tasks.json";
+      // the run id is the FOLDER now, so these no longer hardcode a docName -
+      // a chain with a custom document name used to point at a file that was
+      // never written
+      out.tddPath = ".dhruva/runs/{prevRunId}/docs/tdd.md";
+      out.tasksPath = ".dhruva/runs/{prevRunId}/docs/tasks.json";
       out.deploy = false;
       return out;
     }
@@ -1052,7 +1075,10 @@ export default function ChatPane({
                 </svg>
                 {a.name}
                 <button
-                  onClick={() => setAttachments((x) => x.filter((y) => y.rel !== a.rel))}
+                  onClick={() => {
+                    setAttachments((x) => x.filter((y) => y.rel !== a.rel));
+                    void discardStaged([a.rel]);
+                  }}
                   className="text-slate-400 hover:text-slate-700"
                   title="Remove"
                 ><Icon.close size={12} strokeWidth={2.25} /></button>

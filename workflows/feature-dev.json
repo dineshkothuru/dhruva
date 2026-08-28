@@ -30,166 +30,54 @@
   ],
   "steps": [
     {
-      "id": "snapshot",
-      "title": "Snapshot baseline",
-      "type": "snapshot"
+      "use": "snapshot",
+      "title": "Snapshot baseline"
+    },
+    "spec",
+    "approve-spec",
+    {
+      "use": "retrieve-fresh",
+      "title": "Retrieve fresh copies of files to be modified"
     },
     {
-      "id": "spec",
-      "title": "Draft technical spec (agent, read-only)",
-      "type": "agent",
-      "role": "design",
-      "readOnly": true,
-      "prompt": "Binary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.\nYou are designing a Salesforce implementation for a requirement. DO NOT modify any files in this step.\nRequirement: {inputs.requirement}\nStudy the existing codebase first (reuse existing classes/objects/patterns - never plan a parallel implementation of something that exists).\nReply in EXACTLY this structure:\n1. USE CASES - extract them from the requirement with stable ids:\n   UC-1: <title> - <actor> wants to <action> so that <outcome>.  (happy paths)\n   UC-E1: <title> - what happens when <error/edge condition>.    (error & edge cases - think bulk loads, missing permissions, null data, concurrent edits)\n2. SCOPE - 'In scope' bullet list and 'Out of scope' bullet list (with why), so the reviewer sees the boundary explicitly.\n3. TECHNICAL SPEC - (a) approach, (b) components to create or modify with exact API names, (c) test plan covering every UC id above.\n4. OPEN QUESTIONS - anything unresolved that could change the design ('none' if none).\nEnd your reply with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls"
+      "use": "retrieve-delta",
+      "title": "Compare retrieved files against spec-time versions"
+    },
+    "rebaseline",
+    {
+      "use": "feature-dev.implement",
+      "as": "implement"
     },
     {
-      "id": "approve-spec",
-      "title": "Approve technical spec",
-      "type": "gate",
-      "message": "Review the technical spec above. Proceed with implementation?"
+      "use": "changes",
+      "title": "Collect changed files"
+    },
+    "verify-standards",
+    {
+      "use": "bug-fix.review",
+      "as": "review"
     },
     {
-      "id": "retrieve-fresh",
-      "title": "Retrieve fresh copies of files to be modified",
-      "type": "cli",
-      "bin": "sf",
-      "optional": true,
-      "args": [
-        "project",
-        "retrieve",
-        "start",
-        "{affectedSourceDirs}",
-        "--json",
-        "--wait",
-        "10"
-      ]
+      "use": "feature-dev.traceability",
+      "as": "traceability"
     },
     {
-      "id": "retrieve-delta",
-      "title": "Compare retrieved files against spec-time versions",
-      "type": "changes"
+      "use": "feature-dev.approve-changes",
+      "as": "approve-changes"
     },
     {
-      "id": "rebaseline",
-      "title": "Re-baseline after org refresh",
-      "type": "snapshot"
+      "use": "bug-fix.validate",
+      "as": "validate"
+    },
+    "validate-tests",
+    "visual-preview",
+    {
+      "use": "bug-fix.approve-deploy",
+      "as": "approve-deploy"
     },
     {
-      "id": "implement",
-      "title": "Implement feature + tests (agent)",
-      "type": "agent",
-      "role": "implement",
-      "prompt": "Implement this feature in the current project.\nRequirement: {inputs.requirement}\nApproved technical spec:\n{steps.spec.output}\n\nOrg-refresh delta since the spec was written:\n{steps.retrieve-delta.output}\nIf files are listed in that delta, re-read them and adapt the spec before coding.\nWrite or update Apex tests for everything you implement (aim for the changed classes to be covered). Follow the existing code style. Never create a parallel implementation of something that already exists. Do not deploy.\n\nMANUAL STEPS: if anything requires a HUMAN acting in the org that you cannot do from this machine (Setup UI toggles, secrets or Named Credential values, connected app approvals, permission set assignment in production, sandbox refreshes, feature enablement), print a line for each in exactly this form: MANUAL: <action> - <where, e.g. Setup path> - <before deploy|after deploy>. Never silently skip or fake such a step."
-    },
-    {
-      "id": "changes",
-      "title": "Collect changed files",
-      "type": "changes"
-    },
-    {
-      "id": "verify-standards",
-      "title": "Verify standards on changed files (deterministic)",
-      "type": "verify"
-    },
-    {
-      "id": "review",
-      "title": "Code review of the changes (agent, read-only)",
-      "type": "agent",
-      "role": "review",
-      "readOnly": true,
-      "persona": "salesforce-review",
-      "autoRevise": {
-        "target": "implement",
-        "trigger": "VERDICT:\\s*BLOCKED",
-        "maxRounds": 3
-      },
-      "prompt": "Review ONLY the changes listed below (made in this run) against the team standards. Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nRead each changed file and review the actual change. Report each finding in this exact shape (severity in parentheses):\nF<n> (critical | important | nit) [refs: <the REQ-/UX-/task ids this finding concerns, comma-separated - the SAME ids used in the design/plan under review; '-' only for a truly global finding>]: <short title>\n  Where: <file / component / section>\n  Problem: <what is wrong>\n  Fix: <the concrete change to make>\ncritical = would break in production or violates a blocking standard; important = should be fixed before deploy; nit = style/polish, never blocks.\nThen end with exactly one line:\nVERDICT: READY - or - VERDICT: BLOCKED, followed by the critical/important finding ids.\nnit-only findings never block."
-    },
-    {
-      "id": "traceability",
-      "title": "Requirement coverage check (agent, read-only)",
-      "type": "agent",
-      "role": "trace",
-      "readOnly": true,
-      "prompt": "Binary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.\nCoverage check. Re-read the full requirement (and any attached documents it references):\n{inputs.requirement}\nThe approved spec extracted numbered use cases (UC-n / UC-En):\n{steps.spec.output}\nFor EACH UC id in the spec (and any requirement item the spec missed), inspect the changed files below and report one line:\n  UC-x: <title> - IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\nChanged files in this run:\n{steps.changes.output}\nDo not modify any files. Be strict: no evidence in the diff = MISSING. Items marked Out of scope in the spec are excluded - list them as SKIPPED (out of scope). End with the verdict line: COVERAGE: COMPLETE, or COVERAGE: INCOMPLETE - items <UC ids>."
-    },
-    {
-      "id": "approve-changes",
-      "title": "Approve code changes",
-      "type": "gate",
-      "reviseTarget": "implement",
-      "message": "HUMAN GATE - you are shown the diffs, the code reviewer's verdict with its findings, and the coverage check. If findings remain or items are PARTIAL/MISSING, revise (e.g. 'implement items 2 and 5'); approve to validate against the org."
-    },
-    {
-      "id": "validate",
-      "title": "Validate (check-only deploy of changed files)",
-      "type": "cli",
-      "bin": "sf",
-      "args": [
-        "project",
-        "deploy",
-        "start",
-        "--dry-run",
-        "{changedSourceDirs}",
-        "--json",
-        "--wait",
-        "30"
-      ]
-    },
-    {
-      "id": "validate-tests",
-      "title": "Validate with local tests",
-      "type": "cli",
-      "bin": "sf",
-      "onlyIf": "runTests",
-      "args": [
-        "project",
-        "deploy",
-        "start",
-        "--dry-run",
-        "{changedSourceDirs}",
-        "--test-level",
-        "RunLocalTests",
-        "--json",
-        "--wait",
-        "60"
-      ]
-    },
-    {
-      "id": "visual-preview",
-      "title": "Visual test - local files against live org data (Local Dev)",
-      "type": "cli",
-      "bin": "sf",
-      "detached": true,
-      "onlyIf": "visualTest",
-      "args": [
-        "lightning",
-        "dev",
-        "app"
-      ]
-    },
-    {
-      "id": "approve-deploy",
-      "title": "Approve deploy",
-      "type": "gate",
-      "onlyIf": "deploy",
-      "message": "Validation passed. If you enabled the visual test, click through the app in the browser first. Deploy the changed files to the default org now?"
-    },
-    {
-      "id": "deploy",
-      "title": "Deploy changed files",
-      "type": "cli",
-      "bin": "sf",
-      "onlyIf": "deploy",
-      "args": [
-        "project",
-        "deploy",
-        "start",
-        "{changedSourceDirs}",
-        "--json",
-        "--wait",
-        "30"
-      ]
+      "use": "deploy",
+      "title": "Deploy changed files"
     }
   ]
 }

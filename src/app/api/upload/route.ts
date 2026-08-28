@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
 import { promises as fs } from "node:fs";
+import { createHash } from "node:crypto";
+import { stageDir } from "@/lib/attachments";
 import { isAttachableRoot } from "@/lib/fsguard";
 import { ensureExtractedFile } from "@/lib/docExtract";
 
@@ -52,23 +54,36 @@ export async function POST(req: Request) {
     .basename(file.name, ext)
     .replace(/[^A-Za-z0-9._-]/g, "_")
     .slice(0, 60);
-  const name = `${Date.now().toString(36)}-${safeBase}${ext}`;
-  const dir = path.join(root, ".dhruva", "attachments");
+  // Name by CONTENT, not by clock. A timestamp prefix meant every re-upload of
+  // the same document became another near-identical filename: one project had
+  // thirteen copies of one BRD, and an agent that lists the folder instead of
+  // using the exact path is then choosing between them at random. A content
+  // hash makes re-uploading the same file a no-op and keeps the path that a
+  // run's recorded requirement text points at stable.
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const digest = createHash("sha256").update(bytes).digest("hex").slice(0, 10);
+  const name = `${digest}-${safeBase}${ext}`;
+  // staged, not owned: a run adopts what it references when it starts
+  const dir = stageDir(root);
   await fs.mkdir(dir, { recursive: true });
   const abs = path.join(dir, name);
-  await fs.writeFile(abs, Buffer.from(await file.arrayBuffer()));
+  const already = await fs
+    .stat(abs)
+    .then(() => true)
+    .catch(() => false);
+  if (!already) await fs.writeFile(abs, bytes);
 
   if (ext === ".docx" || ext === ".pdf") {
     const sibling = await ensureExtractedFile(abs);
     if (sibling) {
       // agents read the extracted text, not the binary
       return NextResponse.json({
-        rel: `.dhruva/attachments/${path.basename(sibling)}`,
+        rel: `.dhruva/tmp/attachments/${path.basename(sibling)}`,
         name: file.name,
         extracted: true,
       });
     }
   }
 
-  return NextResponse.json({ rel: `.dhruva/attachments/${name}`, name: file.name });
+  return NextResponse.json({ rel: `.dhruva/tmp/attachments/${name}`, name: file.name });
 }

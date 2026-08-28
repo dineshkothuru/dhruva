@@ -80,6 +80,24 @@ export interface StepDef {
    * preceding agent step). Set to the implement step on code-review gates so
    * feedback reworks the code, not the read-only reviewer. */
   reviseTarget?: string;
+  /** agent: project-relative path template of the FILE this step authors.
+   * When set, the step's output is written there after a successful run and
+   * survives a replay - which is what lets a rework read its own previous work
+   * instead of redrafting from the requirement. */
+  artifact?: string;
+  /** agent: the machine-readable contract this step's output must satisfy.
+   *
+   * The engine appends the matching instruction (one source, next to the
+   * parser that reads it) and then CHECKS the result: a step that declares a
+   * contract and produces nothing parseable fails loudly instead of degrading
+   * to a text slice, which is how a review yielding zero findings once fed a
+   * rework 4,000 characters of terminal trace. */
+  emits?: "findings" | "coverage";
+  /** agent (review steps): the id of the step whose artifact this reviews.
+   * The ENGINE writes the parsed findings into that file's "## Review"
+   * section, so the reviewer itself stays readOnly and never gains write
+   * access to the document it is judging. */
+  reviewOf?: string;
   /** Skip this step unless the named run input is truthy. */
   onlyIf?: string;
   /** cli: when an argv expansion has nothing to expand ({affectedSourceDirs}
@@ -130,6 +148,33 @@ export interface StepState {
    * role setting' / 'shipped default for the "design" role' / 'run model' /
    * 'CLI default'. Shown in the UI and kept in the audit. */
   modelFrom?: string;
+  /** changes steps: the shadow-git commit this step diffed the work tree
+   * against. Pinned because the NEXT snapshot step moves HEAD past it - without
+   * it, a drift report like retrieve-delta becomes unopenable minutes after it
+   * is produced. */
+  baseCommit?: string;
+  /** EARLIER executions of this same step, oldest first.
+   *
+   * A step can run more than once: an auto-revise replays its target and the
+   * reviewer that follows it, and a gate "revise" does the same. The replay
+   * used to blank `output` and write over the fields above, so the run history
+   * showed one row and the earlier attempt was simply gone - you could see that
+   * a design had been reworked three times but never what any of them said.
+   * Each replay now pushes the finished attempt here first, and the run history
+   * renders one row per execution. */
+  attempts?: StepAttempt[];
+}
+
+/** One finished execution of a step, kept when the step runs again. */
+export interface StepAttempt {
+  output: string;
+  status: StepStatus;
+  startedAt?: number;
+  endedAt?: number;
+  usage?: StepState["usage"];
+  model?: string;
+  /** why this attempt was superseded, e.g. "auto-revise round 1" */
+  supersededBy?: string;
 }
 
 /** One link of a multi-workflow chain ("design and implement"): the workflow
