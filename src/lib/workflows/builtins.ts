@@ -2,6 +2,7 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import type { WorkflowDef } from "./schema";
 import { validateWorkflowDef } from "./validate";
+import { isStepRef, loadStepLibrary, resolveStep, type StepRef } from "./steps";
 
 /** Built-in workflow library - shipped as workflows/*.json (same pattern as
  * the standards/ folder) and validated by the SAME contract as customs, so
@@ -28,8 +29,18 @@ export async function builtinWorkflows(): Promise<Record<string, WorkflowDef>> {
       `built-in workflows folder not found at ${builtinsDir()} - broken install (set DHRUVA_WORKFLOWS_DIR or run from the repo root)`,
     );
   }
+  const library = await loadStepLibrary();
   for (const f of files.sort()) {
     const raw = JSON.parse(await fs.readFile(path.join(builtinsDir(), f), "utf8"));
+    // steps arrive as library references ("snapshot", or {use, as, ...overrides});
+    // resolve them to full definitions BEFORE validation, so the validator and
+    // everything downstream keep seeing one shape. Inline steps still pass
+    // through untouched - custom workflows on disk are written out in full.
+    if (Array.isArray(raw?.steps)) {
+      raw.steps = raw.steps.map((s: unknown) =>
+        isStepRef(s) ? resolveStep(s as string | StepRef, library) : s,
+      );
+    }
     // a broken shipped file must fail LOUDLY, never be served silently
     const def = validateWorkflowDef(raw);
     out[def.id] = def;

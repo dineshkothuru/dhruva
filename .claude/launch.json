@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "dhruva",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3005
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev"],
+      "autoPort": true
     }
   ]
 }

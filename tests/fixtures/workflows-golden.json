@@ -1,0 +1,1231 @@
+{
+  "bug-fix": {
+    "id": "bug-fix",
+    "title": "Bug fix",
+    "description": "Locate the root cause, gate on the fix plan, implement, review the diff, validate and deploy the changed files.",
+    "inputs": [
+      {
+        "key": "description",
+        "label": "Bug description",
+        "kind": "text",
+        "attachTo": true
+      },
+      {
+        "key": "runTests",
+        "label": "Run local Apex tests during validation",
+        "kind": "boolean",
+        "default": false
+      },
+      {
+        "key": "deploy",
+        "label": "Deploy to the default org at the end",
+        "kind": "boolean",
+        "default": true
+      },
+      {
+        "key": "visualTest",
+        "label": "Visual test before deploy (opens the org in the browser with your LOCAL UI files + live org data)",
+        "kind": "boolean",
+        "default": false
+      }
+    ],
+    "steps": [
+      {
+        "id": "snapshot",
+        "title": "Snapshot baseline",
+        "type": "snapshot"
+      },
+      {
+        "id": "locate",
+        "title": "Locate root cause (agent, read-only)",
+        "type": "agent",
+        "prompt": "You are investigating a bug. DO NOT modify any files in this step.\nBug report: {inputs.description}\nInvestigate the local codebase and report the diagnosis in EXACTLY this structure:\nSYMPTOMS: <what is broken - error messages, logs, observed behavior from the report>\nREPRODUCTION: <numbered steps that trigger it, ending in the observed failure; 'not reproducible locally' plus why, if so>\nEXPECTED vs ACTUAL: <one line each>\nEVIDENCE: <what you checked - classes read, automation traced, config examined>\nDATA FLOW: <trace from entry point to the failure point; where it diverges from expected>\nROOT CAUSE: <the actual cause, not a symptom or a guess - with the exact file and line/element reference. If you cannot establish it with evidence, say UNCONFIRMED and list the candidates>\nIMPACT: <severity critical/high/medium/low + which users/features are affected + since when if determinable, else 'unknown'>\nFIX PLAN: <the concrete fix for exactly this root cause, files to change, and the test that will prove it>\nUI BUGS (component not rendering, field missing, wrong layout, broken interaction): the sections still apply, read them as follows. DATA FLOW = the render/event path - flexipage/layout -> component -> wire/controller -> data -> conditional rendering, or click -> handler -> apex -> response. EVIDENCE = markup AND configuration: the component HTML/JS, field-level security, page layouts/flexipages and visibility filters, record types, validation rules, permission sets - many UI symptoms are config visibility, not code. You cannot see a browser: reason from the reported description/screenshots, mark REPRODUCTION as 'visual - verify via the Local Dev preview' where applicable, and say so when the root cause needs on-screen confirmation.\nEnd your reply with one line listing every involved file as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls, force-app/main/default/classes/ExampleTest.cls",
+        "readOnly": true,
+        "role": "read"
+      },
+      {
+        "id": "approve-plan",
+        "title": "Approve fix plan",
+        "type": "gate",
+        "message": "Review the root-cause analysis and fix plan above. Proceed with implementing it?"
+      },
+      {
+        "id": "retrieve-fresh",
+        "title": "Retrieve fresh copies of affected files from the org",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "retrieve",
+          "start",
+          "{affectedSourceDirs}",
+          "--json",
+          "--wait",
+          "10"
+        ],
+        "optional": true
+      },
+      {
+        "id": "retrieve-delta",
+        "title": "Compare retrieved files against the investigated versions",
+        "type": "changes"
+      },
+      {
+        "id": "rebaseline",
+        "title": "Re-baseline after org refresh",
+        "type": "snapshot"
+      },
+      {
+        "id": "implement",
+        "title": "Implement the fix (re-verifies only if the org drifted)",
+        "type": "agent",
+        "prompt": "Implement the fix for this bug.\r\nBug report: {inputs.description}\r\nApproved plan from the investigation step:\r\n{steps.locate.output}\r\n\r\nThe affected files were re-retrieved from the org after the investigation. This is the exact delta between what the investigation saw and the org's current version:\r\n{steps.retrieve-delta.output}\r\nUse that delta ONLY to decide whether the investigation is still valid. Ignore any path outside force-app - harness bookkeeping under .dhruva is not org drift.\r\n\r\n- No force-app file listed: the investigation saw exactly what the org has. Implement the plan directly. Do NOT re-investigate.\r\n- A force-app file listed that the investigation named: re-read THAT file, confirm the bug is still present and the plan still applies, then implement. If the fresh code already contains the fix, say so and change nothing.\r\n- A force-app file listed that the investigation did not name: note it in your output and carry on. It is not evidence the diagnosis is wrong.\r\n\r\nYou are not re-doing the investigation. The root cause was found, reviewed and approved; your job is to apply it to the current code, and to notice only if the current code has moved out from under it.\r\n\r\nNever create a new file, class, or method when an existing one should be edited - search for existing implementations first and modify them. Only change what the plan requires. Do not deploy.",
+        "role": "implement"
+      },
+      {
+        "id": "changes",
+        "title": "Collect changed files",
+        "type": "changes"
+      },
+      {
+        "id": "verify-standards",
+        "title": "Verify standards on changed files (deterministic)",
+        "type": "verify"
+      },
+      {
+        "id": "review",
+        "title": "Code review of the changes (agent, read-only)",
+        "type": "agent",
+        "prompt": "Review ONLY the changes listed below (made in this run) against the team standards. Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nRead each changed file and review the actual change.",
+        "readOnly": true,
+        "persona": "salesforce-review",
+        "role": "review",
+        "autoRevise": {
+          "target": "implement",
+          "trigger": "VERDICT:\\s*BLOCKED",
+          "maxRounds": 3
+        },
+        "emits": "findings"
+      },
+      {
+        "id": "approve-changes",
+        "title": "Approve code changes",
+        "type": "gate",
+        "message": "HUMAN GATE - you are shown the diff and the code reviewer's verdict with its findings. Revise to rework, approve to validate and deploy the fix.",
+        "reviseTarget": "implement"
+      },
+      {
+        "id": "validate",
+        "title": "Validate (check-only deploy of changed files)",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "--dry-run",
+          "{changedSourceDirs}",
+          "--json",
+          "--wait",
+          "30"
+        ]
+      },
+      {
+        "id": "validate-tests",
+        "title": "Validate with local tests",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "--dry-run",
+          "{changedSourceDirs}",
+          "--test-level",
+          "RunLocalTests",
+          "--json",
+          "--wait",
+          "60"
+        ],
+        "onlyIf": "runTests"
+      },
+      {
+        "id": "visual-preview",
+        "title": "Visual test - local files against live org data (Local Dev)",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "lightning",
+          "dev",
+          "app"
+        ],
+        "detached": true,
+        "onlyIf": "visualTest"
+      },
+      {
+        "id": "approve-deploy",
+        "title": "Approve deploy",
+        "type": "gate",
+        "message": "Validation passed. If you enabled the visual test, click through the app in the browser first. Deploy the changed files to the default org now?",
+        "onlyIf": "deploy"
+      },
+      {
+        "id": "deploy",
+        "title": "Deploy changed files",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "{changedSourceDirs}",
+          "--json",
+          "--wait",
+          "30"
+        ],
+        "onlyIf": "deploy"
+      }
+    ]
+  },
+  "deploy-preview": {
+    "id": "deploy-preview",
+    "title": "Deploy preview",
+    "description": "Read-only: list exactly what a deploy from this folder would change in the org. Requires a SOURCE-TRACKED org (scratch org, or a Developer/Dev Pro sandbox with tracking enabled) - regular sandboxes fail with NonSourceTrackedOrgError; use Validate deploy there instead.",
+    "inputs": [],
+    "steps": [
+      {
+        "id": "preview",
+        "title": "Preview deploy against default org",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "preview",
+          "--json"
+        ]
+      }
+    ]
+  },
+  "feature-dev": {
+    "id": "feature-dev",
+    "title": "Feature development",
+    "description": "Turn a requirement into a technical spec (gated), implement with tests, review the diff, validate and deploy.",
+    "inputs": [
+      {
+        "key": "requirement",
+        "label": "Requirement / user story",
+        "kind": "text",
+        "attachTo": true
+      },
+      {
+        "key": "runTests",
+        "label": "Run local Apex tests during validation",
+        "kind": "boolean",
+        "default": true
+      },
+      {
+        "key": "deploy",
+        "label": "Deploy to the default org at the end",
+        "kind": "boolean",
+        "default": false
+      },
+      {
+        "key": "visualTest",
+        "label": "Visual test before deploy (opens the org in the browser with your LOCAL UI files + live org data)",
+        "kind": "boolean",
+        "default": false
+      }
+    ],
+    "steps": [
+      {
+        "id": "snapshot",
+        "title": "Snapshot baseline",
+        "type": "snapshot"
+      },
+      {
+        "id": "spec",
+        "title": "Draft technical spec (agent, read-only)",
+        "type": "agent",
+        "prompt": "Binary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.\nYou are designing a Salesforce implementation for a requirement. DO NOT modify any files in this step.\nRequirement: {inputs.requirement}\nStudy the existing codebase first (reuse existing classes/objects/patterns - never plan a parallel implementation of something that exists).\nReply in EXACTLY this structure:\n1. USE CASES - extract them from the requirement with stable ids:\n   UC-1: <title> - <actor> wants to <action> so that <outcome>.  (happy paths)\n   UC-E1: <title> - what happens when <error/edge condition>.    (error & edge cases - think bulk loads, missing permissions, null data, concurrent edits)\n2. SCOPE - 'In scope' bullet list and 'Out of scope' bullet list (with why), so the reviewer sees the boundary explicitly.\n3. TECHNICAL SPEC - (a) approach, (b) components to create or modify with exact API names, (c) test plan covering every UC id above.\n4. OPEN QUESTIONS - anything unresolved that could change the design ('none' if none).\nEnd your reply with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls",
+        "readOnly": true,
+        "role": "design"
+      },
+      {
+        "id": "approve-spec",
+        "title": "Approve technical spec",
+        "type": "gate",
+        "message": "Review the technical spec above. Proceed with implementation?"
+      },
+      {
+        "id": "retrieve-fresh",
+        "title": "Retrieve fresh copies of files to be modified",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "retrieve",
+          "start",
+          "{affectedSourceDirs}",
+          "--json",
+          "--wait",
+          "10"
+        ],
+        "optional": true
+      },
+      {
+        "id": "retrieve-delta",
+        "title": "Compare retrieved files against spec-time versions",
+        "type": "changes"
+      },
+      {
+        "id": "rebaseline",
+        "title": "Re-baseline after org refresh",
+        "type": "snapshot"
+      },
+      {
+        "id": "implement",
+        "title": "Implement feature + tests (agent)",
+        "type": "agent",
+        "prompt": "Implement this feature in the current project.\nRequirement: {inputs.requirement}\nApproved technical spec:\n{steps.spec.output}\n\nOrg-refresh delta since the spec was written:\n{steps.retrieve-delta.output}\nIf files are listed in that delta, re-read them and adapt the spec before coding.\nWrite or update Apex tests for everything you implement (aim for the changed classes to be covered). Follow the existing code style. Never create a parallel implementation of something that already exists. Do not deploy.",
+        "role": "implement"
+      },
+      {
+        "id": "changes",
+        "title": "Collect changed files",
+        "type": "changes"
+      },
+      {
+        "id": "verify-standards",
+        "title": "Verify standards on changed files (deterministic)",
+        "type": "verify"
+      },
+      {
+        "id": "review",
+        "title": "Code review of the changes (agent, read-only)",
+        "type": "agent",
+        "prompt": "Review ONLY the changes listed below (made in this run) against the team standards. Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}\nRead each changed file and review the actual change.",
+        "readOnly": true,
+        "persona": "salesforce-review",
+        "role": "review",
+        "autoRevise": {
+          "target": "implement",
+          "trigger": "VERDICT:\\s*BLOCKED",
+          "maxRounds": 3
+        },
+        "emits": "findings"
+      },
+      {
+        "id": "traceability",
+        "title": "Requirement coverage check (agent, read-only)",
+        "type": "agent",
+        "prompt": "Binary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.\nCoverage check. Re-read the full requirement (and any attached documents it references):\n{inputs.requirement}\nThe approved spec extracted numbered use cases (UC-n / UC-En):\n{steps.spec.output}\nFor EACH UC id in the spec (and any requirement item the spec missed), inspect the changed files below and report one line:\n  UC-x: <title> - IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\nChanged files in this run:\n{steps.changes.output}",
+        "readOnly": true,
+        "role": "trace",
+        "emits": "coverage"
+      },
+      {
+        "id": "approve-changes",
+        "title": "Approve code changes",
+        "type": "gate",
+        "message": "HUMAN GATE - you are shown the diffs, the code reviewer's verdict with its findings, and the coverage check. If findings remain or items are PARTIAL/MISSING, revise (e.g. 'implement items 2 and 5'); approve to validate against the org.",
+        "reviseTarget": "implement"
+      },
+      {
+        "id": "validate",
+        "title": "Validate (check-only deploy of changed files)",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "--dry-run",
+          "{changedSourceDirs}",
+          "--json",
+          "--wait",
+          "30"
+        ]
+      },
+      {
+        "id": "validate-tests",
+        "title": "Validate with local tests",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "--dry-run",
+          "{changedSourceDirs}",
+          "--test-level",
+          "RunLocalTests",
+          "--json",
+          "--wait",
+          "60"
+        ],
+        "onlyIf": "runTests"
+      },
+      {
+        "id": "visual-preview",
+        "title": "Visual test - local files against live org data (Local Dev)",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "lightning",
+          "dev",
+          "app"
+        ],
+        "detached": true,
+        "onlyIf": "visualTest"
+      },
+      {
+        "id": "approve-deploy",
+        "title": "Approve deploy",
+        "type": "gate",
+        "message": "Validation passed. If you enabled the visual test, click through the app in the browser first. Deploy the changed files to the default org now?",
+        "onlyIf": "deploy"
+      },
+      {
+        "id": "deploy",
+        "title": "Deploy changed files",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "{changedSourceDirs}",
+          "--json",
+          "--wait",
+          "30"
+        ],
+        "onlyIf": "deploy"
+      }
+    ]
+  },
+  "implement-tdd": {
+    "id": "implement-tdd",
+    "title": "Implement from TDD",
+    "description": "Build what an approved Technical Design Document specifies: plan gate, fresh org copies, implementation with tests, standards check, review, validate, deploy to the connected sandbox.",
+    "inputs": [
+      {
+        "key": "tddPath",
+        "label": "TDD path (from a Solution design run - see .dhruva/runs/<runId>/docs/)",
+        "kind": "text",
+        "default": ""
+      },
+      {
+        "key": "tasksPath",
+        "label": "Build-plan tasks file from the same run (blank = single-pass build)",
+        "kind": "text",
+        "default": ""
+      },
+      {
+        "key": "scope",
+        "label": "Scope note (optional - e.g. only components 1-3)",
+        "kind": "text",
+        "default": "",
+        "attachTo": true
+      },
+      {
+        "key": "runTests",
+        "label": "Run local Apex tests during validation",
+        "kind": "boolean",
+        "default": true
+      },
+      {
+        "key": "deploy",
+        "label": "Deploy to the connected sandbox at the end",
+        "kind": "boolean",
+        "default": true
+      },
+      {
+        "key": "visualTest",
+        "label": "Visual test before deploy (opens the org in the browser with your LOCAL UI files + live org data)",
+        "kind": "boolean",
+        "default": false
+      }
+    ],
+    "steps": [
+      {
+        "id": "snapshot",
+        "title": "Snapshot baseline",
+        "type": "snapshot"
+      },
+      {
+        "id": "plan",
+        "title": "Read the TDD and plan the build (agent, read-only)",
+        "type": "agent",
+        "prompt": "Read the approved Technical Design Document at {inputs.tddPath} in this project. DO NOT modify any files in this step.\nScope note from the requester (may narrow the work): {inputs.scope}\nCross-check the TDD against the current codebase (components it references, reuse it assumes). If the TDD has a Build Plan section (task table T-1, T-2… with depends_on), use ITS order as the checklist; otherwise produce the implementation checklist in dependency order yourself. Either way: each component to create or modify, and flag anything in the TDD that no longer matches the codebase.\nEnd with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/Example.cls",
+        "readOnly": true,
+        "role": "read"
+      },
+      {
+        "id": "approve-plan",
+        "title": "Approve the build plan",
+        "type": "gate",
+        "message": "Review the implementation checklist above (revise with instructions if the order or scope needs changing). Proceed with the build?"
+      },
+      {
+        "id": "retrieve-fresh",
+        "title": "Retrieve fresh copies of files to be modified",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "retrieve",
+          "start",
+          "{affectedSourceDirs}",
+          "--json",
+          "--wait",
+          "10"
+        ],
+        "optional": true
+      },
+      {
+        "id": "retrieve-delta",
+        "title": "Compare retrieved files against plan-time versions",
+        "type": "changes"
+      },
+      {
+        "id": "rebaseline",
+        "title": "Re-baseline after org refresh",
+        "type": "snapshot"
+      },
+      {
+        "id": "implement",
+        "title": "Implement per TDD (agent - one bounded run per build-plan task)",
+        "type": "agent",
+        "prompt": "Implement the approved plan. The Technical Design Document at {inputs.tddPath} is the specification - follow its component designs, API names, and test strategy exactly.\nApproved build checklist:\n{steps.plan.output}\n\nOrg-refresh delta since planning:\n{steps.retrieve-delta.output}\nIf files are listed in that delta, re-read them before changing them.\nWrite or update the Apex tests the TDD's test strategy specifies. Never create a parallel implementation of something that exists. Do not deploy.",
+        "role": "implement",
+        "taskLoop": true,
+        "timeoutMinutes": 30,
+        "tasksFile": "{inputs.tasksPath}"
+      },
+      {
+        "id": "changes",
+        "title": "Collect changed files",
+        "type": "changes"
+      },
+      {
+        "id": "verify-standards",
+        "title": "Verify standards on changed files (deterministic)",
+        "type": "verify"
+      },
+      {
+        "id": "review",
+        "title": "Code review against the TDD (agent, read-only)",
+        "type": "agent",
+        "prompt": "Review ONLY the changes listed below against the team standards AND against the TDD at {inputs.tddPath} (the changes must implement what the TDD specifies - flag deviations). Do not modify any files.\nChanged files:\n{steps.changes.output}\nDeterministic standards-check result:\n{steps.verify-standards.output}",
+        "readOnly": true,
+        "persona": "salesforce-review",
+        "role": "review",
+        "autoRevise": {
+          "target": "implement",
+          "trigger": "VERDICT:\\s*BLOCKED",
+          "maxRounds": 3
+        },
+        "emits": "findings",
+        "tasksFile": "{inputs.tasksPath}"
+      },
+      {
+        "id": "traceability",
+        "title": "Requirements traceability matrix (agent, read-only)",
+        "type": "agent",
+        "prompt": "Build a requirements traceability matrix. Re-read the ENTIRE TDD at {inputs.tddPath} (chunked reads to the end). Extract every requirement/component/behavior it specifies (respect the scope note: {inputs.scope}). For EACH item, inspect the changed files below and report one line:\n  <n>. <requirement item> - IMPLEMENTED (evidence: file + method/element) | PARTIAL (what is missing) | MISSING\nChanged files in this run:\n{steps.changes.output}",
+        "readOnly": true,
+        "role": "trace",
+        "emits": "coverage"
+      },
+      {
+        "id": "approve-changes",
+        "title": "Approve code changes",
+        "type": "gate",
+        "message": "HUMAN GATE - you are shown the diff, the code reviewer's verdict with its findings (reopened tasks already carry the reviewer's work orders), and the traceability matrix. Revise to rework, approve to validate against the org.",
+        "reviseTarget": "implement"
+      },
+      {
+        "id": "validate",
+        "title": "Validate (check-only deploy of changed files)",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "--dry-run",
+          "{changedSourceDirs}",
+          "--json",
+          "--wait",
+          "30"
+        ]
+      },
+      {
+        "id": "validate-tests",
+        "title": "Validate with local tests",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "--dry-run",
+          "{changedSourceDirs}",
+          "--test-level",
+          "RunLocalTests",
+          "--json",
+          "--wait",
+          "60"
+        ],
+        "onlyIf": "runTests"
+      },
+      {
+        "id": "visual-preview",
+        "title": "Visual test - local files against live org data (Local Dev)",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "lightning",
+          "dev",
+          "app"
+        ],
+        "detached": true,
+        "onlyIf": "visualTest"
+      },
+      {
+        "id": "approve-deploy",
+        "title": "Approve deploy to the connected sandbox",
+        "type": "gate",
+        "message": "Validation passed. If you enabled the visual test, click through the app in the browser first. Deploy the changed files to the connected sandbox now?",
+        "onlyIf": "deploy"
+      },
+      {
+        "id": "deploy",
+        "title": "Deploy changed files",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "{changedSourceDirs}",
+          "--json",
+          "--wait",
+          "30"
+        ],
+        "onlyIf": "deploy"
+      }
+    ]
+  },
+  "retrieve-sync": {
+    "id": "retrieve-sync",
+    "title": "Retrieve / org sync",
+    "description": "Pull the org's current metadata into the local folder and show exactly what drifted since the last local state.",
+    "inputs": [
+      {
+        "key": "target",
+        "label": "Source path to sync (e.g. force-app)",
+        "kind": "text",
+        "default": "force-app"
+      }
+    ],
+    "steps": [
+      {
+        "id": "snapshot",
+        "title": "Snapshot current local state",
+        "type": "snapshot"
+      },
+      {
+        "id": "retrieve",
+        "title": "Retrieve from org",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "retrieve",
+          "start",
+          "--source-dir",
+          "{inputs.target}",
+          "--json",
+          "--wait",
+          "60"
+        ]
+      },
+      {
+        "id": "drift",
+        "title": "Org drift vs previous local state",
+        "type": "changes"
+      }
+    ]
+  },
+  "run-tests": {
+    "id": "run-tests",
+    "title": "Run Apex tests",
+    "description": "Run Apex tests in the default org with code coverage.",
+    "inputs": [
+      {
+        "key": "level",
+        "label": "Test level",
+        "kind": "select",
+        "options": [
+          "RunLocalTests",
+          "RunAllTestsInOrg",
+          "RunSpecifiedTests"
+        ],
+        "default": "RunLocalTests"
+      },
+      {
+        "key": "tests",
+        "label": "Class names (only for RunSpecifiedTests, comma-separated)",
+        "kind": "text",
+        "default": ""
+      },
+      {
+        "key": "synchronous",
+        "label": "Run synchronously (avoids UNABLE_TO_LOCK_ROW when tests contend on shared records; slower)",
+        "kind": "boolean",
+        "default": false
+      }
+    ],
+    "steps": [
+      {
+        "id": "run",
+        "title": "Run tests",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "apex",
+          "run",
+          "test",
+          "--test-level",
+          "{inputs.level}",
+          "{opt:--tests:inputs.tests}",
+          "{flag:--synchronous:inputs.synchronous}",
+          "--code-coverage",
+          "--result-format",
+          "json",
+          "--json",
+          "--wait",
+          "60"
+        ]
+      }
+    ]
+  },
+  "scratch-org": {
+    "id": "scratch-org",
+    "title": "Scratch org from this folder",
+    "description": "Create a scratch org (needs an authorized Dev Hub), push this folder's source into it, and open it in the browser.",
+    "inputs": [
+      {
+        "key": "alias",
+        "label": "Scratch org alias",
+        "kind": "text",
+        "default": "scratch1"
+      },
+      {
+        "key": "days",
+        "label": "Duration (days)",
+        "kind": "select",
+        "options": [
+          "1",
+          "7",
+          "14",
+          "30"
+        ],
+        "default": "7"
+      }
+    ],
+    "steps": [
+      {
+        "id": "confirm",
+        "title": "Confirm scratch org creation",
+        "type": "gate",
+        "message": "This creates a scratch org from config/project-scratch-def.json (consumes one of your Dev Hub's daily scratch orgs) and pushes force-app into it. Proceed?"
+      },
+      {
+        "id": "create",
+        "title": "Create scratch org",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "org",
+          "create",
+          "scratch",
+          "--definition-file",
+          "config/project-scratch-def.json",
+          "--alias",
+          "{inputs.alias}",
+          "--duration-days",
+          "{inputs.days}",
+          "--json",
+          "--wait",
+          "20"
+        ]
+      },
+      {
+        "id": "push",
+        "title": "Push local source into the scratch org",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "--source-dir",
+          "force-app",
+          "--target-org",
+          "{inputs.alias}",
+          "--json",
+          "--wait",
+          "60"
+        ]
+      },
+      {
+        "id": "open",
+        "title": "Open the scratch org in the browser",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "org",
+          "open",
+          "--target-org",
+          "{inputs.alias}"
+        ]
+      }
+    ]
+  },
+  "solution-design": {
+    "id": "solution-design",
+    "title": "Solution design",
+    "description": "Architect path: analyse a requirement against the existing codebase, gate on the proposed design, then produce HLD + TDD documents (with an ERD) in the project.",
+    "inputs": [
+      {
+        "key": "requirement",
+        "label": "Requirement (paste the text and/or attach documents below)",
+        "kind": "text",
+        "attachTo": true
+      },
+      {
+        "key": "docName",
+        "label": "Design document name (file-safe)",
+        "kind": "text",
+        "default": "solution-design"
+      },
+      {
+        "key": "uxEnabled",
+        "label": "UX design (from project settings)",
+        "kind": "boolean",
+        "hidden": true
+      },
+      {
+        "key": "uxRules",
+        "label": "UX rules (from project settings)",
+        "kind": "text",
+        "hidden": true
+      },
+      {
+        "key": "designDir",
+        "label": "Design folder (from project settings)",
+        "kind": "text",
+        "hidden": true
+      }
+    ],
+    "steps": [
+      {
+        "id": "snapshot",
+        "title": "Snapshot baseline",
+        "type": "snapshot"
+      },
+      {
+        "id": "context",
+        "title": "Gather codebase context for the requirement (read-only)",
+        "type": "agent",
+        "prompt": "Binary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.\nCONTEXT GATHERING ONLY - do not design anything and do not modify any files. A solution design will be produced in a later step FROM your inventory, so completeness here decides the design's quality.\nRequirement:\n{inputs.requirement}\n\nIf the requirement references attached documents (paths under .dhruva/attachments/), read EVERY attached document in full - every page/line, continuing in chunks until the end of each file.\n\nThen inventory THIS codebase's parts relevant to each ask in the requirement: objects/fields, automation (triggers/flows), apex services, LWCs, permission sets. Output a CONTEXT INVENTORY grouped by requirement area - per entry: the component's exact API name, its file path, what it does TODAY (verified by reading it, never guessed from the name), and why it is relevant. Close with a short list of areas where NOTHING relevant exists (true greenfield).",
+        "readOnly": true,
+        "role": "read",
+        "timeoutMinutes": 30
+      },
+      {
+        "id": "analyse",
+        "title": "Design per requirement using the gathered context (architect, read-only)",
+        "type": "agent",
+        "prompt": "FIRST, read the file .dhruva/runs/{runId}/docs/design.md COMPLETELY if it exists. It is your own previous design plus the review of it.\r\n\r\nIF that file exists and its \"## Review\" section lists findings, you are REVISING, not authoring:\r\n- The requirement set is settled. Do NOT re-derive requirements from the BRD and do NOT renumber anything.\r\n- Reproduce every REQ block that no open finding touches EXACTLY as it stands in that file - same id, same order, same wording. Output the complete design again (all REQ blocks), not a diff.\r\n- JUDGE EACH FINDING BEFORE YOU ACT ON IT. A finding is another reviewer's claim, not an instruction: it can be wrong about this codebase, wrong about the BRD, or right about a real problem. You are held to the same standard the reviewer is - a wrong claim is the worst failure mode - so verify first and say what you checked.\r\n- For EVERY open finding, end your design with exactly this pair of lines:\r\n  <id> CHECKED: the file and line, or the BRD section, you actually looked at, and what you found there\r\n  <id> ACCEPTED - FIXED: what you changed\r\n  or\r\n  <id> REJECTED: why the finding's premise does not hold, with the evidence above\r\n  or\r\n  <id> PARTIAL: which part you fixed, which part you did not, and why\r\n- ACCEPTED and REJECTED are equally valid outcomes. Do not accept a finding you could not verify - say REJECTED or PARTIAL and explain. Accepting every finding without checking is a failure of this step, not compliance with it.\r\n- Do not edit the \"## Review\" or \"## Revision log\" sections; the tool owns them.\r\n\r\nOTHERWISE you are AUTHORING for the first time - follow the rest of this prompt.\r\n\r\nBinary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.\r\nA requirement needs a solution design for THIS org's codebase. DO NOT modify any files in this step.\r\nRequirement:\r\n{inputs.requirement}\r\n\r\nIf the requirement references attached documents (paths under .dhruva/attachments/), read EVERY attached document in full - every page/line, continuing in chunks until the end of each file - before designing anything. A design based on a partially read requirement is invalid.\r\n\r\nCONTEXT INVENTORY of the existing codebase (gathered in the previous step - use it for what exists today; re-read a component before citing it as EVIDENCE if you need more detail than the inventory gives):\r\n{steps.context.output}\r\n\r\nThen output in EXACTLY this structure (it is machine-parsed into review cards):\r\n\r\nFirst a short OVERVIEW paragraph (overall approach, phasing, key risks).\r\n\r\nThen ONE BLOCK PER REQUIREMENT, in the BRD's sequence, each formatted exactly:\r\n### REQ-001: <short title>\r\nBRD-REF: <section/page in the source document>\r\nSTATUS: ALREADY IMPLEMENTED | PARTIAL | NEW\r\nEVIDENCE: <for implemented/partial: the exact existing components, backticked API names>\r\nALREADY-PRESENT: <what exists today; '-' for NEW>\r\nPENDING: <what is missing; '-' if nothing>\r\nDESIGN: <the solution for exactly this item's PENDING work - components to create/modify with API names, declarative vs code and why, security notes. For ALREADY IMPLEMENTED items write 'No work required' plus any caveat.>\r\nREJECTED: <the alternative you seriously weighed and did NOT take, and the constraint that ruled it out - e.g. \"Before-Save flow: cannot issue the callout\"; \"scheduled-only sweep: publish latency breaks AC2\". '-' when there was genuinely only one buildable option, which is itself worth saying.>\r\nTRADE-OFF: <what this choice gives up and why that is acceptable here; '-' if nothing material.>\r\nEFFORT: <rough estimate, e.g. 2d>\r\nDEPENDS-ON: <REQ-ids or '-'>\r\n\r\nYou are the step that CHOOSES, so you are the step that records what was rejected. Writing the alternatives down later, in a document, means inventing a deliberation that never happened and that no reviewer ever checked - the design reviewer reads this block, not the documents.\r\n\r\nRules: number sequentially REQ-001, REQ-002…; extract EVERY distinct requirement from the text and ALL attached documents - do not merge unrelated asks into one block; be strict on STATUS (ALREADY IMPLEMENTED only with concrete component evidence, and it REQUIRES EFFORT: 0 - if ANY work remains, even hardening or a caveat-fix, the item is PARTIAL with that work stated as PENDING; a caveat may only be an observation, never work); design ONLY the pending work - never redesign what exists; follow the team standards in this prompt.\r\nBRD FIDELITY (violations here fail UAT): use the BRD's EXACT names for user-facing actions/labels/fields - renaming is a scope change, not a design detail; never add integrations, jobs, or behaviors the BRD assigns to another system - mark them as open contract decisions instead; when the BRD declares a decision open/TBD (e.g. 'will be finalized during development'), carry it as an explicit OPEN QUESTION and design so either outcome is a cheap swap - never silently settle it.",
+        "readOnly": true,
+        "persona": "salesforce-architect",
+        "role": "design",
+        "artifact": ".dhruva/runs/{runId}/docs/design.md",
+        "timeoutMinutes": 45
+      },
+      {
+        "id": "design-review",
+        "title": "Design critique (best model, read-only) - auto-fixes up to 3 times before your gate",
+        "type": "agent",
+        "prompt": "Read .dhruva/runs/{runId}/docs/design.md COMPLETELY first - it holds the design under review and, from round 2 onward, your own previous findings under \"## Review\".\r\n\r\nIF that \"## Review\" section already lists findings: this is a RE-REVIEW. For every finding already listed, KEEP ITS ID and report exactly one status - RESOLVED, STILL OPEN or PARTIAL - with one line saying why. Then add any genuinely new findings, numbered after the highest id already in use. Never renumber an existing finding.\r\n\r\nDo not modify the file; report everything in your answer and the tool will record it.\r\n\r\nYou are the DESIGN REVIEWER - adversarially critique the solution design below before a human sees it. Do not modify any files.\r\n\r\nDesign under review:\r\n{steps.analyse.output}\r\n\r\nOriginal requirement:\r\n{inputs.requirement}\r\n\r\nCheck, verifying against the ACTUAL codebase (read the components named as evidence):\r\n1. EVIDENCE is real - every component cited for ALREADY IMPLEMENTED/PARTIAL exists and does what is claimed. A wrong claim here is the worst failure mode.\r\n2. STATUS is honest - nothing marked implemented that is only similar.\r\n3. DESIGN covers the full PENDING scope of its requirement, reuses existing components, and declarative-vs-code choices are justified.\r\n4. REJECTED and TRADE-OFF hold up: the alternative named was a real option, the constraint that ruled it out is true of THIS org, and the trade-off is one the requirement can actually bear. A rejected option that was never viable is padding; a '-' where an obvious alternative existed is a gap.\r\n5. No requirement from the source text/documents is missing a REQ block; dependencies and sequencing make sense.",
+        "readOnly": true,
+        "persona": "salesforce-architect",
+        "role": "review",
+        "autoRevise": {
+          "target": "analyse",
+          "trigger": "VERDICT:\\s*BLOCKED",
+          "maxRounds": 3
+        },
+        "reviewOf": "analyse",
+        "emits": "findings"
+      },
+      {
+        "id": "approve-design",
+        "title": "Review each requirement's design",
+        "type": "gate",
+        "message": "HUMAN GATE - you are shown: (1) the per-requirement design cards, (2) the design critique's unresolved findings (red panel, with each affected card flagged 'reviewer objects'). Decide: approve as-is, reject/comment individual cards, use 'Revise with ALL findings' to adopt the critique wholesale, or type your own instructions. Only after your approval are the HLD/TDD documents written.",
+        "reviseTarget": "analyse"
+      },
+      {
+        "id": "ux-design",
+        "title": "UX design for the UI scope (project setting: UX enabled)",
+        "type": "agent",
+        "prompt": "UX DESIGN for the approved solution. DO NOT modify any files in this step.\r\nThe approved per-requirement design is at .dhruva/runs/{runId}/docs/design.md - read it completely.\r\n\r\nPROJECT UX RULES (mandatory, from the project's settings):\r\n{inputs.uxRules}\r\n\r\n1. Read EVERY file in the project's standing design folder {inputs.designDir} in full (style guides, conventions). If it does not exist or is empty, say so - SLDS defaults apply.\r\n2. Identify the REQ blocks with USER-FACING scope (screens, components, record pages). Requirements with no UI scope are out of this step - list them as 'no UI'.\r\n3. For each UI-scoped requirement produce UX blocks, ids UX-1, UX-2..., each:\r\nUX-n (traces: REQ-xxx): <exact LWC API name>\r\n  PURPOSE: <what it does for the user>\r\n  COMPOSITION: <lightning base components / SLDS blueprints, layout hierarchy>\r\n  STATES: <loading, empty, error, success - what each shows>\r\n  INTERACTIONS: <events in/out, data contract with apex/wire>\r\n  ACCESSIBILITY: <labels, keyboard path, focus management, aria where needed>\r\n  REUSES: <existing components (verified in the codebase), or '-'>\r\nRules: SLDS only - no custom CSS unless the project UX rules or the design folder explicitly mandate it (cite the mandate). Reuse before new.",
+        "readOnly": true,
+        "role": "design",
+        "artifact": ".dhruva/runs/{runId}/docs/ux-design.md",
+        "onlyIf": "uxEnabled",
+        "timeoutMinutes": 30
+      },
+      {
+        "id": "ux-critique",
+        "title": "UX critique (best model, read-only) - auto-fixes up to 3 times before your gate",
+        "type": "agent",
+        "prompt": "You are the UX REVIEWER - adversarially critique the UX design below before a human sees it. Do not modify any files.\r\n\r\nUX design under review:\r\n{steps.ux-design.output}\r\n\r\nApproved functional design it must serve:\r\n{steps.analyse.output}\r\n\r\nPROJECT UX RULES (the design must comply):\r\n{inputs.uxRules}\r\n\r\nCheck strictly: every UI-scoped REQ has UX blocks; no state is missing (loading/empty/error are the usual omissions); the project UX rules are followed; custom CSS only with a cited mandate; REUSES claims are real; accessibility is concrete, not 'accessible'.",
+        "readOnly": true,
+        "role": "review",
+        "autoRevise": {
+          "target": "ux-design",
+          "trigger": "VERDICT:\\s*BLOCKED",
+          "maxRounds": 3
+        },
+        "reviewOf": "ux-design",
+        "emits": "findings",
+        "onlyIf": "uxEnabled"
+      },
+      {
+        "id": "approve-ux",
+        "title": "Approve the UX design",
+        "type": "gate",
+        "message": "HUMAN GATE - you are shown the UX-n design blocks and the UX critique's unresolved findings. Revise with instructions to rework specific blocks, or approve - the documents then cover the UX design too.",
+        "reviseTarget": "ux-design",
+        "onlyIf": "uxEnabled"
+      },
+      {
+        "id": "write-doc",
+        "title": "Write HLD + TDD documents (with ERD)",
+        "type": "agent",
+        "prompt": "The approved design is already written, in full, at .dhruva/runs/{runId}/docs/design.md - one REQ block per requirement, each with STATUS, EVIDENCE, ALREADY-PRESENT, PENDING, DESIGN, EFFORT and DEPENDS-ON. Read it completely.\r\n\r\nIf that file does not exist or has no REQ blocks, STOP and say so plainly - do not invent a design. It is the only copy; writing documents from memory would silently replace an approved design with a guess.\r\n\r\nYour job is NOT to restate it. Re-typing a gap analysis that already exists is how requirements get lost: on a real run five of them vanished between the design and the documents. Reference the design for anything it already says, and spend your effort on what it does NOT say.\r\n\r\nThe design is organised per REQUIREMENT. These documents are organised per CONCERN - data flow, error handling, governor limits, deployment order. That thinking cuts across all the REQ blocks at once and exists nowhere yet. That is the work.\r\n\r\nCreate or modify ONLY these three files:\r\n\r\n1. .dhruva/runs/{runId}/docs/hld.md - for stakeholders and review boards:\r\n  1. Context - the problem space and system boundaries this design stands on.\r\n  2. Goals / Non-Goals - what it achieves, and what it explicitly does not.\r\n  3. Gap Analysis - DO NOT re-tabulate the REQ blocks. One short paragraph of the shape of the gap (how many already implemented / partial / new, and the theme), then: \"Per-requirement detail: see design.md.\"\r\n  4. Approaches Considered - assemble this from the REJECTED lines the design already recorded: per decision, the option taken, the option rejected, and the constraint that ruled it out. Do NOT invent alternatives the design does not name - a deliberation nobody had, written up after approval, is the one section of this document no reviewer ever checked. Add the overall complexity (XS/S/M/L/XL) for the selected approach.\r\n  5. High-Level Design - how the component groups interact, and the key abstractions introduced. Architecture, not a per-REQ list.\r\n  6. Data Model - a Mermaid er-diagram (```mermaid / erDiagram) of new and impacted objects, their relationships and key fields.\r\n  7. Integration Touchpoints and Security Model.\r\n  8. Constraints and Trade-offs - assemble from the design's TRADE-OFF lines; add only constraints that emerge across requirements rather than within one.\r\n  9. Acceptance Criteria - \"AC-n: Given <precondition>, when <action>, then <outcome>. [traces: REQ-xxx]\". Every REQ with pending work needs at least one AC.\r\n  10. Impact analysis, risks and assumptions, Open Questions. For effort, total the design's EFFORT values and show the total plus any contingent items - do not re-list every requirement.\r\n\r\n2. .dhruva/runs/{runId}/docs/tdd.md - for the developers who build it:\r\n  1. Components - per apex class, trigger, LWC, flow, object and field: exact API names, responsibility, inputs/outputs, dependencies, reuse-vs-new, and method-level design or pseudocode where non-trivial.\r\n  2. Data Flow - how data moves end to end.\r\n  3. State Management - what state exists, where it lives, how it changes.\r\n  4. Error Handling - what can fail, and how each failure is handled and surfaced.\r\n  5. Governor Limits and Sharing/FLS specifics.\r\n  6. Deployment Order and dependencies.\r\n  7. Test Strategy - the test classes and scenarios (positive, negative, bulk). Apex tests run in the org, so tests ship WITH the implementation and are proven by a check-only deploy with RunLocalTests; never promise a failing-tests-first cycle.\r\n  8. Build Plan - a short summary table of the tasks file (T-n | title | depends on | traces). The tasks file is the authority.\r\n  9. Decisions - one line each: Decision -> Rationale -> Consequence.\r\n  10. Open Questions that may affect implementation.\r\n\r\n3. .dhruva/runs/{runId}/docs/tasks.json - the machine-readable build plan the implementation workflow executes. Strict JSON, no comments, no trailing commas, exactly this shape:\r\n{ \"version\": 1, \"tasks\": [ { \"id\": \"T-1\", \"title\": \"<imperative, one line>\", \"depends_on\": [], \"files\": [\"force-app/main/default/classes/Example.cls\"], \"change\": \"<the mechanism - what edit, where>\", \"test_scenarios\": [\"<case>\"], \"traces\": [\"REQ-001\", \"AC-1\"], \"status\": \"pending\" } ] }\r\nRules: ids sequential from T-1; every task lists the project-relative files it touches and traces to at least one REQ or AC; depends_on names only earlier tasks; no cycles; one component plus its test class per task; order is safe deployment order. Take file paths from the design's EVIDENCE where it names them - guess a path only when the design gives none, and follow this project's existing folder layout when you do.\r\n\r\nDo not contradict the approved design. Where you need precision it does not give, add it; where it already decided something, cite it rather than re-deciding.\r\n\r\nThe Mermaid block must be valid erDiagram syntax - every relationship line has both entities and a label - with no styling directives.\r\n\r\nAPPROVED UX DESIGN: if .dhruva/runs/{runId}/docs/ux-design.md exists, read it completely and incorporate it fully (when UX is disabled for this project the file is absent - then skip this paragraph). The TDD gains a 'UI Components' section carrying every UX-n block, and the tasks file gets one task per UX component (files under force-app/main/default/lwc/..., traces include the UX-n id AND its REQ id).",
+        "persona": "salesforce-writer",
+        "role": "design",
+        "timeoutMinutes": 30
+      },
+      {
+        "id": "changes",
+        "title": "Collect created documents",
+        "type": "changes"
+      },
+      {
+        "id": "tasks-check",
+        "title": "Validate the build-plan tasks file (deterministic)",
+        "type": "tasks-check",
+        "tasksFile": ".dhruva/runs/{runId}/docs/tasks.json"
+      },
+      {
+        "id": "coverage-check",
+        "title": "Verify the documents cover every requirement (agent, read-only)",
+        "type": "agent",
+        "prompt": "Design coverage verification. Do not modify any files.\nRead IN FULL: (1) the original requirement text below and every attached document it references, (2) .dhruva/runs/{runId}/docs/hld.md, (3) .dhruva/runs/{runId}/docs/tdd.md.\nRequirement:\n{inputs.requirement}\n\nApproved per-requirement design:\n{steps.analyse.output}\n\nFor EVERY REQ item, report one line:\n  REQ-xxx - COVERED (HLD section N / TDD section M) | MISSING FROM DOCS | DIVERGES (the docs say something different from the approved design - quote it)\nAlso flag anything in the docs that has no approved requirement behind it (scope creep), any REQ with pending work that no Acceptance Criterion traces ([traces: REQ-xxx]), and any Build Plan task in the TDD that traces to nothing.\nIf an approved UX design exists (below), ALSO report one line per UX-n: covered in the TDD's UI section + a task traces to it, or MISSING.\nApproved UX design (may be empty):\n{steps.ux-design.output}",
+        "readOnly": true,
+        "role": "trace",
+        "autoRevise": {
+          "target": "write-doc",
+          "trigger": "COVERAGE:\\s*INCOMPLETE",
+          "maxRounds": 1
+        },
+        "emits": "coverage",
+        "timeoutMinutes": 30
+      },
+      {
+        "id": "approve-doc",
+        "title": "Accept the design documents",
+        "type": "gate",
+        "message": "HUMAN GATE - you are shown the coverage verdict and any unresolved findings; the documents are in .dhruva/runs/{runId}/docs/. If items are MISSING or DIVERGE, revise; accept to complete the run.",
+        "reviseTarget": "write-doc"
+      }
+    ]
+  },
+  "test-gen": {
+    "id": "test-gen",
+    "title": "Test generation",
+    "description": "Add meaningful Apex tests to existing code: assess coverage gaps for the target classes, gate on the test plan, write the tests, validate with local tests, deploy to the sandbox.",
+    "inputs": [
+      {
+        "key": "target",
+        "label": "Target classes (comma-separated names, or describe the area)",
+        "kind": "text"
+      },
+      {
+        "key": "deploy",
+        "label": "Deploy the new tests to the connected sandbox",
+        "kind": "boolean",
+        "default": true
+      }
+    ],
+    "steps": [
+      {
+        "id": "snapshot",
+        "title": "Snapshot baseline",
+        "type": "snapshot"
+      },
+      {
+        "id": "assess",
+        "title": "Assess coverage gaps (agent, read-only)",
+        "type": "agent",
+        "prompt": "Target: {inputs.target}\nRead the target classes IN FULL and their existing test classes (if any). DO NOT modify any files in this step. Identify the untested or weakly tested behavior: public methods, branches, error paths, bulk behavior, permission-sensitive logic. Propose a test plan: which test classes to create or extend, and the scenarios per class (positive / negative / bulk / permission). Note whether a shared TestDataFactory exists and what it is missing.\nEnd with one line listing every EXISTING file you will modify as project-relative paths:\nFILES: force-app/main/default/classes/ExampleTest.cls",
+        "readOnly": true,
+        "persona": "salesforce-test",
+        "role": "read"
+      },
+      {
+        "id": "approve-plan",
+        "title": "Approve the test plan",
+        "type": "gate",
+        "message": "Review the coverage assessment and test plan (revise with instructions to change scope or scenarios). Proceed with writing the tests?"
+      },
+      {
+        "id": "implement",
+        "title": "Write the tests (agent)",
+        "type": "agent",
+        "prompt": "Write the tests per the approved plan:\n{steps.assess.output}\n\nRules of engagement: modify/create TEST classes (and the shared TestDataFactory if needed) ONLY - never change the production classes under test in this workflow; if a class is untestable as written, report it instead of changing it. Follow the apex-tests standards: TestDataFactory data, Assert class with messages, positive/negative/bulk, System.runAs with permission sets, no SeeAllData. Meaningful assertions over coverage percentage.",
+        "role": "implement"
+      },
+      {
+        "id": "changes",
+        "title": "Collect changed files",
+        "type": "changes"
+      },
+      {
+        "id": "verify-standards",
+        "title": "Verify standards on changed files (deterministic)",
+        "type": "verify"
+      },
+      {
+        "id": "approve-changes",
+        "title": "Approve the new tests",
+        "type": "gate",
+        "message": "Review the test diffs (links above); type instructions and Revise to rework them. Validate them against the org?",
+        "reviseTarget": "implement"
+      },
+      {
+        "id": "validate",
+        "title": "Validate with local tests (proves the new tests pass)",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "--dry-run",
+          "{changedSourceDirs}",
+          "--test-level",
+          "RunLocalTests",
+          "--json",
+          "--wait",
+          "60"
+        ]
+      },
+      {
+        "id": "approve-deploy",
+        "title": "Approve deploy to the connected sandbox",
+        "type": "gate",
+        "message": "Tests validated. Deploy them to the connected sandbox?",
+        "onlyIf": "deploy"
+      },
+      {
+        "id": "deploy",
+        "title": "Deploy the tests",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "{changedSourceDirs}",
+          "--json",
+          "--wait",
+          "30"
+        ],
+        "onlyIf": "deploy"
+      }
+    ]
+  },
+  "ux-design": {
+    "id": "ux-design",
+    "title": "UX design",
+    "description": "LWC-heavy path: read the project's standing design folder, design each screen/component (SLDS-only, states, accessibility), gate, then write a developer-ready UX spec + build-plan tasks. Implement it afterwards with 'Implement from TDD' pointed at the UX spec.",
+    "inputs": [
+      {
+        "key": "requirement",
+        "label": "Feature / UX requirement (paste text and/or attach documents below)",
+        "kind": "text",
+        "attachTo": true
+      },
+      {
+        "key": "designDir",
+        "label": "Standing design-inputs folder in the project (style guides, screenshots, conventions)",
+        "kind": "text",
+        "default": "docs/design"
+      },
+      {
+        "key": "docName",
+        "label": "UX document name (file-safe)",
+        "kind": "text",
+        "default": "ux-design"
+      }
+    ],
+    "steps": [
+      {
+        "id": "snapshot",
+        "title": "Snapshot baseline",
+        "type": "snapshot"
+      },
+      {
+        "id": "design-context",
+        "title": "Read the design folder + existing components (read-only)",
+        "type": "agent",
+        "prompt": "Binary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.\nCONTEXT GATHERING ONLY - do not design anything and do not modify any files.\nRequirement:\n{inputs.requirement}\n\n1. Read EVERY file in the project's standing design folder {inputs.designDir} in full (style guides, brand rules, screenshots described by their file names, component conventions). If the folder does not exist or is empty, say so explicitly and note that SLDS defaults apply.\n2. If the requirement references attached documents (paths under .dhruva/attachments/), read them in full too.\n3. Inventory the existing LWCs under force-app that are relevant to this requirement: component name, what it renders today, reusable parts (verified by reading the markup/JS, never guessed from the name).\nOutput: DESIGN CONVENTIONS (what the design folder mandates), REUSABLE COMPONENTS (what exists), and GAPS (what has no precedent).",
+        "readOnly": true,
+        "role": "read",
+        "timeoutMinutes": 20
+      },
+      {
+        "id": "ux-design",
+        "title": "Design each screen/component (SLDS-only)",
+        "type": "agent",
+        "prompt": "Design the UX for this requirement. DO NOT modify any files in this step.\nRequirement:\n{inputs.requirement}\n\nDesign context from the previous step (conventions, reusable components, gaps):\n{steps.design-context.output}\n\nRules: SLDS ONLY - lightning base components and SLDS utility classes; NO custom CSS unless the design folder explicitly mandates it (then cite the mandate). Reuse the inventoried components before proposing new ones.\nOutput ONE BLOCK PER SCREEN/COMPONENT, ids UX-1, UX-2...:\nUX-n: <component name (exact LWC API name)>\n  PURPOSE: <what it does for the user>\n  COMPOSITION: <lightning base components / SLDS blueprints used, layout hierarchy>\n  STATES: <loading, empty, error, success - what each shows>\n  INTERACTIONS: <events in/out, data contract with apex/wire>\n  ACCESSIBILITY: <labels, keyboard path, focus management, aria where needed>\n  REUSES: <existing components used, or '-'>\nEnd with OPEN QUESTIONS (or 'none').",
+        "readOnly": true,
+        "role": "design",
+        "timeoutMinutes": 30
+      },
+      {
+        "id": "ux-critique",
+        "title": "UX critique (best model, read-only) - auto-fixes up to 3 times before your gate",
+        "type": "agent",
+        "prompt": "You are the UX REVIEWER - adversarially critique the UX design below before a human sees it. Do not modify any files.\n\nDesign under review:\n{steps.ux-design.output}\n\nRequirement:\n{inputs.requirement}\n\nCheck strictly:\n1. Every screen/flow the requirement implies has a UX-n block; no state is missing (loading/empty/error are the usual omissions).\n2. SLDS-only holds - flag any custom CSS without a cited design-folder mandate.\n3. REUSES claims are real (the cited components exist and fit).\n4. Accessibility is concrete (actual labels/keyboard paths, not 'accessible').",
+        "readOnly": true,
+        "role": "review",
+        "autoRevise": {
+          "target": "ux-design",
+          "trigger": "VERDICT:\\s*BLOCKED",
+          "maxRounds": 3
+        },
+        "emits": "findings"
+      },
+      {
+        "id": "approve-ux",
+        "title": "Approve the UX design",
+        "type": "gate",
+        "message": "Review each UX-n block and the critique above. Revise with instructions to rework specific blocks, or approve - the UX spec document and build-plan tasks are then written.",
+        "reviseTarget": "ux-design"
+      },
+      {
+        "id": "write-doc",
+        "title": "Write the UX spec document + build-plan tasks",
+        "type": "agent",
+        "prompt": "Write the APPROVED UX design as a developer-ready spec plus a machine-readable tasks file (create folders if needed). These two files are the only ones you may create or modify in this step:\r\n\r\n1. .dhruva/runs/{runId}/docs/ux.md - the UX SPEC, numbered sections: 1. Context and design conventions applied; 2. Component inventory (per UX-n: exact LWC API name, composition, states, interactions/data contract, accessibility, reuse decisions); 3. Navigation/flow between components; 4. Test strategy (Jest per component: states, events, accessibility asserts); 5. Open questions. Plain ASCII punctuation, exact API names in backticks, tables where they beat prose.\r\n\r\n2. .dhruva/runs/{runId}/docs/tasks.json - strict JSON, exactly this shape:\r\n{ \"version\": 1, \"tasks\": [ { \"id\": \"T-1\", \"title\": \"<imperative>\", \"depends_on\": [], \"files\": [\"force-app/main/default/lwc/example/example.html\"], \"change\": \"<what to build>\", \"test_scenarios\": [\"<case>\"], \"traces\": [\"UX-1\"], \"status\": \"pending\" } ] }\r\nOne component (markup+JS+meta plus its Jest test) per task; every task traces to at least one UX-n; depends_on only references earlier tasks; order = safe build order.\r\n\r\nApproved UX design:\r\n{steps.ux-design.output}\r\n\r\nIncorporate every approved detail; do not contradict what was approved.",
+        "persona": "salesforce-writer",
+        "role": "design",
+        "timeoutMinutes": 30
+      },
+      {
+        "id": "changes",
+        "title": "Collect created documents",
+        "type": "changes"
+      },
+      {
+        "id": "tasks-check",
+        "title": "Validate the build-plan tasks file (deterministic)",
+        "type": "tasks-check",
+        "tasksFile": ".dhruva/runs/{runId}/docs/tasks.json"
+      },
+      {
+        "id": "coverage-check",
+        "title": "Verify the spec covers every UX block (read-only)",
+        "type": "agent",
+        "prompt": "Coverage verification. Do not modify any files.\nRead .dhruva/runs/{runId}/docs/ux.md and .dhruva/runs/{runId}/docs/tasks.json in full.\nApproved UX design:\n{steps.ux-design.output}\n\nFor EVERY UX-n block report one line:\n  UX-n - COVERED (spec section + task id) | MISSING FROM SPEC | NO TASK | DIVERGES (quote it)",
+        "readOnly": true,
+        "role": "trace",
+        "autoRevise": {
+          "target": "write-doc",
+          "trigger": "COVERAGE:\\s*INCOMPLETE",
+          "maxRounds": 1
+        },
+        "emits": "coverage",
+        "timeoutMinutes": 20
+      },
+      {
+        "id": "approve-doc",
+        "title": "Accept the UX spec",
+        "type": "gate",
+        "message": "Review the coverage verdict and the spec (.dhruva/runs/{runId}/docs/). Accept to complete - then build it with 'Implement from TDD': TDD path = .dhruva/runs/{runId}/docs/ux.md, tasks file = .dhruva/runs/{runId}/docs/tasks.json, visual test ON.",
+        "reviseTarget": "write-doc"
+      }
+    ]
+  },
+  "validate-deploy": {
+    "id": "validate-deploy",
+    "title": "Validate deploy",
+    "description": "Gate, then check-only deploy of a source path with the chosen test level. Works on any org (no source tracking required) - nothing is ever saved to the org.",
+    "inputs": [
+      {
+        "key": "target",
+        "label": "Source path to validate",
+        "kind": "text",
+        "default": "force-app"
+      },
+      {
+        "key": "testLevel",
+        "label": "Test level",
+        "kind": "select",
+        "options": [
+          "NoTestRun",
+          "RunLocalTests",
+          "RunAllTestsInOrg"
+        ],
+        "default": "RunLocalTests"
+      }
+    ],
+    "steps": [
+      {
+        "id": "approve",
+        "title": "Approve validation",
+        "type": "gate",
+        "message": "Run a check-only deploy of {inputs.target} against the default org (compiles + runs the chosen tests; nothing is saved)?"
+      },
+      {
+        "id": "validate",
+        "title": "Check-only deploy",
+        "type": "cli",
+        "bin": "sf",
+        "args": [
+          "project",
+          "deploy",
+          "start",
+          "--dry-run",
+          "--source-dir",
+          "{inputs.target}",
+          "--test-level",
+          "{inputs.testLevel}",
+          "--json",
+          "--wait",
+          "60"
+        ]
+      }
+    ]
+  }
+}

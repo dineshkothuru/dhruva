@@ -34,6 +34,7 @@ function startServer() {
       // them at the bundle
       DHRUVA_STANDARDS_DIR: path.join(root, "standards"),
       DHRUVA_WORKFLOWS_DIR: path.join(root, "workflows"),
+      DHRUVA_STEPS_DIR: path.join(root, "steps"),
     },
     stdio: "ignore",
     windowsHide: true,

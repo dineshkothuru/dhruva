@@ -1,0 +1,5 @@
+---
+id: snapshot
+type: snapshot
+---
+

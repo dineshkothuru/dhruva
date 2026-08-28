@@ -50,6 +50,10 @@
       {
         "from": "workflows",
         "to": "app-bundle/workflows"
+      },
+      {
+        "from": "steps",
+        "to": "app-bundle/steps"
       }
     ],
     "win": {
