@@ -5,6 +5,7 @@ type: agent
 role: review
 persona: salesforce-architect
 readOnly: true
+timeoutMinutes: 45
 reviewOf: analyse
 autoRevise:
   target: analyse

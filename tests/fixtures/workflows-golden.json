@@ -892,7 +892,8 @@
           "maxRounds": 3
         },
         "reviewOf": "analyse",
-        "emits": "findings"
+        "emits": "findings",
+        "timeoutMinutes": 45
       },
       {
         "id": "approve-design",
