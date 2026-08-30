@@ -285,4 +285,17 @@ export interface GateDecision {
    * otherwise finished epic. The parked work is kept, not discarded. */
   action: "approve" | "abort" | "revise" | "park";
   feedback?: string;
+  /** Per-requirement rulings, when the human judged the cards individually.
+   *
+   * The gate used to be one verb for the whole run: approve all 34 blocks or
+   * revise all 34. Real review is not like that - most cards are fine, two are
+   * wrong, and one carries a note the designer needs. The engine already had
+   * everything needed to honour that (blocks hold `approved`, the designer's
+   * prompt branches on it, and applyDelta refuses a design edit on an approved
+   * block); what was missing was a way to SAY which is which.
+   *
+   * `note` is the person's own words about that requirement. On an approved
+   * card it is their design input, kept beside the design. On a revised card it
+   * is the instruction, and it outranks any finding. */
+  cards?: { id: string; verdict: "approve" | "revise"; note?: string }[];
 }

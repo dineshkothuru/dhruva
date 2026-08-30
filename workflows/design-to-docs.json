@@ -1,0 +1,31 @@
+{
+  "id": "design-to-docs",
+  "title": "Documents from an approved design",
+  "description": "Write the HLD + TDD (with an ERD) from a design that is already approved - the approved-design.md a previous run produced, or any design document you name. No re-design, no review loop: one pass over work that has already been signed off.",
+  "inputs": [
+    {
+      "key": "design",
+      "label": "The approved design (paste it, and/or attach the file below)",
+      "kind": "text",
+      "attachTo": true
+    },
+    {
+      "key": "designFile",
+      "label": "Path to an approved design file to use as-is (e.g. .dhruva/runs/<run>/docs/approved-design.md) - leave blank to use the text above",
+      "kind": "text"
+    },
+    {
+      "key": "docName",
+      "label": "Design document name (file-safe)",
+      "kind": "text",
+      "default": "solution-design"
+    }
+  ],
+  "steps": [
+    { "use": "snapshot", "title": "Snapshot baseline" },
+    { "use": "design-to-docs.design-in", "as": "design-in" },
+    { "use": "solution-design.write-doc", "as": "write-doc" },
+    { "use": "changes", "title": "Collect created documents" },
+    { "use": "solution-design.approve-doc", "as": "approve-doc" }
+  ]
+}

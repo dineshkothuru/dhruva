@@ -94,7 +94,7 @@ export function FindingCard({ f }: { f: Finding }) {
 
 /** Catalog grouping - anything unlisted lands in the first group. */
 export const CATEGORIES: [string, string[]][] = [
-  ["Development", ["bug-fix", "feature-dev", "solution-design", "ux-design", "implement-tdd"]],
+  ["Development", ["bug-fix", "feature-dev", "solution-design", "design-to-docs", "ux-design", "implement-tdd"]],
   ["Testing", ["test-gen", "run-tests"]],
   ["Org & deployment", ["retrieve-sync", "deploy-preview", "validate-deploy", "scratch-org"]],
   ["Custom", []],

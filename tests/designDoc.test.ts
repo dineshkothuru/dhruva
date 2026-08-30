@@ -13,7 +13,9 @@ import {
   awaitingDecision,
   parkable,
   parkBlocks,
+  recordCards,
   recordDecision,
+  renderApproved,
   recordReview,
   recomputeStates,
   render,
@@ -541,6 +543,58 @@ DESIGN: original one`);
     const doc = fromMarkdown(withQuestion("Portal 1 must confirm the shape"));
     recordReview(doc, rec(1, [f("F9", ["REQ-001"])]));
     expect(parkable(doc)).toEqual([]);
+  });
+});
+
+/** The gate stopped being one verb for the whole run. Most cards are fine, two
+ * are wrong, one carries a note - and the states to say that existed in the
+ * document long before the gate could say them. */
+describe("the human rules on requirements one at a time", () => {
+  it("freezes what it signs, and keeps the person's own words", () => {
+    const doc = fromMarkdown(MD);
+    const r = recordCards(doc, 1, [
+      { id: "REQ-001", verdict: "approve", note: "keep the LWC, we own that pattern" },
+      { id: "REQ-002", verdict: "revise", note: "use a flow, not a trigger" },
+    ]);
+    expect(r).toEqual({ approved: ["REQ-001"], revising: ["REQ-002"] });
+    expect(doc.blocks[0].state).toBe("approved");
+    expect(doc.blocks[0].humanNote).toBe("keep the LWC, we own that pattern");
+    expect(doc.blocks[1].state).toBe("open");
+
+    // and the freeze is real: a later delta cannot rewrite the signed block
+    const rep = applyDelta(doc, delta(["### REQ-001: Search", "DESIGN: something else"].join("\n")), 2);
+    expect(rep.frozen).toEqual(["REQ-001"]);
+    expect(render(doc)).toContain("DESIGN: original one");
+  });
+
+  it("says so when the human signs over an open objection", () => {
+    const doc = fromMarkdown(MD);
+    recordReview(doc, rec(1, [f("F9", ["REQ-001"])]));
+    recordCards(doc, 1, [{ id: "REQ-001", verdict: "approve" }]);
+    expect(doc.blocks[0].state).toBe("approved-objected");
+    expect(renderApproved(doc)).toContain("APPROVED-OVER-OBJECTION: F9");
+  });
+
+  it("will not sign a card nobody ruled on, or one already parked", () => {
+    const doc = fromMarkdown(MD);
+    parkBlocks(doc, ["REQ-002"], 1);
+    const r = recordCards(doc, 2, [{ id: "REQ-002", verdict: "approve" }]);
+    expect(r.approved).toEqual([]);
+    expect(doc.blocks[1].state).toBe("parked");
+    expect(renderApproved(doc)).toContain("_Nothing is approved yet");
+  });
+
+  it("writes the signed design on its own, and it reads straight back", () => {
+    const doc = fromMarkdown(MD);
+    recordCards(doc, 1, [{ id: "REQ-001", verdict: "approve", note: "our pattern" }]);
+    const md = renderApproved(doc);
+    expect(md).toContain("### REQ-001: Search");
+    expect(md).toContain("HUMAN-NOTE: our pattern");
+    expect(md).not.toContain("REQ-002");        // unsigned work stays out
+    expect(md).not.toContain("STATE:");         // no engine bookkeeping
+    // the deliverable is also a valid input to a later run
+    const back = fromMarkdown(md);
+    expect(back.blocks.map((b) => b.id)).toEqual(["REQ-001"]);
   });
 });
 

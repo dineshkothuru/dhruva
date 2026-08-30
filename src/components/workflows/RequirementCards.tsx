@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 
 /** Itemized design review: parses "### REQ-xxx" blocks from the analyse
@@ -125,13 +125,29 @@ const STATUS_STYLE: Record<string, string> = {
 export default function RequirementCards({
   items,
   onSubmit,
+  onChange,
   onApproveAll,
   disabled,
   critique,
 }: {
   items: ReqItem[];
-  /** Called with the compiled revise instruction when any item is rejected. */
-  onSubmit: (reviseInstruction: string) => void;
+  /** The human's rulings, per requirement, as DATA.
+   *
+   * This used to compile every verdict into one prose instruction and send it
+   * as a plain revise. The words reached the designer, but nothing else did:
+   * no block was frozen, an "approved" card could be rewritten in the next
+   * round, and nothing recorded WHICH requirements a human had actually
+   * signed. The states existed in the document all along - the gate simply
+   * had no way to say them. */
+  onSubmit: (cards: { id: string; verdict: "approve" | "revise"; note?: string }[]) => void;
+  /** Every change, reported up as it happens.
+   *
+   * The gate has its own Approve / Revise buttons BELOW these cards. Without
+   * this the marks lived only in here, so a person who approved four cards,
+   * rejected two with their own design in the notes, and then clicked the
+   * gate's "Revise with instructions" button lost all of it silently. Whichever
+   * button they reach for, the rulings go with it. */
+  onChange?: (cards: { id: string; verdict: "approve" | "revise"; note?: string }[]) => void;
   onApproveAll: () => void;
   disabled?: boolean;
   /** Reviewer objections per REQ id - WHY the critic blocked, shown on the card. */
@@ -148,23 +164,26 @@ export default function RequirementCards({
     () => items.filter((i) => decisions[i.id] !== "reject" && comments[i.id]?.trim()),
     [items, decisions, comments],
   );
+  const approvedCount = useMemo(
+    () => items.filter((i) => decisions[i.id] === "approve").length,
+    [items, decisions],
+  );
 
-  function submit() {
-    const lines: string[] = [];
-    for (const i of rejected) {
-      lines.push(`${i.id} REJECTED${comments[i.id]?.trim() ? `: ${comments[i.id].trim()}` : ""} - rework this item.`);
-    }
-    for (const i of commented) {
-      lines.push(`${i.id} note (item stays approved, incorporate this): ${comments[i.id].trim()}`);
-    }
-    lines.push(
-      "Rework the rejected items above, AND any other REQ whose DEPENDS-ON chain includes a " +
-        "reworked item - adjust those only as far as the changed dependency forces, noting what " +
-        "rippled. Keep every unaffected REQ block EXACTLY as it was (same ids, same order, full " +
-        "output again).",
-    );
-    onSubmit(lines.join("\n"));
-  }
+  // Only ruled cards count. An untouched card is NOT a silent approval:
+  // saying nothing about a requirement must never sign it off, so it keeps
+  // whatever state the review left it in.
+  const cards = useMemo(
+    () =>
+      items
+        .filter((i) => decisions[i.id] || comments[i.id]?.trim())
+        .map((i) => ({
+          id: i.id,
+          verdict: (decisions[i.id] === "reject" ? "revise" : "approve") as "approve" | "revise",
+          note: comments[i.id]?.trim() || undefined,
+        })),
+    [items, decisions, comments],
+  );
+  useEffect(() => onChange?.(cards), [cards, onChange]);
 
   return (
     <div className="mt-2 space-y-2">
@@ -232,10 +251,15 @@ export default function RequirementCards({
                 <ReqBody body={i.body} />
               </div>
             </details>
-            <input
+            <textarea
               value={comments[i.id] ?? ""}
               onChange={(e) => setComments((v) => ({ ...v, [i.id]: e.target.value }))}
-              placeholder={d === "reject" ? "Why rejected / what to do instead…" : "Optional comment for this item…"}
+              rows={d === "reject" ? 4 : 2}
+              placeholder={
+                d === "reject"
+                  ? "What is wrong, and the design you want instead - paste as much as you like. This is mandatory input to the rework."
+                  : "Optional note for this item - kept on the requirement as your own design input."
+              }
               className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs outline-none focus:border-slate-400"
             />
           </div>
@@ -244,15 +268,18 @@ export default function RequirementCards({
 
       <div className="flex items-center gap-2 pt-1">
         <span className="text-[11px] text-slate-400">
-          {items.length} requirements · {rejected.length} rejected · {commented.length} with notes
+          {items.length} requirements · {approvedCount} approved · {rejected.length} sent back ·{" "}
+          {commented.length} with notes
         </span>
-        {rejected.length > 0 || commented.length > 0 ? (
+        {rejected.length > 0 || commented.length > 0 || approvedCount > 0 ? (
           <button
-            onClick={submit}
+            onClick={() => onSubmit(cards)}
             disabled={disabled}
             className="ml-auto rounded-lg border border-amber-400 bg-amber-50 px-4 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-40"
           >
-            Submit review - rework {rejected.length} item(s)
+            {rejected.length > 0
+              ? `Send back ${rejected.length}, approve ${approvedCount}`
+              : `Approve ${approvedCount} with notes`}
           </button>
         ) : (
           <button

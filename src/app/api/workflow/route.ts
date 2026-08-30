@@ -100,10 +100,31 @@ export async function POST(req: Request) {
     // critique as the instruction - truncating it would silently drop findings
     const feedback =
       typeof b.feedback === "string" ? b.feedback.trim() : undefined;
-    if (decision === "revise" && !feedback) {
+    if (decision === "revise" && !feedback && !Array.isArray(b.cards)) {
       return NextResponse.json({ error: "revise requires feedback text" }, { status: 400 });
     }
-    const ok = resolveGate(b.runId, { action: decision, feedback });
+    // Per-requirement rulings. Validated here rather than trusted: an id that
+    // is not a REQ shape, or a verdict that is not one of the two, is dropped
+    // rather than carried into the design document.
+    const cards = Array.isArray(b.cards)
+      ? (b.cards as unknown[])
+          .filter(
+            (c): c is { id: string; verdict: "approve" | "revise"; note?: string } =>
+              !!c &&
+              typeof c === "object" &&
+              typeof (c as { id?: unknown }).id === "string" &&
+              /^REQ-\d+$/.test((c as { id: string }).id) &&
+              ((c as { verdict?: unknown }).verdict === "approve" ||
+                (c as { verdict?: unknown }).verdict === "revise"),
+          )
+          .slice(0, 500)
+          .map((c) => ({
+            id: c.id,
+            verdict: c.verdict,
+            note: typeof c.note === "string" ? c.note.slice(0, 20_000) : undefined,
+          }))
+      : undefined;
+    const ok = resolveGate(b.runId, { action: decision, feedback, cards });
     return NextResponse.json({ resolved: ok });
   }
 

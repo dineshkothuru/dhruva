@@ -118,6 +118,10 @@ export interface DesignBlockDoc {
    * needs to work ("the current design") are different documents. */
   revisions: { round: number; drivenBy: string[]; fields: DesignField[] }[];
   lineage?: LineageEntry[];
+  /** What the HUMAN said about this requirement at a gate - their own design
+   * input, not the designer's. Kept on the block so it travels with it into
+   * the approved file and into the next round's prompt. */
+  humanNote?: string;
 }
 
 export interface DesignDoc {
@@ -153,7 +157,14 @@ const FIELD_LINE = /^([A-Z][A-Z0-9 _-]{0,30}):/;
 /** Engine-owned fields: written by us on every render, so they are stripped on
  * the way IN. Without this a document that is read back and re-rendered grows a
  * second copy of each of them. */
-const OWNED = new Set(["STATE", "OPEN FINDINGS", "HISTORY"]);
+const OWNED = new Set(["STATE", "OPEN FINDINGS", "HISTORY", "HUMAN-NOTE"]);
+
+/** The human's note out of a block that was rendered earlier. Stripped from the
+ * fields by OWNED, so this is the only thing that carries it back. */
+function noteOf(design: string): string | undefined {
+  const m = design.match(/^HUMAN-NOTE:[ \t]*(.*(?:\n(?![A-Z][A-Z0-9 _-]{0,30}:).*)*)$/m);
+  return m?.[1].trim() || undefined;
+}
 
 function toFields(design: string): DesignField[] {
   const out: DesignField[] = [];
@@ -220,6 +231,11 @@ export function fromMarkdown(md: string): DesignDoc {
       id: b.id,
       title: titleOf(b.heading, b.id),
       fields: toFields(b.design),
+      // The human's own note is engine-owned on the way out (we render it) but
+      // it is also the ONE field no agent can reproduce, so it is lifted into
+      // state on the way in rather than dropped. That is what lets an approved
+      // design file be read back with the person's words still attached.
+      humanNote: noteOf(b.design),
       state: "open" as BlockState,
       history: [],
       revisions: [{ round: 1, drivenBy: [], fields: toFields(b.design) }],
@@ -270,6 +286,10 @@ export function render(doc: DesignDoc): string {
       // The numbers, on the row, so a reader sees at a glance what is still
       // outstanding against this requirement - and the state below it can only
       // be `clean` when this line is empty.
+      // The human's own words about this requirement, on the block, in front of
+      // both agents on every later round. The gate instruction reaches the
+      // designer once; this keeps it attached to the thing it is about.
+      b.humanNote?.trim() ? `HUMAN-NOTE: ${b.humanNote.trim()}` : "",
       `OPEN FINDINGS: ${open.length ? open.join(", ") : "-"}`,
       `STATE: ${STATE_TEXT[b.state]}${
         b.state === "open" && open.length === 0 && awaitingDecision(b)
@@ -696,6 +716,45 @@ export function recordReview(doc: DesignDoc, rec: ReviewRecord): { unassigned: F
   return { unassigned };
 }
 
+/** Apply the human's per-card rulings.
+ *
+ * An approved card is frozen: `applyDelta` already refuses a design edit on
+ * one, and the designer's state list already says "do not touch". A revised
+ * card keeps its state and carries the instruction. Either way the person's
+ * note is kept on the block, because a note is worth as much as the verdict -
+ * it is the only place a human's own design thinking enters the document.
+ *
+ * Approving over an open finding is allowed on purpose. The reviewer's
+ * objection is not a veto: the block goes `approved-objected`, the objection
+ * stays visible beside the design, and the run proceeds. */
+export function recordCards(
+  doc: DesignDoc,
+  gate: number,
+  cards: { id: string; verdict: "approve" | "revise"; note?: string }[],
+): { approved: string[]; revising: string[] } {
+  const byId = new Map(doc.blocks.map((b) => [b.id, b]));
+  const approved: string[] = [];
+  const revising: string[] = [];
+  for (const c of cards) {
+    const b = byId.get(c.id);
+    if (!b || b.state === "parked") continue;
+    const note = c.note?.trim();
+    if (note) b.humanNote = note;
+    if (c.verdict === "approve") {
+      b.state = openFor(doc, b.id).length > 0 ? "approved-objected" : "approved";
+      b.history.push({
+        round: gate,
+        note: `gate ${gate}: approved by the human${note ? " with a note" : ""}`,
+      });
+      approved.push(b.id);
+    } else {
+      b.history.push({ round: gate, note: `gate ${gate}: sent back${note ? " with an instruction" : ""}` });
+      revising.push(b.id);
+    }
+  }
+  return { approved, revising };
+}
+
 /** Requirements that cannot be finished, and are not the design's fault.
  *
  * A block qualifies when everything still open against it needs a human -
@@ -732,6 +791,48 @@ export function parkBlocks(doc: DesignDoc, ids: string[], gate: number): string[
     done.push(b.id);
   }
   return done;
+}
+
+/** The signed-off design, on its own, in the shape a fresh run can read back.
+ *
+ * `design.md` is the working document: engine bookkeeping, review lineage,
+ * findings, the whole argument. None of that belongs in the thing you hand to
+ * a build team or feed to a documents run six weeks later - and a reader
+ * cannot tell, from `design.md`, which blocks a human actually signed.
+ *
+ * So the approved blocks are written out clean: the design fields and the
+ * human's own note, nothing else, in the same `### REQ-nnn` form the designer
+ * emits. That is deliberate - it parses straight back through `fromMarkdown`,
+ * so this file is both the deliverable and a valid input to another run. */
+export function renderApproved(doc: DesignDoc): string {
+  const done = doc.blocks.filter((b) => b.state === "approved" || b.state === "approved-objected");
+  if (done.length === 0) {
+    return ["# Approved design", "", "_Nothing is approved yet - no requirement has been signed off at a gate._", ""].join(
+      "\n",
+    );
+  }
+  const out = [
+    "# Approved design",
+    "",
+    `${done.length} of ${doc.blocks.length} requirements are signed off. This file is the design`,
+    "as approved, with the review argument left behind: it is what the documents are",
+    "written from, and it can be read straight back into a later run.",
+    "",
+  ];
+  if (doc.preamble.trim()) out.push(doc.preamble.trim(), "");
+  for (const b of done) {
+    out.push(headingOf(b), "", fieldsToText(b.fields));
+    const note = b.humanNote?.trim();
+    // The human's own words about their own design, kept beside it. Written as
+    // a field so it survives the round trip like every other field does.
+    if (note) out.push(`HUMAN-NOTE: ${note}`);
+    if (b.state === "approved-objected") {
+      const ids = openFor(doc, b.id).map((f) => f.id);
+      out.push(`APPROVED-OVER-OBJECTION: ${ids.join(", ") || "an unresolved finding"}`);
+    }
+    out.push("");
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n") + "\n";
 }
 
 /** The requirements that did not make this cut, and what each is waiting on.
@@ -825,6 +926,7 @@ export async function save(root: string, rel: string, doc: DesignDoc): Promise<v
   await fs.writeFile(path.join(dir, "findings.md"), renderFindings(doc), "utf8");
   await fs.writeFile(path.join(dir, "design-history.md"), renderHistory(doc), "utf8");
   await fs.writeFile(path.join(dir, "pending-design.md"), renderPending(doc), "utf8");
+  await fs.writeFile(path.join(dir, "approved-design.md"), renderApproved(doc), "utf8");
 }
 
 /** `…design.md` -> `…design-v1.md`, then -v2. The rollback copy; nothing reads

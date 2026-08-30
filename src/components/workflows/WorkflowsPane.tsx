@@ -224,6 +224,9 @@ export default function WorkflowsPane({
   // a delta, that output is only the blocks it changed, and cards built from
   // it would show three requirements and imply the other thirty-one had gone.
   const [docs, setDocs] = useState<Record<string, string>>({});
+  // The per-requirement rulings, held HERE rather than inside the cards, so the
+  // gate's own buttons below them send the same marks the cards' button would.
+  const [cards, setCards] = useState<{ id: string; verdict: "approve" | "revise"; note?: string }[]>([]);
   // per-step failure diagnosis (streamed from the agent, read-only)
   const [explain, setExplain] = useState<Record<string, string>>({});
   const [explaining, setExplaining] = useState<string | null>(null);
@@ -549,11 +552,15 @@ export default function WorkflowsPane({
     }
   }
 
-  async function gate(decision: "approve" | "abort" | "revise" | "park", feedback?: string) {
+  async function gate(
+    decision: "approve" | "abort" | "revise" | "park",
+    feedback?: string,
+    cards?: { id: string; verdict: "approve" | "revise"; note?: string }[],
+  ) {
     if (!run || gating) return;
     setGating(true);
     try {
-      const { ok, data } = await api({ action: "gate", runId: run.runId, decision, feedback });
+      const { ok, data } = await api({ action: "gate", runId: run.runId, decision, feedback, cards });
       if (ok && data.resolved === false) {
         setError(
           "The gate is not waiting right now (a revision is replaying or the run ended) - " +
@@ -1182,8 +1189,18 @@ export default function WorkflowsPane({
                         items={items}
                         critique={critique}
                         disabled={gating}
+                        onChange={setCards}
                         onApproveAll={() => gate("approve")}
-                        onSubmit={(instruction) => gate("revise", instruction)}
+                        // The verdicts decide the action: anything sent back
+                        // makes it a revision, otherwise it is an approval of
+                        // exactly the cards named. The engine reads the cards.
+                        onSubmit={(cards) =>
+                          gate(
+                            cards.some((c) => c.verdict === "revise") ? "revise" : "approve",
+                            undefined,
+                            cards,
+                          )
+                        }
                       />
                     );
                   })()}
@@ -1196,7 +1213,7 @@ export default function WorkflowsPane({
                   />
                   <div className="mt-2 flex gap-2">
                     <button
-                      onClick={() => gate("approve")}
+                      onClick={() => gate("approve", undefined, cards)}
                       disabled={gating}
                       className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-40"
                     >
@@ -1216,8 +1233,8 @@ export default function WorkflowsPane({
                       Park blocked &amp; proceed
                     </button>
                     <button
-                      onClick={() => gate("revise", gateNote)}
-                      disabled={gating || !gateNote.trim()}
+                      onClick={() => gate("revise", gateNote, cards)}
+                      disabled={gating || (!gateNote.trim() && cards.length === 0)}
                       className="rounded-lg border border-amber-400 bg-white px-4 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-40"
                       title="Re-run the analysis with your instructions, then review again"
                     >

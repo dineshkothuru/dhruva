@@ -214,6 +214,70 @@
       }
     ]
   },
+  "design-to-docs": {
+    "id": "design-to-docs",
+    "title": "Documents from an approved design",
+    "description": "Write the HLD + TDD (with an ERD) from a design that is already approved - the approved-design.md a previous run produced, or any design document you name. No re-design, no review loop: one pass over work that has already been signed off.",
+    "inputs": [
+      {
+        "key": "design",
+        "label": "The approved design (paste it, and/or attach the file below)",
+        "kind": "text",
+        "attachTo": true
+      },
+      {
+        "key": "designFile",
+        "label": "Path to an approved design file to use as-is (e.g. .dhruva/runs/<run>/docs/approved-design.md) - leave blank to use the text above",
+        "kind": "text"
+      },
+      {
+        "key": "docName",
+        "label": "Design document name (file-safe)",
+        "kind": "text",
+        "default": "solution-design"
+      }
+    ],
+    "steps": [
+      {
+        "id": "snapshot",
+        "title": "Snapshot baseline",
+        "type": "snapshot"
+      },
+      {
+        "id": "design-in",
+        "title": "Take in the approved design (read-only)",
+        "type": "agent",
+        "prompt": "You are being given a design that has ALREADY been made and signed off. Your only job is to put it into the shape the documents step reads. Do not design anything, do not judge the design, do not add or remove requirements, and do not modify any files.\n\nNormally this step does not run at all: when the person names an approved design file, the engine adopts it directly and nothing is spent here. You are running because no such file was named, so the design arrived as prose - pasted text, an attachment, an older document - and it has to be normalised first.\n\nBinary attachments (.docx/.pdf) cannot be read directly - when one is referenced, read the extracted sibling file <same-name>.extracted.md instead (created at upload); only report a document unreadable if no extracted sibling exists.\n\nRead every attached document in full, in chunks with offsets until the end. A design normalised from a partially read document is a design with requirements missing from it.\n\nThe design:\n{inputs.design}\n\nOutput the design as ONE BLOCK PER REQUIREMENT, wrapped in this fence, with NOTHING else inside it:\n\n=== DESIGN START ===\n(the OVERVIEW paragraph if the source has one, then every requirement block)\n=== DESIGN END ===\n\nEach block formatted exactly:\n### REQ-001: <the requirement's title, in the source's own words>\nBRD-REF: <where it comes from, if the source says; '-' if not>\nSTATUS: ALREADY IMPLEMENTED | PARTIAL | NEW\nEVIDENCE: <as the source gives it; '-' if it gives none>\nALREADY-PRESENT: <as the source gives it; '-'>\nPENDING: <as the source gives it; '-'>\nDESIGN: <the design for this requirement, carried over IN FULL>\nEFFORT: <as the source gives it; '-'>\nDEPENDS-ON: <REQ-ids or '-'>\n\nRules that matter more than tidiness:\n\n- **Carry the text over; do not rewrite it.** This design was reviewed and approved as it stands. Summarising a DESIGN field, tightening its wording, or \"improving\" a decision silently replaces work a human signed with work nobody has seen. Copy it.\n- **Keep the ids and their order exactly as the source has them.** If the source numbers its requirements, those numbers ARE the ids. Never renumber, merge or split.\n- If the source has no ids, number sequentially from REQ-001 in the source's own order, and say in your outcome summary that you assigned them.\n- A field the source does not give is `-`. Do not infer one, and never invent EVIDENCE: a component name you supply here is a claim about an org you have not looked at.\n- If a block carries `HUMAN-NOTE:` or `OPEN-CONFIRMED:`, keep that line verbatim. Those are the human's own words and the questions still outstanding; the documents need both.\n- If what you were given is not a design at all - a raw requirement list, a BRD, an empty file - STOP and say so plainly instead of designing one. This workflow writes documents from an existing design; it does not produce a design.",
+        "readOnly": true,
+        "orgAware": false,
+        "role": "read",
+        "artifact": ".dhruva/runs/{runId}/docs/design.md",
+        "skipIf": "designFile",
+        "timeoutMinutes": 20
+      },
+      {
+        "id": "write-doc",
+        "title": "Write HLD + TDD documents (with ERD)",
+        "type": "agent",
+        "prompt": "The approved design is already written, in full, at .dhruva/runs/{runId}/docs/design.md - one REQ block per requirement, each with STATUS, EVIDENCE, ALREADY-PRESENT, PENDING, DESIGN, EFFORT and DEPENDS-ON. Read it completely. If your search tool reports no match, read the path directly: it is inside a dot-directory, which some search tools skip, and a failed search is not evidence the file is absent.\r\n\r\nEach block may also carry its own review history, below a `<!-- lineage -->` marker: the findings raised against it and the designer's answers. That is the record of HOW the design reached its current form - the design itself is the fields ABOVE the marker. Write the documents from the fields. Read the history only when you need to know why something is the way it is, and never carry a superseded design into the documents because it appears in a finding.\r\n\r\nIf that file does not exist or has no REQ blocks, STOP and say so plainly - do not invent a design. It is the only copy; writing documents from memory would silently replace an approved design with a guess.\r\n\r\nYour job is NOT to restate it. Re-typing a gap analysis that already exists is how requirements get lost: on a real run five of them vanished between the design and the documents. Reference the design for anything it already says, and spend your effort on what it does NOT say.\r\n\r\nThe design is organised per REQUIREMENT. These documents are organised per CONCERN - data flow, error handling, governor limits, deployment order. That thinking cuts across all the REQ blocks at once and exists nowhere yet. That is the work.\r\n\r\nCreate or modify ONLY these three files:\r\n\r\n1. .dhruva/runs/{runId}/docs/hld.md - for stakeholders and review boards:\r\n  1. Context - the problem space and system boundaries this design stands on.\r\n  2. Goals / Non-Goals - what it achieves, and what it explicitly does not.\r\n  3. Gap Analysis - DO NOT re-tabulate the REQ blocks. One short paragraph of the shape of the gap (how many already implemented / partial / new, and the theme), then: \"Per-requirement detail: see design.md.\"\r\n  4. Approaches Considered - assemble this from the REJECTED lines the design already recorded: per decision, the option taken, the option rejected, and the constraint that ruled it out. Do NOT invent alternatives the design does not name - a deliberation nobody had, written up after approval, is the one section of this document no reviewer ever checked. Add the overall complexity (XS/S/M/L/XL) for the selected approach.\r\n  5. High-Level Design - how the component groups interact, and the key abstractions introduced. Architecture, not a per-REQ list.\r\n  6. Data Model - a Mermaid er-diagram (```mermaid / erDiagram) of new and impacted objects, their relationships and key fields.\r\n  7. Integration Touchpoints and Security Model.\r\n  8. Constraints and Trade-offs - assemble from the design's TRADE-OFF lines; add only constraints that emerge across requirements rather than within one.\r\n  9. Acceptance Criteria - \"AC-n: Given <precondition>, when <action>, then <outcome>. [traces: REQ-xxx]\". Every REQ with pending work needs at least one AC.\r\n  10. Impact analysis, risks and assumptions, Open Questions. For effort, total the design's EFFORT values and show the total plus any contingent items - do not re-list every requirement.\r\n\r\n2. .dhruva/runs/{runId}/docs/tdd.md - for the developers who build it:\r\n  1. Components - per apex class, trigger, LWC, flow, object and field: exact API names, responsibility, inputs/outputs, dependencies, reuse-vs-new, and method-level design or pseudocode where non-trivial.\r\n  2. Data Flow - how data moves end to end.\r\n  3. State Management - what state exists, where it lives, how it changes.\r\n  4. Error Handling - what can fail, and how each failure is handled and surfaced.\r\n  5. Governor Limits and Sharing/FLS specifics.\r\n  6. Deployment Order and dependencies.\r\n  7. Test Strategy - the test classes and scenarios (positive, negative, bulk). Apex tests run in the org, so tests ship WITH the implementation and are proven by a check-only deploy with RunLocalTests; never promise a failing-tests-first cycle.\r\n  8. Build Plan - a short summary table of the tasks file (T-n | title | depends on | traces). The tasks file is the authority.\r\n  9. Decisions - one line each: Decision -> Rationale -> Consequence.\r\n  10. Open Questions that may affect implementation.\r\n\r\n3. .dhruva/runs/{runId}/docs/tasks.json - the machine-readable build plan the implementation workflow executes. Strict JSON, no comments, no trailing commas, exactly this shape:\r\n{ \"version\": 1, \"tasks\": [ { \"id\": \"T-1\", \"title\": \"<imperative, one line>\", \"depends_on\": [], \"files\": [\"force-app/main/default/classes/Example.cls\"], \"change\": \"<the mechanism - what edit, where>\", \"test_scenarios\": [\"<case>\"], \"traces\": [\"REQ-001\", \"AC-1\"], \"status\": \"pending\" } ] }\r\nRules: ids sequential from T-1; every task lists the project-relative files it touches and traces to at least one REQ or AC; depends_on names only earlier tasks; no cycles; one component plus its test class per task; order is safe deployment order. Take file paths from the design's EVIDENCE where it names them - guess a path only when the design gives none, and follow this project's existing folder layout when you do.\r\n\r\nDo not contradict the approved design. Where you need precision it does not give, add it; where it already decided something, cite it rather than re-deciding.\r\n\r\nThe Mermaid block must be valid erDiagram syntax - every relationship line has both entities and a label - with no styling directives.\r\n\r\nAPPROVED UX DESIGN: if .dhruva/runs/{runId}/docs/ux-design.md exists, read it completely and incorporate it fully (when UX is disabled for this project the file is absent - then skip this paragraph). The TDD gains a 'UI Components' section carrying every UX-n block, and the tasks file gets one task per UX component (files under force-app/main/default/lwc/..., traces include the UX-n id AND its REQ id).",
+        "persona": "salesforce-writer",
+        "role": "design",
+        "timeoutMinutes": 30
+      },
+      {
+        "id": "changes",
+        "title": "Collect created documents",
+        "type": "changes"
+      },
+      {
+        "id": "approve-doc",
+        "title": "Accept the design documents",
+        "type": "gate",
+        "message": "HUMAN GATE - you are shown the coverage verdict and any unresolved findings; the documents are in .dhruva/runs/{runId}/docs/. If items are MISSING or DIVERGE, revise; accept to complete the run.",
+        "reviseTarget": "write-doc"
+      }
+    ]
+  },
   "feature-dev": {
     "id": "feature-dev",
     "title": "Feature development",

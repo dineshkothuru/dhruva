@@ -37,6 +37,7 @@ import {
   foldDecision,
   foldReview,
   parkable,
+  recordCards,
   parkBlocks,
   recordDecision as recordDocDecision,
   save as saveDesignDoc,
@@ -577,7 +578,22 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           revisions,
           step_index: i,
         });
-        if (decision.action === "approve") {
+        // Per-requirement rulings, when the human judged the cards one by one.
+        // Applied BEFORE the action is acted on, because they decide what the
+        // action means: cards sent back turn an approve into a partial revise,
+        // and cards approved are frozen so that revise cannot touch them.
+        const cards = await applyCards(run, def, i, decision.cards ?? []);
+        if (cards.approved.length) {
+          step.output += `\n→ approved ${cards.approved.length}: ${cards.approved.join(", ")}`;
+        }
+        if (cards.revising.length) {
+          step.output += `\n→ sent back ${cards.revising.length}: ${cards.revising.join(", ")}`;
+        }
+        // A card sent back is a revision even when the button said approve -
+        // the human's marks are the more specific instruction.
+        const action = cards.revising.length > 0 ? "revise" : decision.action;
+        const feedback = [decision.feedback?.trim(), cards.instruction].filter(Boolean).join("\n\n");
+        if (action === "approve") {
           run.status = "running";
           step.output += auto ? "\n→ approved automatically (gates set to auto-approve)" : "\n→ approved";
           await recordDecision(
@@ -585,9 +601,12 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
             def,
             i,
             "approved",
-            decision.feedback?.trim() ||
+            feedback ||
               (auto ? "Approved automatically (gates set to auto-approve)." : "Approved as it stands."),
-            !auto,
+            // Freezing every block is right for a blanket approval and wrong
+            // when the human signed specific cards: the ones they did not sign
+            // are not approved, and stamping them would say they were.
+            !auto && cards.approved.length === 0,
           );
           step.status = "done";
           step.endedAt = Date.now();
@@ -596,7 +615,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         }
         // Set aside what is blocked on a human and carry on with the rest.
         // Five unanswered questions should not hold an otherwise finished epic.
-        if (decision.action === "park") {
+        if (action === "park") {
           const parked = await parkAtGate(run, def, i);
           step.output +=
             parked.length > 0
@@ -615,7 +634,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           await persist(run);
           break;
         }
-        if (decision.action === "abort" || !decision.feedback?.trim()) {
+        if (action === "abort" || !feedback.trim()) {
           run.status = "aborted";
           step.output += "\n→ aborted by user";
           step.status = "failed";
@@ -637,7 +656,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         }
         const targetId = def.steps[from].id;
         run.revisions ??= {};
-        (run.revisions[targetId] ??= []).push(decision.feedback.trim());
+        (run.revisions[targetId] ??= []).push(feedback);
         // The reviewer between the target and this gate hears it too. Without
         // this, a finding the human overruled is raised again on the next
         // round exactly as though nobody had ruled on it - the instruction
@@ -648,11 +667,11 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           if (d.type !== "agent" || d.role !== "review") continue;
           (run.revisions[d.id] ??= []).push(
             `The human ruled at the gate. This outranks any finding: ` +
-              `"${decision.feedback.trim()}". Do not re-raise what it settles.`,
+              `"${feedback}". Do not re-raise what it settles.`,
           );
         }
-        await recordDecision(run, def, i, "revise", decision.feedback.trim());
-        step.output += `\n→ revision requested: ${decision.feedback.trim().slice(0, 300)}`;
+        await recordDecision(run, def, i, "revise", feedback);
+        step.output += `\n→ revision requested: ${feedback.slice(0, 300)}`;
         // the gate must NOT look armed while the replay runs - the UI renders
         // the approval panel purely off waiting_gate, and clicks during a
         // replay would be silent no-ops
@@ -1092,6 +1111,44 @@ function toPosix(p: string): string {
  * with the questions that stopped them, and the rest of the pipeline builds
  * documents from what proceeded. When the answers come back they are picked up
  * in a later run rather than redesigned. */
+/** Fold the human's per-card rulings into the design, and turn the cards they
+ * sent back into one instruction the designer and the reviewer both read.
+ *
+ * The instruction names the requirement in front of each note. A note without
+ * its id is advice about nothing: the designer gets the whole set at once and
+ * has to know which block each line rules on. */
+async function applyCards(
+  run: RunState,
+  def: WorkflowDef,
+  gateIndex: number,
+  cards: { id: string; verdict: "approve" | "revise"; note?: string }[],
+): Promise<{ approved: string[]; revising: string[]; instruction: string }> {
+  const none = { approved: [], revising: [], instruction: "" };
+  if (cards.length === 0) return none;
+  const targetId =
+    def.steps[gateIndex].reviseTarget ?? def.steps[nearestAgentIndex(def, gateIndex)]?.id;
+  const rel = run.steps.find((s) => s.id === targetId)?.artifact;
+  if (!rel) return none;
+  const doc = await loadDesignDoc(run.root, toPosix(rel)).catch(() => null);
+  if (!doc) return none;
+  const gate = doc.decisions.length + 1;
+  const { approved, revising } = recordCards(doc, gate, cards);
+  await saveDesignDoc(run.root, toPosix(rel), doc).catch(() => {});
+  const lines: string[] = [];
+  for (const c of cards) {
+    const note = c.note?.trim();
+    if (c.verdict === "revise") lines.push(`${c.id}: ${note || "rework this requirement."}`);
+    else if (note) lines.push(`${c.id} (APPROVED - do not rework): ${note}`);
+  }
+  const instruction = lines.length
+    ? [`The human ruled on individual requirements at gate ${gate}:`, "", ...lines].join("\n") +
+      (approved.length
+        ? `\n\nApproved and frozen: ${approved.join(", ")}. Leave those blocks out of your delta.`
+        : "")
+    : "";
+  return { approved, revising, instruction };
+}
+
 async function parkAtGate(run: RunState, def: WorkflowDef, gateIndex: number): Promise<string[]> {
   const targetId =
     def.steps[gateIndex].reviseTarget ?? def.steps[nearestAgentIndex(def, gateIndex)]?.id;

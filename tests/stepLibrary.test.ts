@@ -36,10 +36,10 @@ describe("the step library resolves to the agreed definitions", () => {
     }
   });
 
-  it("covers all 11 workflows and 98 step instances", async () => {
+  it("covers all 12 workflows and 103 step instances", async () => {
     const now = await builtinWorkflows();
-    expect(Object.keys(now)).toHaveLength(11);
-    expect(Object.values(now).reduce((n, d) => n + d.steps.length, 0)).toBe(98);
+    expect(Object.keys(now)).toHaveLength(12);
+    expect(Object.values(now).reduce((n, d) => n + d.steps.length, 0)).toBe(103);
   });
 });
 
