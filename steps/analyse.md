@@ -35,6 +35,7 @@ RESPONSE F24 ACCEPTED - FIXED: <what you changed>
 
 What each STATE means for you:
 - **open** - judge every finding on the block, then fix it or defend it, and emit the block.
+- **open - held by its own OPEN-CONFIRMED, not by a finding** - nothing is filed against this block; YOUR unanswered question is what holds it. Either settle it - if you can now name the file and line that answers it, replace the line with `OPEN-RESOLVED:` and finish the design - or leave it exactly as it is. It goes to the human at the gate as a question, and they can set it aside so the rest of the epic proceeds. Do not quietly pick an answer to clear the state.
 - **clean** - leave it out entirely. One exception: if fixing an open block forces a change here, emit it and name the finding that forced it.
 - **approved** - leave it out entirely.
 - **approved - reviewer objects** - RESPOND, do not rewrite. A human approved this block, so only a human may change it. Emit the block with RESPONSE lines and NO design fields, using ACCEPTED - WOULD FIX where you would otherwise have fixed it. The human rules on it at the next gate, seeing the objection and your answer side by side.

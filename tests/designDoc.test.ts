@@ -10,6 +10,7 @@ import {
   fromMarkdown,
   fixableOpen,
   load,
+  awaitingDecision,
   parkable,
   parkBlocks,
   recordDecision,
@@ -490,6 +491,56 @@ describe("what changed since the last review", () => {
       fields: doc.blocks[0].fields.filter((x) => x.label !== "EFFORT"),
     });
     expect(renderChanges(doc, 2)).toContain("REMOVED EFFORT: 1d");
+  });
+});
+
+/** The boundary case. A design that says "Portal 1 must confirm the invoice
+ * line shape" is conditional on an answer nobody has - and on run d0e4f7bc-1d6
+ * four such blocks reached the human gate as `clean`, because no reviewer
+ * finding happened to name them and OPEN-CONFIRMED was prose the engine never
+ * read. Ready-to-sign-off is the one thing they were not. */
+describe("a design's own open question holds its block", () => {
+  const withQuestion = (q: string) =>
+    MD.replace("DESIGN: original one", `OPEN-CONFIRMED: ${q}
+DESIGN: original one`);
+
+  it("reads the question off the block, and ignores an empty one", () => {
+    const doc = fromMarkdown(withQuestion("Portal 1 must confirm the invoice line shape"));
+    expect(awaitingDecision(doc.blocks[0])).toBe("Portal 1 must confirm the invoice line shape");
+    expect(awaitingDecision(fromMarkdown(withQuestion("-")).blocks[0])).toBeNull();
+    expect(awaitingDecision(doc.blocks[1])).toBeNull();
+  });
+
+  it("keeps the block open with no finding against it", () => {
+    const doc = fromMarkdown(withQuestion("Portal 1 must confirm the shape"));
+    recomputeStates(doc);
+    expect(doc.blocks[0].state).toBe("open");
+    expect(doc.blocks[1].state).toBe("clean");
+    const md = render(doc);
+    expect(md).toContain("OPEN FINDINGS: -");
+    expect(md).toContain("held by its own OPEN-CONFIRMED");
+  });
+
+  it("goes clean once the design settles it", () => {
+    const doc = fromMarkdown(withQuestion("Portal 1 must confirm the shape"));
+    applyDelta(doc, delta(["### REQ-001: Search", "OPEN-CONFIRMED: -"].join("\n")), 2);
+    recomputeStates(doc);
+    expect(doc.blocks[0].state).toBe("clean");
+  });
+
+  it("offers it at the gate, and hands the question over when parked", () => {
+    const doc = fromMarkdown(withQuestion("Portal 1 must confirm the shape"));
+    recomputeStates(doc);
+    expect(parkable(doc).map((b) => b.id)).toEqual(["REQ-001"]);
+    parkBlocks(doc, ["REQ-001"], 1);
+    expect(renderPending(doc)).toContain("Portal 1 must confirm the shape");
+    expect(doc.blocks[0].history.at(-1)?.note).toContain("the OPEN-CONFIRMED decision");
+  });
+
+  it("does not offer one that still has fixable work", () => {
+    const doc = fromMarkdown(withQuestion("Portal 1 must confirm the shape"));
+    recordReview(doc, rec(1, [f("F9", ["REQ-001"])]));
+    expect(parkable(doc)).toEqual([]);
   });
 });
 

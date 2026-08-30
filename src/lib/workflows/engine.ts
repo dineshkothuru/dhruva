@@ -30,7 +30,9 @@ import {
   type ReviewRecord,
 } from "./artifacts";
 import {
+  awaitingDecision,
   decisionsOpen,
+  openFor,
   fixableOpen,
   foldDecision,
   foldReview,
@@ -1254,6 +1256,14 @@ async function designStateBlock(run: RunState, def: StepDef): Promise<string> {
     );
   }
   const by = (want: BlockState) => doc.blocks.filter((b) => b.state === want).map((b) => b.id);
+  // Split "open" by WHY, because the two need opposite things from the
+  // designer: a block with findings gets fixed or defended; a block held only
+  // by its own OPEN-CONFIRMED has nothing to answer and must be left alone for
+  // the human, not quietly settled to clear the state.
+  const waiting = doc.blocks
+    .filter((b) => b.state === "open" && openFor(doc, b.id).length === 0 && awaitingDecision(b))
+    .map((b) => b.id);
+  const isWaiting = new Set(waiting);
   const line = (label: string, list: string[]) =>
     list.length ? `  ${label.padEnd(28)} ${list.join(", ")}\n` : "";
   // A fact the engine established, handed over before the next pass rather than
@@ -1264,7 +1274,8 @@ async function designStateBlock(run: RunState, def: StepDef): Promise<string> {
     `\n\n=== DESIGN STATE ===\n` +
     `You are REVISING. The complete current design is at the END of this prompt - ` +
     `it is the authoritative copy, so do NOT search the filesystem for it.\n\n` +
-    line("open", by("open")) +
+    line("open", by("open").filter((id) => !isWaiting.has(id))) +
+    line("awaiting a decision", waiting) +
     line("approved - reviewer objects", by("approved-objected")) +
     line("clean (do not touch)", by("clean")) +
     line("approved (do not touch)", by("approved")) +

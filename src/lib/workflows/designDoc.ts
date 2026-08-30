@@ -271,7 +271,11 @@ export function render(doc: DesignDoc): string {
       // outstanding against this requirement - and the state below it can only
       // be `clean` when this line is empty.
       `OPEN FINDINGS: ${open.length ? open.join(", ") : "-"}`,
-      `STATE: ${STATE_TEXT[b.state]}`,
+      `STATE: ${STATE_TEXT[b.state]}${
+        b.state === "open" && open.length === 0 && awaitingDecision(b)
+          ? " - held by its own OPEN-CONFIRMED, not by a finding"
+          : ""
+      }`,
     ];
     if (b.history.length > 0) {
       body.push(`HISTORY: ${b.history.map((h) => h.note).join(" · ")}`);
@@ -554,6 +558,21 @@ export function mergeAuthored(doc: DesignDoc, md: string): { kept: string[]; add
 
 /** Fold one review round in: findings under the requirements they name, states
  * recomputed, the open set carried forward, one log row. */
+/** The designer's own unanswered question, if this block still carries one.
+ *
+ * `OPEN-CONFIRMED` is the design saying "this codebase cannot settle it, and
+ * here is who must". It was prose the engine never read - so on run
+ * d0e4f7bc-1d6 four Portal 1 boundary blocks carried a live one, no reviewer
+ * finding happened to name them, and they reached the gate as `clean`: ready to
+ * sign off, with an unanswered question inside. A design conditional on an
+ * answer nobody has is not ready, whether or not a reviewer noticed. */
+export function awaitingDecision(b: DesignBlockDoc): string | null {
+  const f = b.fields.find((x) => x.label === "OPEN-CONFIRMED");
+  if (!f) return null;
+  const text = f.body.slice(f.label.length + 1).trim();
+  return text === "" || text === "-" || /^(none|n\/a)\.?$/i.test(text) ? null : text;
+}
+
 /** Findings still open against a requirement. */
 export function openFor(doc: DesignDoc, id: string): FindingEntry[] {
   return doc.findings.filter((f) => f.status === "open" && f.refs.includes(id));
@@ -592,7 +611,9 @@ export function recomputeStates(doc: DesignDoc): void {
     // Parking is the human's decision, exactly like approval: a review does not
     // undo it. The block is out of this run.
     if (b.state === "parked") continue;
-    const stillOpen = openFor(doc, b.id).length > 0;
+    // An unanswered OPEN-CONFIRMED blocks the block on its own: the design is
+    // conditional on an answer, so it cannot be clean even with nothing filed.
+    const stillOpen = openFor(doc, b.id).length > 0 || awaitingDecision(b) !== null;
     const wasApproved = b.state === "approved" || b.state === "approved-objected";
     b.state = wasApproved
       ? stillOpen
@@ -686,7 +707,11 @@ export function parkable(doc: DesignDoc): DesignBlockDoc[] {
   return doc.blocks.filter((b) => {
     if (b.state === "parked") return false;
     const open = openFor(doc, b.id);
-    return open.length > 0 && open.every((f) => f.needs === "decide");
+    if (open.some((f) => f.needs !== "decide")) return false;
+    if (open.length > 0) return true;
+    // Nothing filed against it: only the designer's own unanswered question
+    // holds it. `open` here excludes anything a human has already ruled on.
+    return b.state === "open" && awaitingDecision(b) !== null;
   });
 }
 
@@ -702,7 +727,8 @@ export function parkBlocks(doc: DesignDoc, ids: string[], gate: number): string[
     if (!wanted.has(b.id) || b.state === "parked") continue;
     b.state = "parked";
     const qs = openFor(doc, b.id).map((f) => f.id);
-    b.history.push({ round: gate, note: `parked at gate ${gate}: awaiting ${qs.join(", ")}` });
+    const what = qs.length ? qs.join(", ") : "the OPEN-CONFIRMED decision";
+    b.history.push({ round: gate, note: `parked at gate ${gate}: awaiting ${what}` });
     done.push(b.id);
   }
   return done;
@@ -728,6 +754,8 @@ export function renderPending(doc: DesignDoc): string {
     const open = openFor(doc, b.id);
     out.push(`## ${b.id}: ${b.title}`, "");
     out.push("**Waiting on**", "");
+    const q = awaitingDecision(b);
+    if (q) out.push(`- **The design's own open question** — ${q}`);
     for (const f of open) {
       out.push(
         `- **${f.id}** (${f.severity}) — ${f.question || f.title}`,
