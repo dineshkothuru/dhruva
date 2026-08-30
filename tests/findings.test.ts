@@ -70,3 +70,34 @@ describe("parseFindings", () => {
     expect(r.before).toContain("Everything looks good");
   });
 });
+
+/** Run c10adbb1-2fb: the engine renders findings into the design document as
+ * "#### F12 (critical): ..." headings, and by round 8 the reviewer - which
+ * reads that document every round - had copied the format into its own answer.
+ * Nothing parsed, the step failed its own `emits: findings` contract, and a
+ * 2h51m run died one step before the human gate. */
+describe("a finding written as a markdown heading", () => {
+  const HEADING = [
+    "#### F73 (nit) [refs: REQ-034]: orphan STATE flipped from clean to open",
+    "- Where: design.md REQ-034",
+    "- Problem: nothing documents why",
+    "- Fix: attach STATE to the block",
+    "",
+    "VERDICT: BLOCKED - F73",
+  ].join("\n");
+
+  it("parses the same as one written at line start", () => {
+    const { findings } = parseFindings(HEADING);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].id).toBe("F73");
+    expect(findings[0].severity).toBe("nit");
+    expect(findings[0].refs).toEqual(["REQ-034"]);
+    expect(findings[0].fix).toContain("attach STATE");
+  });
+
+  it("still parses a plain finding unchanged", () => {
+    const { findings } = parseFindings("F1 (critical): plain\n  Where: x\n  Fix: y");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].id).toBe("F1");
+  });
+});

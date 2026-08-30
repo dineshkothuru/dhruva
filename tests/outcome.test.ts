@@ -60,6 +60,22 @@ describe("parseOutcome", () => {
     const many = Array.from({ length: 30 }, (_, i) => `item${i}`).join(" | ");
     expect(parseOutcome(block(`SUMMARY: s\nPRODUCED: ${many}`))!.produced.length).toBe(8);
   });
+
+  /** A hard slice cut a real summary at "...a thin CRUD scaffold requiring a",
+   * which reads as a broken renderer rather than a sentence that ran long. */
+  it("cuts an over-long summary at a word boundary and marks it", () => {
+    const long = "word ".repeat(400).trim();
+    const out = parseOutcome(block(`SUMMARY: ${long}`))!;
+    expect(out.summary.length).toBeLessThanOrEqual(701);
+    expect(out.summary.endsWith("…")).toBe(true);
+    expect(out.summary).not.toMatch(/\bwor…$/); // never mid-word
+  });
+
+  it("leaves a summary that fits completely alone", () => {
+    const out = parseOutcome(block("SUMMARY: short and complete."))!;
+    expect(out.summary).toBe("short and complete.");
+    expect(out.summary).not.toContain("…");
+  });
 });
 
 describe("stripOutcome", () => {

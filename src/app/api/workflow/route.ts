@@ -89,10 +89,10 @@ export async function POST(req: Request) {
     const decision = b.decision;
     if (
       typeof b.runId !== "string" ||
-      (decision !== "approve" && decision !== "abort" && decision !== "revise")
+      (decision !== "approve" && decision !== "abort" && decision !== "revise" && decision !== "park")
     ) {
       return NextResponse.json(
-        { error: "runId + decision (approve|abort|revise) required" },
+        { error: "runId + decision (approve|abort|revise|park) required" },
         { status: 400 },
       );
     }

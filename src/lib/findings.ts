@@ -59,11 +59,20 @@ End with exactly one line, machine-parsed, labels verbatim:
 
 /** Extract findings and the text before them. `trailing` carries verdict/exit
  * lines that follow the last finding (rendered separately by callers). */
-export function parseFindings(text: string): {
+export function parseFindings(raw: string): {
   before: string;
   findings: Finding[];
   trailing: string;
 } {
+  // A finding may arrive as a markdown heading. The engine renders findings
+  // into the design document as "#### F12 (critical): ..." so the file reads
+  // well, and a reviewer that now reads that document every round copies the
+  // format into its own answer: on run c10adbb1-2fb rounds 1-7 wrote the id at
+  // line start and round 8 wrote "#### F73 (nit): ...", so nothing parsed, the
+  // step failed its own output contract and took a three-hour run down with it.
+  // Strip the marker here, where every caller agrees on the answer, rather than
+  // in the one caller that happened to remember.
+  const text = raw.replace(/^#{1,6}[ \t]+(?=\*{0,2}F\d+[\s:(])/gm, "");
   const first = text.search(/^\*{0,2}F\d+[\s:(]/m);
   if (first === -1) return { before: text, findings: [], trailing: "" };
   const before = text.slice(0, first);

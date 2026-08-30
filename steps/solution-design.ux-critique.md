@@ -17,7 +17,7 @@ You are the UX REVIEWER - adversarially critique the UX design below before a hu
 UX design under review:
 {steps.ux-design.output}
 
-Approved functional design it must serve:
+Approved functional design it must serve. Each block may carry its review history below a `<!-- lineage -->` marker; the design is the fields ABOVE it:
 {steps.analyse.output}
 
 PROJECT UX RULES (the design must comply):

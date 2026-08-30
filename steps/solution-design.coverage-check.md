@@ -12,11 +12,12 @@ autoRevise:
 emits: coverage
 ---
 Design coverage verification. Do not modify any files.
-Read IN FULL: (1) the original requirement text below and every attached document it references, (2) .dhruva/runs/{runId}/docs/hld.md, (3) .dhruva/runs/{runId}/docs/tdd.md.
-Requirement:
-{inputs.requirement}
+Read IN FULL: (1) .dhruva/runs/{runId}/docs/hld.md, (2) .dhruva/runs/{runId}/docs/tdd.md. If your search tool reports no match, read the paths directly - they are inside a dot-directory, which some search tools skip.
 
-Approved per-requirement design:
+FROZEN REQUIREMENT LIST (the agreed requirement set - check against this, not the source document):
+{steps.requirements.output}
+
+Approved per-requirement design. Each block may carry its review history below a `<!-- lineage -->` marker; the design is the fields ABOVE it, and a superseded approach quoted inside a finding is not the design:
 {steps.analyse.output}
 
 For EVERY REQ item, report one line:

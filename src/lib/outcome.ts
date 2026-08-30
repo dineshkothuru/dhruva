@@ -35,6 +35,20 @@ export interface StepOutcome {
   confidenceNote: string;
 }
 
+/** Bound a field for the summary tile without lying about it.
+ *
+ * These were hard `slice()` calls, so a step that wrote a long sentence had it
+ * cut mid-word - "...Feature 4 is largely a thin CRUD scaffold requiring a" -
+ * which reads as a broken renderer rather than a summary that ran long. Cut at
+ * a word boundary and say it was cut; the whole block is still in the raw
+ * trace either way. */
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > max * 0.6 ? cut.slice(0, at) : cut).trimEnd()}…`;
+}
+
 /** Pull the block out of a step's output. Returns null when absent. */
 export function parseOutcome(output: string): StepOutcome | null {
   const start = output.lastIndexOf(OUTCOME_START);
@@ -45,7 +59,7 @@ export function parseOutcome(output: string): StepOutcome | null {
   const field = (label: string) =>
     body.match(new RegExp(`^\\s*${label}:\\s*(.+)$`, "im"))?.[1]?.trim() ?? "";
 
-  const summary = field("SUMMARY").slice(0, 400);
+  const summary = clip(field("SUMMARY"), 700);
   const producedRaw = field("PRODUCED");
   const produced =
     !producedRaw || /^(nothing|none|n\/a)\b/i.test(producedRaw)
@@ -55,7 +69,7 @@ export function parseOutcome(output: string): StepOutcome | null {
           .map((x) => x.trim())
           .filter(Boolean)
           .slice(0, 8)
-          .map((x) => x.slice(0, 120));
+          .map((x) => clip(x, 160));
 
   const confRaw = field("CONFIDENCE");
   const level = confRaw.match(/\b(high|medium|low)\b/i)?.[1]?.toLowerCase() ?? "";
@@ -66,7 +80,7 @@ export function parseOutcome(output: string): StepOutcome | null {
     summary,
     produced,
     confidence: level as StepOutcome["confidence"],
-    confidenceNote: note.slice(0, 200),
+    confidenceNote: clip(note, 400),
   };
 }
 

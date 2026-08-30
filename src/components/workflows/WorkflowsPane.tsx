@@ -138,6 +138,61 @@ const ROLE_META: Record<string, { icon: IconType; tint: string; blurb: string; s
 
 
 
+/** A destructive action that asks first, in the page.
+ *
+ * These buttons used to guard themselves with `window.confirm`. In an embedded
+ * webview - the app shell, and the preview pane this is tested in - native
+ * dialogs are suppressed: `confirm()` returns false immediately without ever
+ * showing anything, so "Stop run" silently did nothing while the run kept
+ * going. Two clicks in the page work everywhere, and the armed state says what
+ * the second click will do. */
+function ConfirmButton({
+  label,
+  armed,
+  title,
+  className,
+  onConfirm,
+  disabled,
+}: {
+  label: string;
+  /** what the button says once it is waiting for the second click */
+  armed: string;
+  title: string;
+  className: string;
+  onConfirm: () => void | Promise<void>;
+  disabled?: boolean;
+}) {
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    if (!pending) return;
+    // disarm on its own, so a button left armed cannot be triggered later by
+    // a click the user has forgotten the meaning of
+    const t = setTimeout(() => setPending(false), 6000);
+    return () => clearTimeout(t);
+  }, [pending]);
+  return (
+    <button
+      onClick={async () => {
+        if (!pending) {
+          setPending(true);
+          return;
+        }
+        setPending(false);
+        await onConfirm();
+      }}
+      disabled={disabled}
+      title={title}
+      className={
+        pending
+          ? "rounded-lg border border-red-400 bg-red-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-red-700"
+          : className
+      }
+    >
+      {pending ? armed : label}
+    </button>
+  );
+}
+
 export default function WorkflowsPane({
   root,
   onOpenDiff,
@@ -160,8 +215,15 @@ export default function WorkflowsPane({
   const [run, setRun] = useState<RunState | null>(null);
   const [history, setHistory] = useState<RunState[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // results that used to go to window.alert, which the app shell suppresses
+  const [notice, setNotice] = useState<string | null>(null);
   const [gateNote, setGateNote] = useState("");
   const [gating, setGating] = useState(false);
+  // Documents a step wrote, by project-relative path. The gate renders its
+  // cards from the DESIGN, not from the step's output: once the designer sends
+  // a delta, that output is only the blocks it changed, and cards built from
+  // it would show three requirements and imply the other thirty-one had gone.
+  const [docs, setDocs] = useState<Record<string, string>>({});
   // per-step failure diagnosis (streamed from the agent, read-only)
   const [explain, setExplain] = useState<Record<string, string>>({});
   const [explaining, setExplaining] = useState<string | null>(null);
@@ -329,6 +391,40 @@ export default function WorkflowsPane({
     };
   }, [api, root]);
 
+  // Keep the documents this run's steps wrote in sync with the run state, so
+  // the gate always renders the design as it stands rather than the last delta.
+  //
+  // Keyed on what actually changes a document - which steps wrote one, and
+  // each step's status and attempt count - rather than on `run.steps`, which
+  // is a fresh array on every poll and would re-fetch every second forever.
+  const docKey = (run?.steps ?? [])
+    .filter((s) => s.artifact)
+    .map((s) => `${s.artifact}:${s.status}:${s.attempts?.length ?? 0}`)
+    .join("|");
+  useEffect(() => {
+    const paths = [...new Set(docKey.split("|").filter(Boolean).map((k) => k.split(":")[0]))];
+    if (paths.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const rel of paths) {
+        const res = await fetch("/api/file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ root, file: rel, action: "read" }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        if (cancelled) return;
+        if (typeof res?.content === "string") {
+          setDocs((prev) => (prev[rel] === res.content ? prev : { ...prev, [rel]: res.content }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [root, docKey]);
+
   // a run started from the chat intake opens directly (consumed exactly once)
   useEffect(() => {
     if (!jumpToRun) return;
@@ -453,13 +549,16 @@ export default function WorkflowsPane({
     }
   }
 
-  async function gate(decision: "approve" | "abort" | "revise", feedback?: string) {
+  async function gate(decision: "approve" | "abort" | "revise" | "park", feedback?: string) {
     if (!run || gating) return;
     setGating(true);
     try {
       const { ok, data } = await api({ action: "gate", runId: run.runId, decision, feedback });
       if (ok && data.resolved === false) {
-        alert("The gate is not waiting right now (a revision is replaying or the run ended) - your click was not applied. The view will refresh.");
+        setError(
+          "The gate is not waiting right now (a revision is replaying or the run ended) - " +
+            "your click was not applied. The view will refresh.",
+        );
       }
       setGateNote("");
       await fetchRunState(run.runId);
@@ -519,17 +618,22 @@ export default function WorkflowsPane({
           )}
           <span className="ml-auto font-mono text-[11px] text-slate-400">run {run.runId}</span>
           {(run.status === "running" || run.status === "waiting_gate") && (
-            <button
-              onClick={async () => {
-                if (!confirm("Stop this run? The current step is killed and remaining steps are skipped.")) return;
-                await api({ action: "stop", runId: run.runId });
+            <ConfirmButton
+              label="■ Stop run"
+              armed="■ Click again to stop"
+              title="Abort the run - kills the running step's process and skips the remaining steps"
+              className="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-600 hover:bg-red-100"
+              onConfirm={async () => {
+                const { data } = await api({ action: "stop", runId: run.runId });
+                if (data && data.stopped === false) {
+                  setError(
+                    "This run could not be stopped - the server no longer has it in memory " +
+                      "(it was most likely restarted). Reload the page to see its real state.",
+                  );
+                }
                 await fetchRunState(run.runId);
               }}
-              className="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-600 hover:bg-red-100"
-              title="Abort the run - kills the running step's process"
-            >
-              ■ Stop run
-            </button>
+            />
           )}
           {(run.status === "failed" || run.status === "aborted") && (
             <button
@@ -540,7 +644,7 @@ export default function WorkflowsPane({
                   runId: run.runId,
                   roleModels: rolesFor(run.agent),
                 });
-                if (!ok) alert(String(data.error ?? "cannot resume"));
+                if (!ok) setError(String(data.error ?? "cannot resume"));
                 else await fetchRunState(run.runId);
               }}
               className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
@@ -561,23 +665,15 @@ export default function WorkflowsPane({
               it would do something different. */}
           {(run.status === "failed" || run.status === "aborted") &&
             (run.changes?.length ?? 0) > 0 && (
-              <button
-                onClick={async () => {
-                  const n = run.changes?.length ?? 0;
-                  if (
-                    !confirm(
-                      "Put " +
-                        n +
-                        " file(s) back to the state this run measured its changes against?" +
-                        " Files this run created are deleted; files it edited are restored" +
-                        " from that snapshot. This cannot be undone.",
-                    )
-                  ) {
-                    return;
-                  }
+              <ConfirmButton
+                label="↺ Undo file changes"
+                armed={`↺ Click again to undo ${run.changes?.length ?? 0} file(s)`}
+                title="Restore the files this run reports changing, from the snapshot it measured them against. Files retrieved from the org are kept. This cannot be undone."
+                className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+                onConfirm={async () => {
                   const { ok, data } = await api({ action: "restore", root, runId: run.runId });
                   if (!ok) {
-                    alert(String(data.error ?? "could not restore the files"));
+                    setError(String(data.error ?? "could not restore the files"));
                     return;
                   }
                   const restored = (data.restored as string[] | undefined)?.length ?? 0;
@@ -591,30 +687,21 @@ export default function WorkflowsPane({
                     summary.push("", failed.length + " could not be put back:");
                     for (const f of failed) summary.push("  " + f.file);
                   }
-                  alert(summary.join(NL));
+                  setNotice(summary.join(NL));
                   await fetchRunState(run.runId);
                 }}
-                className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
-                title="Restore the files this run reports changing, from the snapshot it measured them against. Files retrieved from the org are kept."
-              >
-                ↺ Undo file changes
-              </button>
+              />
             )}
           {(run.status === "failed" || run.status === "aborted") &&
             !!run.startCommit &&
             !!run.baseCommit &&
             run.startCommit !== run.baseCommit && (
-              <button
-                onClick={async () => {
-                  if (
-                    !confirm(
-                      "Put the whole project back to how it was BEFORE this run started?" +
-                        " This also undoes the org refresh the run performed, so files it" +
-                        " retrieved from the org are removed too. This cannot be undone.",
-                    )
-                  ) {
-                    return;
-                  }
+              <ConfirmButton
+                label="↺ …and the org refresh"
+                armed="↺ Click again to undo the whole run"
+                title="Go further back: the project as it was BEFORE this run began, including undoing the org refresh, so files it retrieved from the org are removed too. This cannot be undone."
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                onConfirm={async () => {
                   const { ok, data } = await api({
                     action: "restore",
                     root,
@@ -622,13 +709,13 @@ export default function WorkflowsPane({
                     scope: "run",
                   });
                   if (!ok) {
-                    alert(String(data.error ?? "could not restore the files"));
+                    setError(String(data.error ?? "could not restore the files"));
                     return;
                   }
                   const restored = (data.restored as string[] | undefined)?.length ?? 0;
                   const removed = (data.removed as string[] | undefined)?.length ?? 0;
                   const NL = String.fromCharCode(10);
-                  alert(
+                  setNotice(
                     [
                       "Back to the state before the run started.",
                       restored + " file(s) restored, " + removed + " file(s) removed.",
@@ -636,11 +723,7 @@ export default function WorkflowsPane({
                   );
                   await fetchRunState(run.runId);
                 }}
-                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
-                title="Go further back: the project as it was before this run began, including undoing the org refresh"
-              >
-                ↺ …and the org refresh
-              </button>
+              />
             )}
         </div>
         <p className="mb-3 text-[11px] text-slate-500">
@@ -1045,11 +1128,20 @@ export default function WorkflowsPane({
                       }
                     }
                     const segment = run.steps.slice(prevGateIdx + 1, gateIdx);
+                    // The DOCUMENT the step wrote, when it wrote one - a delta
+                    // carries only the changed blocks, so cards built from the
+                    // step's output would silently drop the rest of the design.
                     const source = [...segment]
                       .reverse()
-                      .find((x) => x.type === "agent" && x.output.includes("### REQ-"));
+                      .find(
+                        (x) =>
+                          x.type === "agent" &&
+                          ((x.artifact && docs[x.artifact]?.includes("### REQ-")) ||
+                            x.output.includes("### REQ-")),
+                      );
                     if (!source) return null;
-                    const items = parseRequirements(source.output);
+                    const body = (source.artifact && docs[source.artifact]) || source.output;
+                    const items = parseRequirements(body);
                     if (items.length === 0) return null;
                     // map reviewer findings to the REQ ids they mention, so
                     // each card shows WHY the critic objected to it
@@ -1109,6 +1201,19 @@ export default function WorkflowsPane({
                       className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-40"
                     >
                       {gating ? "…" : "Approve & continue"}
+                    </button>
+                    {/* Partial delivery: five unanswered questions should not
+                        hold an otherwise finished epic. The blocked
+                        requirements keep their design and move to
+                        pending-design.md; the documents are written from the
+                        rest. */}
+                    <button
+                      onClick={() => gate("park")}
+                      disabled={gating}
+                      className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-40"
+                      title="Set aside the requirements that are blocked only on a human decision, and write the documents from the rest. Nothing is lost - the parked work is kept in pending-design.md with the questions that stopped it."
+                    >
+                      Park blocked &amp; proceed
                     </button>
                     <button
                       onClick={() => gate("revise", gateNote)}
@@ -1229,6 +1334,19 @@ export default function WorkflowsPane({
       {error && (
         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           {error}
+        </div>
+      )}
+
+      {notice && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          <span className="min-w-0 flex-1 whitespace-pre-wrap">{notice}</span>
+          <button
+            onClick={() => setNotice(null)}
+            className="shrink-0 rounded px-1 text-slate-400 hover:text-slate-700"
+            title="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       )}
 

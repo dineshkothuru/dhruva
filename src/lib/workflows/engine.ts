@@ -24,13 +24,27 @@ import {
 } from "@/lib/findings";
 import {
   designFromOutput,
+  extractDelta,
   madeProgress,
-  openFindings,
   statedOutcomes,
-  writeDesign,
-  writeReview,
   type ReviewRecord,
 } from "./artifacts";
+import {
+  decisionsOpen,
+  fixableOpen,
+  foldDecision,
+  foldReview,
+  parkable,
+  parkBlocks,
+  recordDecision as recordDocDecision,
+  save as saveDesignDoc,
+  load as loadDesignDoc,
+  render as renderDesign,
+  renderChanges,
+  writeUpdate as writeDesignUpdate,
+} from "./designDoc";
+import type { BlockState } from "./artifacts";
+import { checkEvidence, evidenceNote } from "./evidenceCheck";
 import { costBucket, countBucket, durationBucket, tokensBucket, track } from "@/lib/telemetry";
 import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { ROLE_TIER } from "./schema";
@@ -235,6 +249,17 @@ export function startRun(
 
 const MAX_REVISIONS_PER_GATE = 5;
 
+/** Ceiling on auto-revise rounds before the human gate.
+ *
+ * The real stopping condition is `madeProgress`: a round that closes no finding
+ * and does not reduce the criticals ends the loop, because spending another
+ * fifteen minutes on it repeats the same work. This is only the backstop for a
+ * loop that keeps finding something every time. Raised from 3 once findings
+ * started converging (15 -> 12 -> 7 -> 7 on the first live run, against
+ * 22 -> 12 -> 10 -> 14 before), where round 3 was a budget cut-off rather than
+ * a natural end. */
+const MAX_AUTO_REVISE_ROUNDS = 10;
+
 /** Resume a failed/aborted run from its first incomplete step. Completed
  * steps keep their outputs (later prompts template from them) and approved
  * gates stay approved; everything from the failure point re-runs. Returns
@@ -361,7 +386,12 @@ MANUAL STEPS: if anything needs a HUMAN acting in the org that you cannot do ` +
 
 /** Collect the agent's "MANUAL: <action> - <where> - <when>" lines onto the
  * run - the human checklist. Deterministic parse, deduped by text. */
-function collectManual(run: RunState, step: StepState) {
+function collectManual(run: RunState, def: StepDef, step: StepState) {
+  // A step that has not read the org cannot know a human must act in it - see
+  // StepDef.orgAware. Asked anyway, the requirement extraction guessed at
+  // community sites and permission-set assignments a later step found already
+  // in place. Not asked, and not collected if it volunteers one.
+  if (def.orgAware === false) return;
   const lines = step.output.match(/^\s*\*{0,2}MANUAL:\s*(.+)$/gim) ?? [];
   if (lines.length === 0) return;
   run.manualSteps ??= [];
@@ -464,6 +494,13 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
       await persist(run);
       continue;
     }
+    if (stepDef.skipIf && String(run.inputs[stepDef.skipIf] ?? "").trim()) {
+      step.status = "skipped";
+      step.output = await adoptArtifact(run, stepDef, String(run.inputs[stepDef.skipIf]));
+      if (stepDef.artifact) step.artifact = template(stepDef.artifact, run).replace(/\\/g, "/");
+      await persist(run);
+      continue;
+    }
     // A work-check found the requirement already satisfied. Everything after it
     // exists to build, verify or ship a change that is not going to be made -
     // including the human gates, because there is nothing to approve.
@@ -534,6 +571,36 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         if (decision.action === "approve") {
           run.status = "running";
           step.output += auto ? "\n→ approved automatically (gates set to auto-approve)" : "\n→ approved";
+          await recordDecision(
+            run,
+            def,
+            i,
+            "approved",
+            decision.feedback?.trim() ||
+              (auto ? "Approved automatically (gates set to auto-approve)." : "Approved as it stands."),
+            !auto,
+          );
+          step.status = "done";
+          step.endedAt = Date.now();
+          await persist(run);
+          break;
+        }
+        // Set aside what is blocked on a human and carry on with the rest.
+        // Five unanswered questions should not hold an otherwise finished epic.
+        if (decision.action === "park") {
+          const parked = await parkAtGate(run, def, i);
+          step.output +=
+            parked.length > 0
+              ? `\n→ parked ${parked.length} requirement(s) awaiting a decision: ${parked.join(", ")}` +
+                `\n[engine] they are kept in docs/pending-design.md with the questions that stopped ` +
+                `them; the documents below are written from the rest.`
+              : `\n→ nothing to park - no requirement is blocked solely on a human decision`;
+          if (parked.length === 0) {
+            notice = "\n\n→ nothing is blocked solely on a decision - approve, revise or abort";
+            await persist(run);
+            continue;
+          }
+          run.status = "running";
           step.status = "done";
           step.endedAt = Date.now();
           await persist(run);
@@ -562,6 +629,20 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         const targetId = def.steps[from].id;
         run.revisions ??= {};
         (run.revisions[targetId] ??= []).push(decision.feedback.trim());
+        // The reviewer between the target and this gate hears it too. Without
+        // this, a finding the human overruled is raised again on the next
+        // round exactly as though nobody had ruled on it - the instruction
+        // reached the designer only, and the critic argued with a decision it
+        // could not see.
+        for (let k = from + 1; k < i; k++) {
+          const d = def.steps[k];
+          if (d.type !== "agent" || d.role !== "review") continue;
+          (run.revisions[d.id] ??= []).push(
+            `The human ruled at the gate. This outranks any finding: ` +
+              `"${decision.feedback.trim()}". Do not re-raise what it settles.`,
+          );
+        }
+        await recordDecision(run, def, i, "revise", decision.feedback.trim());
         step.output += `\n→ revision requested: ${decision.feedback.trim().slice(0, 300)}`;
         // the gate must NOT look armed while the replay runs - the UI renders
         // the approval panel purely off waiting_gate, and clicks during a
@@ -615,7 +696,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         findings_count:
           stepDef.role === "review" ? countBucket(parseFindings(step.output).findings.length) : undefined,
       });
-      if (stepDef.type === "agent") collectManual(run, step);
+      if (stepDef.type === "agent") collectManual(run, stepDef, step);
       // Bounded self-healing (before the human gate): a review step whose
       // verdict matches its trigger auto-revises its target with the findings
       // as feedback, then re-runs everything up to and including itself. The
@@ -630,7 +711,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           re = null;
         }
         const from = def.steps.findIndex((s) => s.id === ar.target);
-        const max = Math.min(Math.max(ar.maxRounds ?? 1, 1), 3);
+        const max = Math.min(Math.max(ar.maxRounds ?? 1, 1), MAX_AUTO_REVISE_ROUNDS);
         // When the target owns an artifact, the round is recorded into it and
         // the loop stops early on a round that closes nothing - a stall is not
         // worth another 15 minutes. Without an artifact this stays exactly as
@@ -652,6 +733,16 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           if (relPath) {
             const rec = await recordRound(run, relPath, step.output, round, step);
             recordedOutput = step.output;
+            // Nothing the design can close: the loop has done its job, and
+            // what is left belongs to a human. Checked BEFORE progress,
+            // because a round that closes findings and leaves only decisions
+            // has converged, not stalled.
+            const doc = await loadDesignDoc(run.root, relPath).catch(() => null);
+            if (doc && fixableOpen(doc).length === 0 && decisionsOpen(doc).length > 0) {
+              stalled = true;
+              await persist(run);
+              break;
+            }
             if (rec && !madeProgress(prevRound, rec)) {
               step.output +=
                 `\n\n[engine] auto-revise stopped at round ${round}: the last round closed no ` +
@@ -728,27 +819,14 @@ async function recordRound(
   step: StepState,
 ): Promise<ReviewRecord | null> {
   try {
-    const abs = path.join(run.root, rel);
-    const before = openFindings(await fs.readFile(abs, "utf8").catch(() => ""));
     const findings = parseFindings(reviewOutput).findings;
     const nowIds = new Set(findings.map((f) => f.id));
     // What the reviewer SAID beats what the engine can infer. A finding it
     // called PARTIAL or STILL OPEN stays open even when it dropped out of the
     // findings list; absence only closes a finding it said nothing about.
     const said = statedOutcomes(reviewOutput);
-    const rec: ReviewRecord = {
-      round,
-      verdict: /VERDICT:\s*(APPROVED|PASS)/i.test(reviewOutput) ? "pass" : "needs_work",
-      findings,
-      closed: before
-        .map((f) => f.id)
-        .filter(
-          (id) =>
-            !said.partial.has(id) &&
-            !said.stillOpen.has(id) &&
-            (said.resolved.has(id) || !nowIds.has(id)),
-        ),
-    };
+    const folded = await foldReview(run.root, rel, reviewOutput, round, findings, said);
+    if (!folded) return null;
     const disputed = [...said.partial, ...said.stillOpen].filter((id) => !nowIds.has(id));
     if (disputed.length > 0) {
       step.output +=
@@ -756,8 +834,30 @@ async function recordRound(
 [engine] kept open on the reviewer's own word: ${disputed.join(", ")} - ` +
         `reported PARTIAL or STILL OPEN but absent from the findings list.`;
     }
-    await writeReview(run.root, rel, rec);
-    return rec;
+    if (folded.unassigned.length > 0 && findings.length > folded.unassigned.length) {
+      step.output +=
+        `\n[engine] ${folded.unassigned.length} finding(s) name no requirement and were filed ` +
+        `under "## Review": ${folded.unassigned.map((f) => f.id).join(", ")}`;
+    }
+    step.output +=
+      `\n[engine] ${folded.openCount} finding(s) open after round ${round}` +
+      (folded.rec.closed.length ? `, closed ${folded.rec.closed.length} this round` : "") +
+      ` - ${folded.fixableCount} the design can close, ${folded.decisions.length} needing a decision.`;
+    if (folded.decisions.length > 0) {
+      step.output +=
+        `\n[engine] awaiting a human decision (the design cannot close these): ` +
+        folded.decisions.map((f) => `${f.id} - ${f.question ?? f.title}`.slice(0, 120)).join(" | ");
+    }
+    // A round that leaves nothing the design can close has finished its job.
+    // Chasing zero spends rounds failing to design around information nobody
+    // has: on run d0e4f7bc-1d6 five findings sat open to the last round waiting
+    // on another team's schema answer.
+    if (folded.fixableCount === 0 && folded.decisions.length > 0) {
+      step.output +=
+        `\n[engine] nothing left that the design can close - the remaining ` +
+        `${folded.decisions.length} finding(s) need a human. Over to you at the gate.`;
+    }
+    return folded.rec;
   } catch {
     return null; // the artifact is best-effort; never break a run over it
   }
@@ -836,7 +936,7 @@ async function replayRange(
       return false;
     }
     if (replayStep.status === "running") replayStep.status = "done";
-    if (replayDef.type === "agent") collectManual(run, replayStep);
+    if (replayDef.type === "agent") collectManual(run, replayDef, replayStep);
     await persist(run);
   }
   return true;
@@ -904,7 +1004,11 @@ async function runStepTracked(run: RunState, def: StepDef, step: StepState): Pro
       return false;
     }
   }
-  if (ok && def.artifact && step.output) {
+  // Only an AGENT authors an artifact. `solution-design.work-check` also
+  // declares `artifact: design.md` - it reads the design to decide whether any
+  // work remains - and without this guard its own report ("items: 34, already
+  // implemented: 3") would be written OVER the design it just read.
+  if (ok && def.type === "agent" && def.artifact && step.output) {
     const rel = template(def.artifact, run).replace(/\\/g, "/");
     // the transcript is not the design: strip the CLI's own trace and trailer
     const design = designFromOutput(step.output);
@@ -913,16 +1017,45 @@ async function runStepTracked(run: RunState, def: StepDef, step: StepState): Pro
     if (design.trim().length === 0) {
       step.output += `\n[engine] nothing but tool trace in this step's output - ${rel} left as it was`;
     } else {
-      await writeDesign(run.root, rel, design).catch(() => {
+      // Round n = the attempts already recorded, plus this one.
+      const round = (step.attempts?.length ?? 0) + 1;
+      const wrote = await writeDesignUpdate(run.root, rel, design, round, extractDelta(design)).catch(() => null);
+      if (!wrote) {
         step.output += `\n[engine] could not write ${rel} - the next rework will not see this design`;
-      });
+      } else if (wrote.note) {
+        step.output += `\n[engine] ${wrote.note}`;
+      }
+      // Downstream steps quote this step; from here on that quote is the
+      // document, not the transcript.
+      if (wrote && wrote.mode !== "refused") step.artifact = rel;
+      if (wrote?.mode === "refused") {
+        step.output +=
+          `\n[engine] the step is failed rather than passed on: the design on disk is the ` +
+          `last good one, and continuing would review a document this step did not produce.`;
+        await persist(run);
+        return false;
+      }
       // Count the source document's own units against what the design claims.
       // Arithmetic, not opinion: the BRD numbers itself, so a dropped AC is a
       // fact rather than something a reviewer has to happen to notice.
+      //
+      // Counted against the DOCUMENT, not this step's output: a delta carries
+      // three blocks, and measuring coverage against those would report the
+      // other thirty-one as uncovered every round.
+      const whole = await fs
+        .readFile(path.join(run.root, rel), "utf8")
+        .catch(() => design);
+      // Existence is arithmetic, not opinion. The biggest class of review
+      // finding is the design citing something this org does not have; a grep
+      // settles it before the next round instead of after a 15-minute review.
+      const ev = await checkEvidence(run.root, whole).catch(() => null);
+      const note = ev ? evidenceNote(ev) : "";
+      if (note) step.output += `\n[engine] ${note}`;
+
       const cov = await checkCoverage(
         run.root,
         String(run.inputs.requirement ?? ""),
-        design,
+        whole,
       ).catch(() => null);
       if (cov && cov.uncited.length > 0) {
         step.output +=
@@ -942,6 +1075,163 @@ async function runStepTracked(run: RunState, def: StepDef, step: StepState): Pro
  * in this file, and the result parses as an unterminated regex. */
 function toPosix(p: string): string {
   return p.split(String.fromCharCode(92)).join("/");
+}
+
+/** Park every requirement that is blocked only on a human decision.
+ *
+ * The design keeps its work; the parked blocks move to `pending-design.md`
+ * with the questions that stopped them, and the rest of the pipeline builds
+ * documents from what proceeded. When the answers come back they are picked up
+ * in a later run rather than redesigned. */
+async function parkAtGate(run: RunState, def: WorkflowDef, gateIndex: number): Promise<string[]> {
+  const targetId =
+    def.steps[gateIndex].reviseTarget ?? def.steps[nearestAgentIndex(def, gateIndex)]?.id;
+  const rel = run.steps.find((s) => s.id === targetId)?.artifact;
+  if (!rel) return [];
+  const doc = await loadDesignDoc(run.root, toPosix(rel)).catch(() => null);
+  if (!doc) return [];
+  const gate = doc.decisions.length + 1;
+  const ids = parkable(doc).map((b) => b.id);
+  if (ids.length === 0) return [];
+  const parked = parkBlocks(doc, ids, gate);
+  recordDocDecision(doc, {
+    action: "approved",
+    text:
+      `Proceeded with the requirements that were ready. Parked ${parked.length} blocked on a ` +
+      `decision: ${parked.join(", ")}. See pending-design.md.`,
+  });
+  await saveDesignDoc(run.root, toPosix(rel), doc).catch(() => {});
+  return parked;
+}
+
+/** Bring an existing document into a run whose producing step was skipped.
+ *
+ * Skipping the WORK must not skip the OUTPUT: every downstream step still
+ * quotes `{steps.requirements.output}` and still expects the file where the
+ * step would have written it. So the named file is copied to the step's own
+ * artifact path, and from there the run cannot tell the difference. */
+async function adoptArtifact(run: RunState, def: StepDef, source: string): Promise<string> {
+  const src = resolveInside(run.root, toPosix(source.trim()));
+  if (!src) return `skipped - "${source}" is outside this project, so nothing was adopted`;
+  const body = await fs.readFile(src, "utf8").catch(() => "");
+  if (!body.trim()) return `skipped - "${source}" could not be read, so nothing was adopted`;
+  if (!def.artifact) return `skipped - reusing ${source}`;
+  const rel = template(def.artifact, run).replace(/\\/g, "/");
+  const abs = path.join(run.root, rel);
+  await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
+  await fs.writeFile(abs, body, "utf8").catch(() => {});
+  return (
+    `[engine] step skipped - adopted ${source} as ${rel} ` +
+    `(${(body.length / 1024).toFixed(1)}k chars). Nothing was re-extracted.`
+  );
+}
+
+/** Write a gate's decision into the document the gate was ruling on.
+ *
+ * The document is the one owned by the gate's revise target - the step whose
+ * work is being judged. `freeze` stamps every block `approved` on a real human
+ * approval, which is the only place that state is ever set: an auto-approved
+ * run has not been ruled on by anyone, so it freezes nothing. */
+async function recordDecision(
+  run: RunState,
+  def: WorkflowDef,
+  gateIndex: number,
+  action: "approved" | "revise",
+  text: string,
+  freeze = false,
+): Promise<void> {
+  const targetId = def.steps[gateIndex].reviseTarget ?? def.steps[nearestAgentIndex(def, gateIndex)]?.id;
+  const rel = run.steps.find((s) => s.id === targetId)?.artifact;
+  if (!rel) return;
+  await foldDecision(run.root, rel, { action, text, freeze }).catch(() => false);
+}
+
+/** The design document, for the END of the prompt.
+ *
+ * It used to sit inside the state block, ahead of the step's own instructions.
+ * On run d0e4f7bc-1d6 that put 88 KB of document between the agent and its
+ * task: the instructions began at offset 93,720 of a 147 KB prompt, and the
+ * revision that read it skimmed - it declared 32 of 34 blocks unchanged,
+ * ignored all 22 the engine had listed as open, and edited one marked "do not
+ * touch". The authoring pass, which inlines no document, had worked properly on
+ * the same model minutes earlier.
+ *
+ * So: task first, data last, and a one-line restatement after the data. The
+ * reviewer's prompt was already built this way and did not suffer. */
+async function designDocumentBlock(run: RunState, def: StepDef): Promise<string> {
+  if (!def.artifact) return "";
+  const rel = toPosix(template(def.artifact, run));
+  const doc = await loadDesignDoc(run.root, rel).catch(() => null);
+  if (!doc || doc.blocks.length === 0) return "";
+  return (
+    `\n\n--- CURRENT DESIGN DOCUMENT (reference; the task is stated above) ---\n` +
+    `${renderDesign(doc)}\n` +
+    `--- end design document ---\n\n` +
+    `Now produce the DELTA exactly as instructed above: only the blocks you changed ` +
+    `or are answering a finding on, each field complete, and a response to EVERY id ` +
+    `on that block's OPEN FINDINGS line.\n`
+  );
+}
+
+/** Tell an authoring step, in its own prompt, whether it is writing a design
+ * or revising one - and hand it the document rather than asking it to look.
+ *
+ * Run 1e3dc542-bbc round 4: the step's glob does not traverse dot-directories,
+ * so `.dhruva/runs/<id>/docs/design.md` came back "No matches found", the agent
+ * concluded no prior design existed, and re-authored from scratch - discarding
+ * three rounds of accepted fixes. Rounds 2 and 3 hit the same empty glob and
+ * only recovered because they happened to keep digging with a directory
+ * listing. A step must not have to FIND its own previous work, so the engine
+ * inlines it and says which blocks are in play. */
+async function designStateBlock(run: RunState, def: StepDef): Promise<string> {
+  // A review step gets the other half of the picture: what moved since it last
+  // looked. Without it a reviewer can read the current design and the fix the
+  // designer claims to have made, but cannot see whether the text actually
+  // changed - so it cannot tell a real fix from a restated one.
+  if (!def.artifact && def.reviewOf) {
+    const target = run.steps.find((s) => s.id === def.reviewOf);
+    if (!target?.artifact) return "";
+    const doc = await loadDesignDoc(run.root, toPosix(target.artifact)).catch(() => null);
+    if (!doc) return "";
+    const round = (target.attempts?.length ?? 0) + 1;
+    const diff = renderChanges(doc, round);
+    return diff
+      ? `\n\n=== CHANGED SINCE YOUR LAST REVIEW (round ${round}) ===\n${diff}` +
+          `=== END CHANGES ===\n\n`
+      : "";
+  }
+  if (!def.artifact) return "";
+  const rel = toPosix(template(def.artifact, run));
+  const doc = await loadDesignDoc(run.root, rel).catch(() => null);
+  const current = doc ? renderDesign(doc) : "";
+  if (!doc || doc.blocks.length === 0 || !current.trim()) {
+    return (
+      `\n\n=== DESIGN STATE ===\n` +
+      `No design exists for this run yet. You are AUTHORING: output the complete ` +
+      `design, one block per requirement, inside the DESIGN fence. Do NOT emit a DELTA.\n` +
+      `=== END DESIGN STATE ===\n\n`
+    );
+  }
+  const by = (want: BlockState) => doc.blocks.filter((b) => b.state === want).map((b) => b.id);
+  const line = (label: string, list: string[]) =>
+    list.length ? `  ${label.padEnd(28)} ${list.join(", ")}\n` : "";
+  // A fact the engine established, handed over before the next pass rather than
+  // left for a review round to discover.
+  const ev = await checkEvidence(run.root, current).catch(() => null);
+  const evLine = ev && ev.missing.length ? `\nENGINE CHECK - ${evidenceNote(ev)}\nFix these blocks.\n` : "";
+  return (
+    `\n\n=== DESIGN STATE ===\n` +
+    `You are REVISING. The complete current design is at the END of this prompt - ` +
+    `it is the authoritative copy, so do NOT search the filesystem for it.\n\n` +
+    line("open", by("open")) +
+    line("approved - reviewer objects", by("approved-objected")) +
+    line("clean (do not touch)", by("clean")) +
+    line("approved (do not touch)", by("approved")) +
+    evLine +
+    `=== END DESIGN STATE ===\n\n` +
+    // The document itself is returned separately - see designDocumentBlock.
+    ""
+  );
 }
 
 /** The design text a work-check should read.
@@ -1060,6 +1350,9 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
               .map((f, n) => `${n + 1}. ${f}`)
               .join("\n")}`
           : "";
+      const stateBlock = await designStateBlock(run, def);
+      const documentBlock = await designDocumentBlock(run, def);
+      const docs = await quotedDocs(run, def.prompt ?? "");
       const prompt =
         `You are working inside the Salesforce DX project at ${run.root} ` +
         `(your current working directory). Only read and modify files in this project.\n` +
@@ -1072,7 +1365,8 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         `MANDATORY TEAM STANDARDS:\n${rules}\n` +
         skills.block +
         `\n` +
-        template(def.prompt ?? "", run) +
+        stateBlock +
+        template(def.prompt ?? "", run, docs) +
         feedbackBlock +
         // One source of truth per machine-read contract: the engine appends
         // them, so every step gets the exact text its parser expects and a
@@ -1081,8 +1375,11 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         (def.emits === "findings" ? FINDINGS_INSTRUCTION : "") +
         (def.emits === "coverage" ? COVERAGE_INSTRUCTION : "") +
         (def.emits === "work" ? WORK_INSTRUCTION : "") +
-        MANUAL_INSTRUCTION +
-        OUTCOME_INSTRUCTION;
+        (def.orgAware === false ? "" : MANUAL_INSTRUCTION) +
+        OUTCOME_INSTRUCTION +
+        // Data last: the document the step works ON goes after the task and the
+        // contracts, never before them.
+        documentBlock;
       // Model resolution, most specific wins:
       // 1. the user's per-ROLE model for this run (the Models-by-role setting)
       // 2. the role's tier through the agent's shipped tiers map
@@ -1392,16 +1689,35 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
  * largest real design measured 40,728, so 85% of the budget was already gone).
  * Every agent step is a fresh CLI process, so nothing accumulates across steps
  * and there is no context pressure to spend a cap on. */
-function template(text: string, run: RunState): string {
+function template(text: string, run: RunState, docs?: Map<string, string>): string {
   return text
     // {runId} lets a workflow stamp its outputs, so running the same workflow
     // twice produces two designs instead of silently overwriting the first
     .replace(/\{runId\}/g, run.runId)
     .replace(/\{inputs\.([\w-]+)\}/g, (_, k) => String(run.inputs[k] ?? ""))
     .replace(/\{steps\.([\w-]+)\.output\}/g, (_, id) => {
+      // A step that wrote a document is quoted BY that document. Callers that
+      // cannot read files (artifact paths, titles) pass no map and get the
+      // previous behaviour exactly.
+      const doc = docs?.get(id);
+      if (doc) return doc;
       const s = run.steps.find((x) => x.id === id);
       return s ? s.output : "";
     });
+}
+
+/** Load the documents a prompt's `{steps.x.output}` placeholders should resolve
+ * to: for every step it quotes that wrote an artifact, that artifact. */
+async function quotedDocs(run: RunState, text: string): Promise<Map<string, string>> {
+  const docs = new Map<string, string>();
+  for (const m of text.matchAll(/\{steps\.([\w-]+)\.output\}/g)) {
+    const rel = run.steps.find((x) => x.id === m[1])?.artifact;
+    if (!rel || docs.has(m[1])) continue;
+    const abs = resolveInside(run.root, toPosix(rel));
+    const body = abs ? await fs.readFile(abs, "utf8").catch(() => "") : "";
+    if (body.trim()) docs.set(m[1], body);
+  }
+  return docs;
 }
 
 /** Parse a "FILES: a, b, c" line from agent output into run.affected -

@@ -18,8 +18,13 @@ describe("the outcome contract has ONE source", () => {
     expect(engine).toContain("OUTCOME_INSTRUCTION");
     // appended after the step's own prompt and any reviewer feedback; the
     // declared contract instructions sit between the two, so this asserts
-    // composition rather than adjacency
-    expect(engine).toMatch(/feedbackBlock \+[\s\S]{0,700}OUTCOME_INSTRUCTION;/);
+    // composition rather than adjacency.
+    //
+    // The document a step works ON comes LAST, after the contracts: putting it
+    // ahead of them once left the instructions at offset 93,720 of a 147 KB
+    // prompt, and the revision that read it ignored 22 open requirements.
+    expect(engine).toMatch(/feedbackBlock \+[\s\S]{0,700}OUTCOME_INSTRUCTION \+/);
+    expect(engine).toMatch(/OUTCOME_INSTRUCTION \+[\s\S]{0,400}documentBlock;/);
   });
 
   it("no shipped workflow carries its own copy of the block", async () => {

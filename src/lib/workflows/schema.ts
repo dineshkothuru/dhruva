@@ -94,6 +94,16 @@ export interface StepDef {
    * to a text slice, which is how a review yielding zero findings once fed a
    * rework 4,000 characters of terminal trace. */
   emits?: "findings" | "coverage" | "work";
+  /** Can this step know that a human must act in the org? Default yes.
+   *
+   * A MANUAL step is a claim about THIS org - "publish the community site",
+   * "assign the permission sets" - so a step that has not read the org cannot
+   * raise one, it can only guess. The requirement extraction reads the source
+   * document and nothing else, and on run 1d3d7c24-cad it produced 24 of them,
+   * including setup a later step found already done. A wrong entry here is
+   * worse than a missing one: it hands the customer a checklist for work they
+   * have already completed. Set false on document-only steps. */
+  orgAware?: boolean;
   /** agent (review steps): the id of the step whose artifact this reviews.
    * The ENGINE writes the parsed findings into that file's "## Review"
    * section, so the reviewer itself stays readOnly and never gains write
@@ -101,6 +111,13 @@ export interface StepDef {
   reviewOf?: string;
   /** Skip this step unless the named run input is truthy. */
   onlyIf?: string;
+  /** Skip this step when the named input HAS a value - the mirror of onlyIf.
+   *
+   * For work a run does not need to redo. When the skipped step declares an
+   * artifact and the input names a readable file, the engine copies that file
+   * into the run so every downstream step still finds the document where it
+   * expects it: skipping the work must not mean skipping the output. */
+  skipIf?: string;
   /** cli: when an argv expansion has nothing to expand ({affectedSourceDirs}
    * with no files named), skip the step instead of failing the run. */
   optional?: boolean;
@@ -154,6 +171,15 @@ export interface StepState {
    * it, a drift report like retrieve-delta becomes unopenable minutes after it
    * is produced. */
   baseCommit?: string;
+  /** The project-relative document this step wrote, recorded when it wrote it.
+   *
+   * `{steps.analyse.output}` is what every downstream step asks for, and what
+   * it MEANT was always the design - but `output` is the raw CLI transcript, so
+   * the reviewer was reading 58 KB of tool trace to find it. Once the designer
+   * sends a delta, `output` stops being a design at all: three blocks, which a
+   * reviewer or a coverage check would read as the whole thing. Knowing where
+   * the document is lets the placeholder resolve to the document. */
+  artifact?: string;
   /** EARLIER executions of this same step, oldest first.
    *
    * A step can run more than once: an auto-revise replays its target and the
@@ -224,6 +250,17 @@ export interface RunState {
   affected?: string[];
   /** Reviewer feedback given at gates, keyed by the agent step it revises -
    * injected into that step's prompt on re-run (and kept in the audit). */
+  /** Finding ids still open, carried explicitly between review rounds.
+   *
+   * This used to be re-derived by reading the artifact back. That worked while
+   * findings lived in ONE doc-end section holding only the current round; once
+   * they were filed inline and kept, every finding ever raised read as "open
+   * before this round" and was reported closed again. Round 3 of run
+   * c10adbb1-2fb claimed to close 28 of the 33 findings that existed, round 7
+   * claimed 39 - and `madeProgress` sees any closure as progress, so the loop
+   * could never stall and ran eight rounds over three hours. State the
+   * reviewer gave us is not something to infer from a document twice. */
+  openFindings?: string[];
   revisions?: Record<string, string[]>;
   /** Multi-workflow chain this run belongs to - the FULL ordered plan (links
    * up to chainIndex carry their runIds; the link AT chainIndex is this run).
@@ -243,6 +280,9 @@ export interface RunState {
 
 /** How a human resolved a gate. */
 export interface GateDecision {
-  action: "approve" | "abort" | "revise";
+  /** `park` sets aside the requirements blocked only on a human decision and
+   * proceeds with the rest - so five unanswered questions do not hold an
+   * otherwise finished epic. The parked work is kept, not discarded. */
+  action: "approve" | "abort" | "revise" | "park";
   feedback?: string;
 }

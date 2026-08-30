@@ -73,6 +73,7 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
       // silently trimming the tail of it drops the contract first
       step.prompt = s.prompt;
       if (s.readOnly === true) step.readOnly = true;
+      if (s.orgAware === false) step.orgAware = false;
       if (typeof s.persona === "string" && SLUG.test(s.persona)) step.persona = s.persona;
       if (typeof s.role === "string" && ROLES.has(s.role)) {
         step.role = s.role as StepDef["role"];
@@ -89,7 +90,7 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
             target: a.target,
             trigger: a.trigger,
             maxRounds:
-              typeof a.maxRounds === "number" ? Math.min(Math.max(a.maxRounds, 1), 3) : undefined,
+              typeof a.maxRounds === "number" ? Math.min(Math.max(a.maxRounds, 1), 10) : undefined,
           };
         }
       }
@@ -123,6 +124,7 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
       }
     }
     if (typeof s.onlyIf === "string" && KEY.test(s.onlyIf)) step.onlyIf = s.onlyIf;
+    if (typeof s.skipIf === "string" && KEY.test(s.skipIf)) step.skipIf = s.skipIf;
     if (typeof s.timeoutMinutes === "number") {
       step.timeoutMinutes = Math.min(Math.max(Math.round(s.timeoutMinutes), 1), 120);
     }
@@ -182,9 +184,12 @@ export function checkWorkflowSemantics(def: WorkflowDef): string[] {
         );
       }
     }
-    // onlyIf must be a declared input
+    // onlyIf / skipIf must be a declared input
     if (s.onlyIf && !inputKeys.has(s.onlyIf)) {
       problems.push(`step "${s.id}": onlyIf "${s.onlyIf}" is not a declared input`);
+    }
+    if (s.skipIf && !inputKeys.has(s.skipIf)) {
+      problems.push(`step "${s.id}": skipIf "${s.skipIf}" is not a declared input`);
     }
     // gate reviseTarget must be an earlier agent step
     if (s.type === "gate" && s.reviseTarget) {

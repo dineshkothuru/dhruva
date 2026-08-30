@@ -1,13 +1,18 @@
 {
   "id": "solution-design",
   "title": "Solution design",
-  "description": "Architect path: analyse a requirement against the existing codebase, gate on the proposed design, then produce HLD + TDD documents (with an ERD) in the project.",
+  "description": "Architect path: extract the requirement list from the source documents, design each requirement against the existing codebase, gate on the proposed design, then produce HLD + TDD documents (with an ERD) in the project.",
   "inputs": [
     {
       "key": "requirement",
       "label": "Requirement (paste the text and/or attach documents below)",
       "kind": "text",
       "attachTo": true
+    },
+    {
+      "key": "requirementsFile",
+      "label": "Existing requirements.md to reuse (leave blank to extract from the documents above)",
+      "kind": "text"
     },
     {
       "key": "docName",
@@ -39,7 +44,7 @@
       "use": "snapshot",
       "title": "Snapshot baseline"
     },
-    "context",
+    "requirements",
     "analyse",
     "design-review",
     "approve-design",

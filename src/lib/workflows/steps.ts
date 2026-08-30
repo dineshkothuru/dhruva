@@ -44,10 +44,12 @@ export const OVERRIDABLE = [
   "title",
   "timeoutMinutes",
   "onlyIf",
+  "skipIf",
   "optional",
   "detached",
   "tasksFile",
   "taskLoop",
+  "orgAware",
   "reviseTarget",
   "autoRevise",
 ] as const;

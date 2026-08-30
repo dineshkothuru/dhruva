@@ -56,7 +56,10 @@ describe("shipped workflow definitions", () => {
       }
     }
     expect(failures).toEqual([]);
-  });
+    // reads and resolves every workflow and every step file it references -
+    // dozens of serial disk reads, which drifts past the 5s default when the
+    // suite runs test files in parallel
+  }, 20_000);
 
   it("contains no em or en dashes (house style)", async () => {
     const files = (await fs.readdir(dir)).filter((f) => f.endsWith(".json"));

@@ -9,7 +9,7 @@ onlyIf: uxEnabled
 artifact: .dhruva/runs/{runId}/docs/ux-design.md
 ---
 UX DESIGN for the approved solution. DO NOT modify any files in this step.
-The approved per-requirement design is at .dhruva/runs/{runId}/docs/design.md - read it completely.
+The approved per-requirement design is at .dhruva/runs/{runId}/docs/design.md - read it completely. If your search tool reports no match, read the path directly: it is inside a dot-directory, which some search tools skip. Each block may carry its review history below a `<!-- lineage -->` marker; the design is the fields ABOVE it.
 
 PROJECT UX RULES (mandatory, from the project's settings):
 {inputs.uxRules}

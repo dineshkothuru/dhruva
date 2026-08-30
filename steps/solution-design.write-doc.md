@@ -6,7 +6,9 @@ role: design
 persona: salesforce-writer
 timeoutMinutes: 30
 ---
-The approved design is already written, in full, at .dhruva/runs/{runId}/docs/design.md - one REQ block per requirement, each with STATUS, EVIDENCE, ALREADY-PRESENT, PENDING, DESIGN, EFFORT and DEPENDS-ON. Read it completely.
+The approved design is already written, in full, at .dhruva/runs/{runId}/docs/design.md - one REQ block per requirement, each with STATUS, EVIDENCE, ALREADY-PRESENT, PENDING, DESIGN, EFFORT and DEPENDS-ON. Read it completely. If your search tool reports no match, read the path directly: it is inside a dot-directory, which some search tools skip, and a failed search is not evidence the file is absent.
+
+Each block may also carry its own review history, below a `<!-- lineage -->` marker: the findings raised against it and the designer's answers. That is the record of HOW the design reached its current form - the design itself is the fields ABOVE the marker. Write the documents from the fields. Read the history only when you need to know why something is the way it is, and never carry a superseded design into the documents because it appears in a finding.
 
 If that file does not exist or has no REQ blocks, STOP and say so plainly - do not invent a design. It is the only copy; writing documents from memory would silently replace an approved design with a guess.
 
