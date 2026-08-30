@@ -99,6 +99,8 @@ EVIDENCE is the load-bearing field and the one most often wrong. Across every ru
 | "write to `Z__c`" | it is WRITABLE - a formula field cannot be assigned, and an allocation engine was designed to decrement one |
 | "compare A to B" | the two are comparable - a Lookup Id does not equal free text, and a picklist value you name must be in the picklist |
 | "this is missing" | it is genuinely absent. Empty states, Export, filters and history tabs have all been designed as new work while already implemented |
+| "nothing grants / no file mentions X" | you RAN that search, and this is what it returned. A negative is a claim about every file, so it is the one thing you cannot conclude by reading the block you are writing. Eleven blocks once rested their security model on "no file in `profiles/` mentions" an object that two profiles granted |
+| "pass `attr` to `<existing-lwc>`" | that `@api` exists - read the component's own `@api` list. `distinct-by` and `no-records-message` were both designed onto a component that exposes neither |
 
 EVERY name you put in EVIDENCE must exist in this project TODAY - the engine checks each one against the repository and reports the misses. Something you intend to CREATE belongs in DESIGN, never in EVIDENCE.
 

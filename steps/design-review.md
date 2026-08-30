@@ -32,6 +32,25 @@ Each requirement block carries its own history underneath it: the findings raise
 
 Then add genuinely new findings, numbered after the highest id already in use.
 
+## Round 1 is the round that matters
+
+Every finding you are going to raise, raise NOW. A defect you first report in round 3 was in the design in round 1 - the designer did not put it there between rounds - so a late finding is not diligence, it is a round the whole loop spent on something you already had in front of you. There are only three rounds.
+
+Measured on the run this instruction comes from: round 2 raised four findings against a design that had changed in ZERO blocks since round 1. All four were sitting there the first time. One of them - the design's central security claim, wrong across fourteen requirements - was the largest finding in the run and it surfaced second.
+
+Those four had one shape in common, and it is the shape to hunt:
+
+**A NEGATIVE claim is the cheapest thing to write and the one you are most likely to wave through.** "No file in `profiles/` mentions this object." "The grep returns nothing for `Revenue_Source__c` across permission sets." "The component exposes no such property." Each reads as diligence already done; each is an assertion about ALL of something, and each of those three was false. You cannot confirm a negative by reading the block - only by running the search yourself.
+
+So before you finish your first pass, for every block:
+
+- **Run the search the design says it ran.** Not a similar one. If it claims nothing in `profiles/` grants an object, grep `profiles/` for that object yourself and read what comes back. If it claims no permission set grants a field, grep `permissionsets/`. A one-line grep beats an inherited assumption, and the whole class of finding above dies in round 1.
+- **Open the component whose property the design uses.** A design that passes `distinct-by`, `no-records-message` or any attribute to an existing LWC is claiming that `@api` exists - read the file's `@api` list and check. Same for an Apex method's signature.
+- **Read the markup behind an ALREADY-PRESENT claim about a control.** "Fiscal Year is a Single Select" is a claim about a specific tag in a specific `.html`, and it was a free-text `lightning-input`.
+- **Test the SCOPE of what you assert, and of what the design asserts.** A claim true of one profile and false of the org is a wrong claim in both directions.
+
+Depth costs you nothing here: an unread file in round 1 is a round lost in round 3.
+
 ## What to check, verifying against the ACTUAL codebase
 
 1. EVIDENCE is real - every component cited for ALREADY IMPLEMENTED/PARTIAL exists and does what is claimed. A wrong claim here is the worst failure mode. Open the file; do not infer from the name.
