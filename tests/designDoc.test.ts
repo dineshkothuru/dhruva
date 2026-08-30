@@ -16,6 +16,7 @@ import {
   recordCards,
   recordDecision,
   renderApproved,
+  renderOpenFindings,
   recordReview,
   recomputeStates,
   render,
@@ -546,6 +547,40 @@ DESIGN: original one`);
   });
 });
 
+/** Round 2 of run 60975f36-bba was handed ten finding IDS and no claims: the
+ * design carries the numbers, the register is a separate document, and the
+ * auto-revise loop skipped injecting findings because "the target has an
+ * artifact". The designer said it would rather emit an empty delta than invent
+ * verdicts, and revised zero of thirty-four blocks. */
+describe("the findings a step must answer travel with the design", () => {
+  it("renders the claim, not just the number", () => {
+    const doc = fromMarkdown(MD);
+    recordReview(doc, rec(1, [f("F1", ["REQ-001"]), f("F2", ["REQ-002"])]));
+    const out = renderOpenFindings(doc);
+    for (const part of ["F1 (critical)", "[refs: REQ-001]", "Where: Some.cls:10", "Problem: wrong", "Fix: right"]) {
+      expect(out).toContain(part);
+    }
+    // and the design itself still carries only the id
+    expect(render(doc)).toContain("OPEN FINDINGS: F1");
+    expect(render(doc)).not.toContain("Problem: wrong");
+  });
+
+  it("carries the question when nobody in the loop can answer it", () => {
+    const doc = fromMarkdown(MD);
+    const fix = ["confirm with Portal 1", "NEEDS: decide - Portal 1 must answer"].join("\n");
+    recordReview(doc, rec(1, [{ ...f("F5", ["REQ-001"]), fix }]));
+    expect(renderOpenFindings(doc)).toContain("NEEDS A DECISION: Portal 1 must answer");
+  });
+
+  it("says nothing when nothing is open", () => {
+    const doc = fromMarkdown(MD);
+    expect(renderOpenFindings(doc)).toBe("");
+    recordReview(doc, rec(1, [f("F1", ["REQ-001"])]));
+    recordReview(doc, rec(2, [], ["F1"]));
+    expect(renderOpenFindings(doc)).toBe("");
+  });
+});
+
 /** The gate stopped being one verb for the whole run. Most cards are fine, two
  * are wrong, one carries a note - and the states to say that existed in the
  * document long before the gate could say them. */
@@ -582,6 +617,17 @@ describe("the human rules on requirements one at a time", () => {
     expect(r.approved).toEqual([]);
     expect(doc.blocks[1].state).toBe("parked");
     expect(renderApproved(doc)).toContain("_Nothing is approved yet");
+  });
+
+  it("keeps a multi-line note through a full round trip", () => {
+    const doc = fromMarkdown(MD);
+    const note = ["Use the existing service.", "Do NOT add a trigger.", "Ask Ravi before sharing."].join("\n");
+    recordCards(doc, 1, [{ id: "REQ-001", verdict: "approve", note }]);
+    const back = fromMarkdown(render(doc));
+    expect(back.blocks[0].humanNote).toBe(note);
+    // and it did not become a second field on the way through
+    expect(back.blocks[0].fields.some((x) => x.label === "HUMAN-NOTE")).toBe(false);
+    expect(render(back).match(/HUMAN-NOTE:/g)).toHaveLength(1);
   });
 
   it("writes the signed design on its own, and it reads straight back", () => {

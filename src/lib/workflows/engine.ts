@@ -38,6 +38,7 @@ import {
   foldReview,
   parkable,
   recordCards,
+  renderOpenFindings,
   parkBlocks,
   recordDecision as recordDocDecision,
   save as saveDesignDoc,
@@ -1045,6 +1046,19 @@ async function runStepTracked(run: RunState, def: StepDef, step: StepState): Pro
     if (design.trim().length === 0) {
       step.output += `\n[engine] nothing but tool trace in this step's output - ${rel} left as it was`;
     } else {
+      // Only the DESIGN is state the engine owns. Every other artifact step is
+      // a document its author writes once, and running one through the design
+      // store re-renders it from a structure it was never meant to be: the
+      // requirements step had 68 lines of `OPEN FINDINGS: -` and `STATE: open`
+      // injected into the frozen list it had just written, and its sidecars -
+      // findings.md, design-history.md - were written under the design's own
+      // fixed names, to be clobbered minutes later by the real ones.
+      if (!isDesignArtifact(rel)) {
+        await writePlainArtifact(run.root, rel, design);
+        step.artifact = rel;
+        await persist(run);
+        return true;
+      }
       // Round n = the attempts already recorded, plus this one.
       const round = (step.attempts?.length ?? 0) + 1;
       const wrote = await writeDesignUpdate(run.root, rel, design, round, extractDelta(design)).catch(() => null);
@@ -1258,12 +1272,40 @@ async function recordDecision(
  *
  * So: task first, data last, and a one-line restatement after the data. The
  * reviewer's prompt was already built this way and did not suffer. */
+/** Is this artifact THE design - the one document the engine owns as state?
+ *
+ * Named by its path rather than by a step flag on purpose: the design's path is
+ * what every other part of the machinery keys on (write-doc reads it, the
+ * reviewer quotes it, the gate cards are built from it), so one rule about the
+ * path keeps them all agreeing. */
+function isDesignArtifact(rel: string): boolean {
+  return /(^|\/)design\.md$/i.test(rel);
+}
+
+/** Write a document artifact exactly as its author wrote it. */
+async function writePlainArtifact(root: string, rel: string, body: string): Promise<void> {
+  const abs = path.join(root, rel);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  await fs.writeFile(abs, body.endsWith("\n") ? body : body + "\n", "utf8");
+}
+
 async function designDocumentBlock(run: RunState, def: StepDef): Promise<string> {
   if (!def.artifact) return "";
   const rel = toPosix(template(def.artifact, run));
   const doc = await loadDesignDoc(run.root, rel).catch(() => null);
   if (!doc || doc.blocks.length === 0) return "";
+  // The claims themselves, not just their numbers. design.md carries only the
+  // ids on each block, and the auto-revise loop skips injecting findings when
+  // the target has an artifact - correct while findings were filed inline,
+  // wrong once they moved into their own register. Round 2 of run
+  // 60975f36-bba got ten ids and no claims, said it would rather emit an empty
+  // delta than invent verdicts, and revised zero of thirty-four blocks.
+  const findings = renderOpenFindings(doc);
   return (
+    (findings
+      ? `\n\n--- OPEN FINDINGS you must answer (${doc.findings.filter((f) => f.status === "open").length}) ---\n` +
+        `${findings}\n--- end open findings ---\n`
+      : "") +
     `\n\n--- CURRENT DESIGN DOCUMENT (reference; the task is stated above) ---\n` +
     `${renderDesign(doc)}\n` +
     `--- end design document ---\n\n` +

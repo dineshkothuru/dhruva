@@ -352,6 +352,40 @@ const STATUS_LABEL: Record<FindingStatus, string> = {
  * The design document carries only the numbers; the detail lives here, so
  * neither the designer nor the reviewer is re-sent a resolved finding it has
  * already dealt with. */
+/** The findings a step must actually answer, in full, for a PROMPT.
+ *
+ * `design.md` carries only the ids on each block - the register is a separate
+ * document, which is exactly right for a reader and was silently wrong for the
+ * designer. On run 60975f36-bba the auto-revise loop skipped injecting the
+ * findings because "the target has an artifact, so they already reached it
+ * through the file its prompt reads" - true when findings were filed inline,
+ * false the moment they moved into their own register. Round 2 got ten ids and
+ * no claims, refused to invent verdicts, and revised zero of thirty-four
+ * blocks. The round after that only recovered because the agent went looking
+ * for findings.md on disk by itself.
+ *
+ * So the open findings travel WITH the design, from state, once. */
+export function renderOpenFindings(doc: DesignDoc): string {
+  // `load` normalises a legacy document that predates the register, but this is
+  // exported and a caller may hold a raw one.
+  const open = (doc.findings ?? []).filter((f) => f.status === "open");
+  if (open.length === 0) return "";
+  const out: string[] = [];
+  for (const f of open) {
+    out.push(
+      `${f.id} (${f.severity}) [refs: ${f.refs.join(", ") || "-"}] - ${f.title}`,
+      f.needs === "decide"
+        ? `  NEEDS A DECISION: ${f.question || "someone must answer this before it can be designed"}`
+        : "",
+      f.where ? `  Where: ${f.where}` : "",
+      f.problem ? `  Problem: ${f.problem}` : "",
+      f.fix ? `  Fix: ${f.fix}` : "",
+      "",
+    );
+  }
+  return out.filter((l) => l !== "").join("\n");
+}
+
 export function renderFindings(doc: DesignDoc): string {
   if (doc.findings.length === 0 && doc.unassigned.length === 0) {
     return "# Findings\n\n_None raised._\n";
@@ -595,13 +629,13 @@ export function awaitingDecision(b: DesignBlockDoc): string | null {
 
 /** Findings still open against a requirement. */
 export function openFor(doc: DesignDoc, id: string): FindingEntry[] {
-  return doc.findings.filter((f) => f.status === "open" && f.refs.includes(id));
+  return (doc.findings ?? []).filter((f) => f.status === "open" && f.refs.includes(id));
 }
 
 /** Open findings the DESIGN can still close. What the loop is actually for. */
 export function fixableOpen(doc: DesignDoc): FindingEntry[] {
   const parked = new Set(doc.blocks.filter((b) => b.state === "parked").map((b) => b.id));
-  return doc.findings.filter(
+  return (doc.findings ?? []).filter(
     (f) =>
       f.status === "open" &&
       f.needs !== "decide" &&
@@ -611,7 +645,7 @@ export function fixableOpen(doc: DesignDoc): FindingEntry[] {
 
 /** Open findings waiting on a human. What the gate should hand over. */
 export function decisionsOpen(doc: DesignDoc): FindingEntry[] {
-  return doc.findings.filter((f) => f.status === "open" && f.needs === "decide");
+  return (doc.findings ?? []).filter((f) => f.status === "open" && f.needs === "decide");
 }
 
 /** Recompute every block's state from the finding register.

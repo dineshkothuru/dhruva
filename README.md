@@ -110,12 +110,24 @@ Never commit or push from inside an attached customer project; Dhruva's own
   bounded revise rounds, escalates to the human when unsure. Agents flag
   org actions they cannot perform as `MANUAL:` lines, collected across the
   chain into a human checklist on the run view.
-- **Workflows** (10 built-in + design-your-own in the UI) - Bug fix, Feature
-  development, Solution design (HLD+TDD with Mermaid ERD), Implement from TDD,
-  Test generation, Retrieve/org sync, Deploy preview, Validate deploy, Run
-  Apex tests, Scratch org. Step types: `snapshot | agent | cli | gate |
-  changes | verify`. Custom workflows are saved per project under
-  `.dhruva/workflows/` and run on the same engine.
+- **Workflows** (12 built-in + design-your-own in the UI) - Bug fix, Feature
+  development, Solution design (HLD+TDD with Mermaid ERD), Documents from an
+  approved design, UX design, Implement from TDD, Test generation, Retrieve/org
+  sync, Deploy preview, Validate deploy, Run Apex tests, Scratch org. Step
+  types: `snapshot | agent | cli | gate | changes | verify`. Custom workflows
+  are saved per project under `.dhruva/workflows/` and run on the same engine.
+- **The design gate is per requirement** - Solution design holds the design as
+  state the engine owns, and the gate is not one verdict for the whole epic:
+  each requirement card is approved, sent back with your own design in its
+  note, or left alone. An approved card is frozen - later rounds cannot rewrite
+  it - and a card sent back is the only thing reworked. Requirements blocked
+  only on a question nobody in the loop can answer (another team's schema, an
+  undecided business rule) are **parked** so the rest of the epic proceeds;
+  they keep their design in `pending-design.md` with the question that stopped
+  them. The signed design is written on its own to `approved-design.md`, which
+  is both the deliverable and a valid input to the **Documents from an approved
+  design** workflow - so the HLD/TDD can be regenerated later without putting
+  the design back through the review loop.
 - **Determinism & safety** - CLI steps run whitelisted binaries (sf/git) only;
   gates pause for human Approve / **Revise with instructions** / Abort;
   standards (full team ruleset in `standards/`) are engine-injected into every
