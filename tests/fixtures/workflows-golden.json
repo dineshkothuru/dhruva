@@ -828,9 +828,9 @@
         "attachTo": true
       },
       {
-        "key": "requirementsFile",
-        "label": "Existing requirements.md to reuse (leave blank to extract from the documents above)",
-        "kind": "text"
+        "key": "attachedIsRequirements",
+        "label": "The attached file IS the requirements list (skip extraction)",
+        "kind": "boolean"
       },
       {
         "key": "docName",
@@ -872,7 +872,7 @@
         "orgAware": false,
         "role": "read",
         "artifact": ".dhruva/runs/{runId}/docs/requirements.md",
-        "skipIf": "requirementsFile",
+        "skipIf": "attachedIsRequirements",
         "timeoutMinutes": 30
       },
       {

@@ -5,7 +5,7 @@ type: agent
 role: read
 readOnly: true
 orgAware: false
-skipIf: requirementsFile
+skipIf: attachedIsRequirements
 timeoutMinutes: 30
 artifact: .dhruva/runs/{runId}/docs/requirements.md
 ---

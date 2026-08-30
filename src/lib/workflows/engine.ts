@@ -495,11 +495,18 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
       continue;
     }
     if (stepDef.skipIf && String(run.inputs[stepDef.skipIf] ?? "").trim()) {
-      step.status = "skipped";
-      step.output = await adoptArtifact(run, stepDef, String(run.inputs[stepDef.skipIf]));
-      if (stepDef.artifact) step.artifact = template(stepDef.artifact, run).replace(/\\/g, "/");
-      await persist(run);
-      continue;
+      const adopted = await adoptArtifact(run, stepDef, String(run.inputs[stepDef.skipIf]));
+      // Only skip when there is genuinely something to skip WITH. A reuse that
+      // cannot be honoured runs the step and says why, rather than leaving
+      // every later step to cite a document that was never written.
+      if (adopted.ok) {
+        step.status = "skipped";
+        step.output = adopted.note;
+        if (stepDef.artifact) step.artifact = template(stepDef.artifact, run).replace(/\\/g, "/");
+        await persist(run);
+        continue;
+      }
+      step.output = `${adopted.note}\n`;
     }
     // A work-check found the requirement already satisfied. Everything after it
     // exists to build, verify or ship a change that is not going to be made -
@@ -1110,20 +1117,54 @@ async function parkAtGate(run: RunState, def: WorkflowDef, gateIndex: number): P
  * quotes `{steps.requirements.output}` and still expects the file where the
  * step would have written it. So the named file is copied to the step's own
  * artifact path, and from there the run cannot tell the difference. */
-async function adoptArtifact(run: RunState, def: StepDef, source: string): Promise<string> {
-  const src = resolveInside(run.root, toPosix(source.trim()));
-  if (!src) return `skipped - "${source}" is outside this project, so nothing was adopted`;
-  const body = await fs.readFile(src, "utf8").catch(() => "");
-  if (!body.trim()) return `skipped - "${source}" could not be read, so nothing was adopted`;
-  if (!def.artifact) return `skipped - reusing ${source}`;
+async function adoptArtifact(
+  run: RunState,
+  def: StepDef,
+  source: string,
+): Promise<{ ok: boolean; note: string }> {
+  const no = (why: string) => ({ ok: false, note: `[engine] ${why} - running the step instead.` });
+  if (!def.artifact) return no("nothing to adopt into");
   const rel = template(def.artifact, run).replace(/\\/g, "/");
-  const abs = path.join(run.root, rel);
-  await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
-  await fs.writeFile(abs, body, "utf8").catch(() => {});
-  return (
-    `[engine] step skipped - adopted ${source} as ${rel} ` +
-    `(${(body.length / 1024).toFixed(1)}k chars). Nothing was re-extracted.`
-  );
+
+  // `true` means "use what was attached to this run". Anything else is a path.
+  const candidates: string[] = [];
+  if (source === "true") {
+    const dir = path.join(run.root, ".dhruva", "runs", run.runId, "attachments");
+    for (const name of await fs.readdir(dir).catch(() => [])) {
+      if (/\.(md|markdown|txt)$/i.test(name)) candidates.push(path.join(dir, name));
+    }
+    if (candidates.length === 0) return no("no attached text file to adopt");
+  } else {
+    const src = resolveInside(run.root, toPosix(source.trim()));
+    if (!src) return no(`"${source}" is outside this project`);
+    candidates.push(src);
+  }
+
+  // It must LOOK like what the step would have produced. On a real run the BRD
+  // extract was attached instead of a requirement list; adopting a 151 KB
+  // source document as "the frozen requirements" would have had every later
+  // step citing nonsense. The wrong file costs the four minutes it was meant to
+  // save, and nothing else.
+  const shape = /^###[ \t]+REQ-\d+/m;
+  for (const src of candidates) {
+    const body = await fs.readFile(src, "utf8").catch(() => "");
+    const name = path.basename(src);
+    if (!body.trim()) continue;
+    if (!shape.test(body)) {
+      return no(`"${name}" is not a requirement list (no "### REQ-nnn" blocks)`);
+    }
+    const abs = path.join(run.root, rel);
+    await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
+    await fs.writeFile(abs, body, "utf8").catch(() => {});
+    const n = (body.match(/^###[ \t]+REQ-\d+/gm) ?? []).length;
+    return {
+      ok: true,
+      note:
+        `[engine] step skipped - adopted ${name} as ${rel} ` +
+        `(${n} requirement(s), ${(body.length / 1024).toFixed(1)}k chars). Nothing was re-extracted.`,
+    };
+  }
+  return no("none of the attached files could be read");
 }
 
 /** Write a gate's decision into the document the gate was ruling on.

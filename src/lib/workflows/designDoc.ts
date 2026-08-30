@@ -453,6 +453,8 @@ export interface ApplyReport {
   unknown: string[];
   /** "REQ-022:DESIGN" - fields refused because they deferred to absent text */
   deferred: string[];
+  /** ids whose design change was refused because you approved the block */
+  frozen: string[];
 }
 
 /** Merge a delta. Field-level: a field the delta does not mention is kept. */
@@ -461,11 +463,27 @@ export function applyDelta(doc: DesignDoc, delta: Delta, round: number): ApplyRe
   const applied: string[] = [];
   const unknown: string[] = [];
   const deferred: string[] = [];
+  const frozen: string[] = [];
   const changed = new Set<string>();
   for (const d of delta.blocks) {
     const block = byId.get(d.id);
     if (!block) {
       unknown.push(d.id);
+      continue;
+    }
+    // An approval is the human's, and the engine enforces it rather than
+    // asking. The state list already prints "do not touch" - and a revision
+    // edited a block marked exactly that, because nothing stopped it. Responses
+    // are still accepted: the human needs the designer's answer to an objection
+    // in order to rule on it at the next gate.
+    if (block.state === "approved" || block.state === "approved-objected") {
+      if (d.design) frozen.push(d.id);
+      if (d.responses) {
+        block.lineage ??= [];
+        block.lineage.push({ round, kind: "designer", body: d.responses });
+        block.history.push({ round, note: `D${round}: answered, block is approved` });
+        applied.push(d.id);
+      }
       continue;
     }
     if (d.design) {
@@ -506,7 +524,7 @@ export function applyDelta(doc: DesignDoc, delta: Delta, round: number): ApplyRe
     const drivenBy = [...new Set([...answered.matchAll(/\bF(\d+)\b/g)].map((m) => `F${m[1]}`))];
     block.revisions.push({ round, drivenBy, fields: block.fields.map((f) => ({ ...f })) });
   }
-  return { applied, unknown, deferred };
+  return { applied, unknown, deferred, frozen };
 }
 
 /** Fold a whole re-sent design in without losing anything.
@@ -849,9 +867,11 @@ export async function writeUpdate(
     out.mode = "delta";
     out.applied = r.applied;
     out.unknown = r.unknown;
-    out.note = `${rel}: ${r.applied.length} block(s) revised${
-      r.unknown.length ? `; unknown id(s) ignored: ${r.unknown.join(", ")}` : ""
-    }`;
+    out.note =
+      `${rel}: ${r.applied.length} block(s) revised` +
+      (r.unknown.length ? `; unknown id(s) ignored: ${r.unknown.join(", ")}` : "") +
+      (r.frozen.length ? `; design edit refused on approved block(s): ${r.frozen.join(", ")}` : "") +
+      (r.deferred.length ? `; field(s) refused as placeholders: ${r.deferred.join(", ")}` : "");
   } else {
     const m = mergeAuthored(doc, delta.body);
     out.mode = "merged";
