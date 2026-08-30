@@ -35,7 +35,18 @@ export interface TasksFile {
 }
 
 const ID_RE = /^(T|fix)-\d{1,4}$/;
-const MAX_TASKS = 60;
+/** A runaway-agent backstop, not a design constraint - so it belongs well above
+ * anything real work produces. 60 was sized for a bug fix and a single feature.
+ * A 34-requirement BRD epic decomposed to 63 tasks, which is about two per
+ * requirement and entirely ordinary; the plan was well-formed and the run died
+ * three items over the line, one step from the end, after the documents had
+ * already been written.
+ *
+ * The number matters in two places, and only one of them says anything: the
+ * implement loop reads the same file through the same validator, and an
+ * over-long plan there does not fail loudly - it returns nothing and the loop
+ * falls back to a single undirected run. */
+const MAX_TASKS = 200;
 
 /** Validate untrusted JSON into a TasksFile; returns the errors found
  * (empty = valid). Agent-produced, so every field is checked. */
@@ -45,7 +56,11 @@ export function validateTasks(raw: unknown): { data: TasksFile | null; errors: s
   if (!d || typeof d !== "object") return { data: null, errors: ["tasks file must be a JSON object"] };
   if (d.version !== 1) errors.push('version must be the integer 1');
   if (!Array.isArray(d.tasks) || d.tasks.length === 0 || d.tasks.length > MAX_TASKS) {
-    errors.push(`tasks must be a list of 1-${MAX_TASKS} items`);
+    errors.push(
+      Array.isArray(d.tasks)
+        ? `tasks must be a list of 1-${MAX_TASKS} items - this file has ${d.tasks.length}`
+        : `tasks must be a list of 1-${MAX_TASKS} items`,
+    );
     return { data: null, errors };
   }
   const ids = new Set<string>();
