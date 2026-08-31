@@ -1,13 +1,61 @@
 import { execFile } from "node:child_process";
+import { promises as fsp } from "node:fs";
+import path from "node:path";
+import { getOrgConnection } from "@/lib/org/connection";
 
-/** Best-effort `sf org display --json` in the given project folder.
- * Never throws - an unusable sf CLI or missing org is a normal outcome. */
-export async function sfOrgDisplay(cwd: string): Promise<{
+export interface OrgStatus {
   connected: boolean;
   username?: string;
   instanceUrl?: string;
   reason?: string;
-}> {
+}
+
+/** Who this project is connected to, for the org badge.
+ *
+ * This used to be two `sf` calls - `sf config get target-org` then `sf org
+ * display` - which measured 21 seconds on attach. Almost none of that was work:
+ * `sf --version` alone is ~6s of process boot, and this paid it twice.
+ *
+ * So the CONNECTED case is answered in-process now. The CLI path is kept
+ * verbatim below for everything else, because it produces messages this cannot:
+ * it can tell "sf is not installed" apart from "no org here", and it can name
+ * the machine-wide default org that is being deliberately ignored. Those only
+ * matter when something is wrong, and when something is wrong nobody minds
+ * waiting. */
+export async function sfOrgDisplay(cwd: string): Promise<OrgStatus> {
+  // Only a PROJECT-LOCAL target-org counts. Reading .sf/config.json directly is
+  // exactly what the `location === "Local"` check below enforces - a project's
+  // own config file, never the machine-wide default, which would show an org
+  // the user never authorised for this project.
+  const local = await projectLocalTargetOrg(cwd);
+  if (local) {
+    const got = await getOrgConnection(cwd);
+    if (got.ok) {
+      return {
+        connected: true,
+        username: got.org.username,
+        instanceUrl: got.org.conn.instanceUrl ?? undefined,
+      };
+    }
+  }
+
+  return sfOrgDisplayViaCli(cwd);
+}
+
+/** The project's own target-org, or null. */
+async function projectLocalTargetOrg(cwd: string): Promise<string | null> {
+  try {
+    const raw = await fsp.readFile(path.join(cwd, ".sf", "config.json"), "utf8");
+    const v = JSON.parse(raw)?.["target-org"];
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The original CLI implementation, unchanged. Slow, but it is the only thing
+ * that can distinguish the failure modes precisely. */
+async function sfOrgDisplayViaCli(cwd: string): Promise<OrgStatus> {
   // Only honor a PROJECT-LOCAL default org. Without this check, `sf org
   // display` silently falls back to the machine-wide global default, which
   // would show an org the user never authorized for this project.

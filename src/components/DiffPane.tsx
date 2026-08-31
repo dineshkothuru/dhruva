@@ -21,6 +21,84 @@ const LANG_BY_EXT: Record<string, string> = {
   md: "markdown",
 };
 
+export function langForDiff(file: string): string {
+  const ext = file.split(".").pop()?.toLowerCase() ?? "";
+  return LANG_BY_EXT[ext] ?? "plaintext";
+}
+
+/** +N / -M with a proportional bar - the shape of the change is readable
+ * before the numbers are. Shared with the org compare view so a diff is
+ * measured the same way whatever it is a diff against. */
+export function DiffStat({ add, del }: { add: number; del: number }) {
+  if (add === 0 && del === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5" title={`${add} added, ${del} removed`}>
+      <span className="font-mono text-[11px] font-semibold text-emerald-600">+{add}</span>
+      <span className="font-mono text-[11px] font-semibold text-red-500">-{del}</span>
+      <span className="flex h-1.5 w-14 overflow-hidden rounded-full bg-slate-200">
+        <span
+          className="bg-emerald-500"
+          style={{ width: `${(add / Math.max(1, add + del)) * 100}%` }}
+        />
+        <span className="bg-red-400" style={{ width: `${(del / Math.max(1, add + del)) * 100}%` }} />
+      </span>
+    </span>
+  );
+}
+
+/** Segmented control - the current view is visibly selected rather than the
+ * button naming the mode you are not in. */
+export function ViewToggle({
+  sideBySide,
+  onChange,
+}: {
+  sideBySide: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center rounded-lg bg-slate-100 p-0.5">
+      <button
+        onClick={() => onChange(true)}
+        aria-pressed={sideBySide}
+        className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition ${
+          sideBySide ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+        }`}
+        title="Side by side"
+      >
+        <Icon.split size={12} strokeWidth={1.75} />
+        Split
+      </button>
+      <button
+        onClick={() => onChange(false)}
+        aria-pressed={!sideBySide}
+        className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition ${
+          !sideBySide ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
+        }`}
+        title="Inline"
+      >
+        <Icon.inline size={12} strokeWidth={1.75} />
+        Inline
+      </button>
+    </div>
+  );
+}
+
+/** Count added/removed lines from Monaco's own line changes - exact, zero
+ * cost. Shared so both diff views report the same numbers. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function countDiffLines(editor: any): { add: number; del: number } {
+  const changes = editor.getLineChanges() ?? [];
+  let add = 0;
+  let del = 0;
+  for (const c of changes) {
+    if (c.modifiedEndLineNumber >= c.modifiedStartLineNumber && c.modifiedEndLineNumber > 0)
+      add += c.modifiedEndLineNumber - c.modifiedStartLineNumber + 1;
+    if (c.originalEndLineNumber >= c.originalStartLineNumber && c.originalEndLineNumber > 0)
+      del += c.originalEndLineNumber - c.originalStartLineNumber + 1;
+  }
+  return { add, del };
+}
+
 export default function DiffPane({
   root,
   file,
@@ -62,8 +140,7 @@ export default function DiffPane({
     };
   }, [root, file, base, end]);
 
-  const ext = file.split(".").pop()?.toLowerCase() ?? "";
-  const lang = LANG_BY_EXT[ext] ?? "plaintext";
+  const lang = langForDiff(file);
 
   if (error) {
     return (
@@ -109,24 +186,7 @@ export default function DiffPane({
           </span>
         )}
 
-        {/* +N / -M with a proportional bar - the shape of the change is
-            readable before the numbers are */}
-        {stats && (stats.add > 0 || stats.del > 0) && (
-          <span className="flex shrink-0 items-center gap-1.5" title={`${stats.add} added, ${stats.del} removed`}>
-            <span className="font-mono text-[11px] font-semibold text-emerald-600">+{stats.add}</span>
-            <span className="font-mono text-[11px] font-semibold text-red-500">-{stats.del}</span>
-            <span className="flex h-1.5 w-14 overflow-hidden rounded-full bg-slate-200">
-              <span
-                className="bg-emerald-500"
-                style={{ width: `${(stats.add / Math.max(1, stats.add + stats.del)) * 100}%` }}
-              />
-              <span
-                className="bg-red-400"
-                style={{ width: `${(stats.del / Math.max(1, stats.add + stats.del)) * 100}%` }}
-              />
-            </span>
-          </span>
-        )}
+        {stats && <DiffStat add={stats.add} del={stats.del} />}
 
         <div className="ml-auto flex items-center gap-2">
           <span className="hidden items-center gap-1.5 text-[11px] md:flex">
@@ -139,32 +199,7 @@ export default function DiffPane({
             </span>
           </span>
 
-          {/* segmented control - the current view is visibly selected rather
-              than the button naming the mode you are not in */}
-          <div className="flex items-center rounded-lg bg-slate-100 p-0.5">
-            <button
-              onClick={() => setSideBySide(true)}
-              aria-pressed={sideBySide}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition ${
-                sideBySide ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              }`}
-              title="Side by side"
-            >
-              <Icon.split size={12} strokeWidth={1.75} />
-              Split
-            </button>
-            <button
-              onClick={() => setSideBySide(false)}
-              aria-pressed={!sideBySide}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition ${
-                !sideBySide ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              }`}
-              title="Inline"
-            >
-              <Icon.inline size={12} strokeWidth={1.75} />
-              Inline
-            </button>
-          </div>
+          <ViewToggle sideBySide={sideBySide} onChange={setSideBySide} />
         </div>
       </div>
       <div className="min-h-0 flex-1">
@@ -195,26 +230,26 @@ export default function DiffPane({
             diffRef.current = editor;
             defineDhruvaTheme(monaco);
             monaco.editor.setTheme("dhruva");
-            // +N / -M counted from Monaco's own line changes - exact, zero cost
-            editor.onDidUpdateDiff(() => {
-              const changes = editor.getLineChanges() ?? [];
-              let add = 0;
-              let del = 0;
-              for (const c of changes) {
-                if (c.modifiedEndLineNumber >= c.modifiedStartLineNumber && c.modifiedEndLineNumber > 0)
-                  add += c.modifiedEndLineNumber - c.modifiedStartLineNumber + 1;
-                if (c.originalEndLineNumber >= c.originalStartLineNumber && c.originalEndLineNumber > 0)
-                  del += c.originalEndLineNumber - c.originalStartLineNumber + 1;
-              }
-              setStats({ add, del });
-            });
+            editor.onDidUpdateDiff(() => setStats(countDiffLines(editor)));
           }}
           options={{
             ...MONACO_OPTIONS,
             readOnly: true,
             renderSideBySide: sideBySide,
             renderOverviewRuler: false,
-            diffWordWrap: "on",
+            // The +/- glyphs in the margin are the one part of a diff that is
+            // readable no matter what the syntax colours are doing, so they
+            // are asked for explicitly rather than left to the default.
+            renderIndicators: true,
+            // NOT diffWordWrap:"on". Monaco 0.56 applies viewport wrapping to the
+            // MODIFIED editor only - measured: isViewportWrapping true on the
+            // modified side, false on the original, with wordWrap:"on" and with
+            // diffWordWrap:"inherit" alike. One side wrapping and the other not
+            // makes Monaco insert diagonal alignment filler to keep the rows
+            // level, and the result reads as a broken diff rather than a diff of
+            // long lines. Off on both sides is aligned, and is what VS Code's own
+            // diff does: long lines scroll horizontally, in sync.
+            diffWordWrap: "off",
           }}
         />
         )}

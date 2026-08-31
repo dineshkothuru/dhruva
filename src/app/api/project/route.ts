@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import path from "node:path";
 import { detectProject } from "@/lib/detect";
 import { sfOrgDisplay } from "@/lib/sfcli";
+import { getOrgConnection } from "@/lib/org/connection";
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -25,7 +26,18 @@ export async function POST(req: Request) {
 
   // Second phase of a two-phase connect: just the (slow) org badge.
   if (b.orgOnly === true) {
-    return NextResponse.json({ org: await sfOrgDisplay(path.normalize(p.trim())) });
+    const root = path.normalize(p.trim());
+    const org = await sfOrgDisplay(root);
+    // Warm the in-process connection while the user is still reading the badge.
+    //
+    // Building it costs a few seconds once and then answers in ~0.3s, so
+    // whoever pays for it pays a lot. Left cold, that bill lands on the first
+    // Compare with org - which is exactly the click that used to take fifteen
+    // seconds and is the reason any of this exists. Fire-and-forget: it is a
+    // read, its failure mode is "the first compare is slower", and the badge
+    // response must not wait for it.
+    if (org.connected) void getOrgConnection(root).catch(() => {});
+    return NextResponse.json({ org });
   }
 
   const result = await detectProject(p, { skipOrg: b.skipOrg === true });

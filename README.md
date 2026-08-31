@@ -23,8 +23,18 @@ and deployment are engine-owned - independent of any LLM.
 |   | Claude Code (needs a Claude subscription or API key) | `npm install -g @anthropic-ai/claude-code` then run `claude` once | `claude --version` |
 |   | OpenAI Codex (needs ChatGPT plan or API key) | `npm install -g @openai/codex` then `codex login` | `codex --version` |
 
-Agent and Salesforce logins are stored on the machine by each CLI - Dhruva
-never sees or stores any credential.
+Agent and Salesforce logins are performed by each CLI and stored on the
+machine by it. Dhruva never asks you for a credential, never stores one of its
+own, and cannot log you in - `sf org login web` and each agent's own login own
+that entirely.
+
+For Salesforce READS (compare with org, the Org tab, metadata listings) Dhruva
+reuses the CLI's existing login in-process, via `@salesforce/core` reading the
+same `~/.sf` files the CLI wrote. An access token therefore lives in Dhruva's
+memory while it is talking to your org. It is never written anywhere, and never
+sent anywhere except the Salesforce instance that issued it. This is what makes
+a compare take under a second instead of fifteen - shelling out to `sf` costs
+about six seconds of process startup per call, before any work happens.
 
 ## Install & run
 
@@ -45,7 +55,7 @@ dhruva
 The `dhruva` command checks prerequisites (installs the Salesforce CLI if
 missing), builds once on first run, starts the app, and opens
 http://localhost:3005. Everything runs on YOUR machine with YOUR logins -
-no credentials ship with the package. Update later with `dhruva update`
+no credentials ship with the package, and none leave your machine. Update later with `dhruva update`
 (published releases) or `dhruva update edge` (GitHub master).
 
 **Or from a clone:**

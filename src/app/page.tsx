@@ -14,6 +14,8 @@ import PreviewPanel from "@/components/PreviewPanel";
 import EditorPane from "@/components/EditorPane";
 import ChatPane from "@/components/ChatPane";
 import DiffPane from "@/components/DiffPane";
+import OrgDiffPane from "@/components/OrgDiffPane";
+import NewMetadataDialog from "@/components/NewMetadataDialog";
 import WorkflowsPane from "@/components/workflows/WorkflowsPane";
 import { Icon } from "@/components/icons";
 
@@ -121,6 +123,29 @@ export default function Home() {
     setDiffNonce((n) => ({ ...n, [rel]: (n[rel] ?? 0) + 1 }));
     openFile(`diff:${rel}`);
   }
+
+  // Local-vs-org lives on the same tab strip, keyed "orgdiff:<rel>". It gets
+  // its own prefix rather than a flag on the diff tab because the two answer
+  // different questions and only this one can write to the file.
+  function openOrgDiff(rel: string) {
+    setDiffNonce((n) => ({ ...n, ["org:" + rel]: (n["org:" + rel] ?? 0) + 1 }));
+    openFile(`orgdiff:${rel}`);
+  }
+
+  // Bumped when the org compare writes a file, so that file's own editor tab
+  // remounts and reloads. Without it the editor keeps showing - and would
+  // happily re-save - the content that was on disk before the pull.
+  const [fileNonce, setFileNonce] = useState<Record<string, number>>({});
+  // The "New component" dialog. Lives here rather than in FileTree because
+  // this is where openFile and the tree nonce already are - creating a file
+  // has to do both: show it in the tree, and open it for editing.
+  const [creating, setCreating] = useState(false);
+  const openNewDialog = useCallback(() => setCreating(true), []);
+
+  const onLocalFileSaved = useCallback((rel: string) => {
+    setFileNonce((n) => ({ ...n, [rel]: (n[rel] ?? 0) + 1 }));
+    setTreeNonce((n) => n + 1);
+  }, []);
 
   function closeFile(rel: string) {
     setOpenFiles((fs) => {
@@ -552,6 +577,7 @@ export default function Home() {
                     result.packageDirectories?.[0]?.path
                   }
                   onRefresh={refreshLocalTree}
+                  onNew={openNewDialog}
                 />
               ) : (
                 <OrgBrowser
@@ -683,7 +709,8 @@ export default function Home() {
                   }`}
                 >
                   <button onClick={() => setActiveFile(f)} title={f} className="max-w-[180px] truncate">
-                    {(f.startsWith("diff:") ? "Δ " : "") + f.split("/").pop()}
+                    {(f.startsWith("orgdiff:") ? "⇄ " : f.startsWith("diff:") ? "Δ " : "") +
+                      f.split("/").pop()}
                   </button>
                   <button
                     onClick={() => closeFile(f)}
@@ -695,7 +722,14 @@ export default function Home() {
             </div>
             {openFiles.map((f) => (
               <div key={f} className={`min-h-0 flex-1 ${activeFile === f ? "" : "hidden"}`}>
-                {f.startsWith("diff:") ? (
+                {f.startsWith("orgdiff:") ? (
+                  <OrgDiffPane
+                    key={diffNonce["org:" + f.slice(8)] ?? 0}
+                    root={result.path}
+                    file={f.slice(8)}
+                    onSaved={onLocalFileSaved}
+                  />
+                ) : f.startsWith("diff:") ? (
                   <DiffPane
                     key={diffNonce[f.slice(5)] ?? 0}
                     root={result.path}
@@ -704,7 +738,12 @@ export default function Home() {
                     end={diffPins[f.slice(5)]?.end}
                   />
                 ) : (
-                  <EditorPane root={result.path} file={f} />
+                  <EditorPane
+                    key={fileNonce[f] ?? 0}
+                    root={result.path}
+                    file={f}
+                    onCompareOrg={openOrgDiff}
+                  />
                 )}
               </div>
             ))}
@@ -789,6 +828,20 @@ export default function Home() {
         )}
       </section>
 
+      {/* Modal, so it renders over whichever tab is showing - the + is in the
+          sidebar and the sidebar is visible from every tab. */}
+      {creating && result?.path && (
+        <NewMetadataDialog
+          root={result.path}
+          onClose={() => setCreating(false)}
+          onCreated={(primary) => {
+            refreshLocalTree();
+            // Straight into the editor on the new file. A create that leaves
+            // you looking at the same screen reads as a create that failed.
+            if (primary) openFile(primary);
+          }}
+        />
+      )}
     </div>
   );
 }

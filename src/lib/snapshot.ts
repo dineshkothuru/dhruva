@@ -42,8 +42,52 @@ async function clearStaleLock(root: string) {
   }
 }
 
-/** Never snapshot the shadow store itself, deps, or the customer's git. */
-const EXCLUDES = [SHADOW_DIRNAME, ".git", "node_modules", ".sfdx", ".sf"];
+/** Never snapshot the shadow store itself, deps, the customer's git, or files
+ * that DEVELOPER TOOLING writes on its own.
+ *
+ * The tooling entries are not cosmetic. The Salesforce LWC and Aura language
+ * servers - which Dhruva runs to provide completions - create and rewrite
+ * .forceignore, .vscode/settings.json, core.code-workspace, and jsconfig.json
+ * / tsconfig.json inside the lwc folder as part of indexing a workspace. It is
+ * the same thing the VS Code extensions do, and it is harmless in an editor.
+ *
+ * Here it was not harmless. Measured on a fresh project: take a baseline
+ * snapshot, open one LWC file, and the change list reports FIVE added files
+ * that no agent touched. Everything downstream reads that list - the reviewer,
+ * verify-standards, and the deploy's file arguments - so a bug-fix run could
+ * have reviewed, and deployed, editor configuration it never wrote.
+ *
+ * None of these is Salesforce source: jsconfig/tsconfig are already in the
+ * standard .forceignore, and .vscode, .forceignore and core.code-workspace are
+ * not inside a package directory at all. The trade is therefore small and
+ * explicit: a hand edit to one of them will not appear in a run's change list,
+ * which is correct, because that list answers "what SOURCE did this run
+ * change?" */
+const EXCLUDES = [
+  SHADOW_DIRNAME,
+  ".git",
+  "node_modules",
+  ".sfdx",
+  ".sf",
+  ".vscode",
+  ".forceignore",
+  "jsconfig.json",
+  "tsconfig.json",
+  "core.code-workspace",
+];
+
+/** Pathspecs that find an exclude entry ANYWHERE in the tree.
+ *
+ * info/exclude uses gitignore rules, where a bare name matches at every depth.
+ * `git ls-files` and `git rm` use PATHSPECS, where a bare name matches only at
+ * the root - so untracking would silently miss
+ * force-app/main/default/lwc/jsconfig.json, which is exactly the path that
+ * matters. In a pathspec `*` does match a slash, so the second form catches
+ * every depth. Both are passed, because the entry may legitimately be at the
+ * root too. */
+function pathspecsFor(entry: string): string[] {
+  return entry.includes("/") ? [entry] : [entry, `*/${entry}`];
+}
 
 /** Make sure every entry in EXCLUDES is in the shadow repo's exclude file, and
  * report the ones that had to be added.
@@ -135,9 +179,10 @@ async function ensureShadow(root: string): Promise<boolean> {
 async function reconcileIndex(root: string): Promise<void> {
   let removed = false;
   for (const e of EXCLUDES) {
-    const tracked = await runGit(root, ["ls-files", "--", e]);
+    const specs = pathspecsFor(e);
+    const tracked = await runGit(root, ["ls-files", "--", ...specs]);
     if (!tracked.ok || !tracked.stdout.trim()) continue;
-    const rm = await runGit(root, ["rm", "-r", "--cached", "-q", "--ignore-unmatch", e]);
+    const rm = await runGit(root, ["rm", "-r", "--cached", "-q", "--ignore-unmatch", "--", ...specs]);
     if (rm.ok) removed = true;
   }
   if (!removed) return;

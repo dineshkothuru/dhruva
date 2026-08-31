@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { getOrgConnection } from "@/lib/org/connection";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -147,6 +148,13 @@ function xmlEscape(s: string): string {
  * build has no source mapping for, which is exactly the metadata someone opens
  * an org browser to discover. */
 export async function listTypes(cwd: string): Promise<MetaType[]> {
+  // In-process first. `sf org list metadata-types` is a describeMetadata call
+  // wrapped in a 6-second process start; the same call on a live connection
+  // measured 0.60s. The CLI stays as the fallback, so an unauthenticated or
+  // unusable connection costs nothing but the old speed.
+  const viaApi = await listTypesViaApi(cwd);
+  if (viaApi) return viaApi;
+
   const { stdout } = await runSf(["org", "list", "metadata-types", "--json"], cwd, 120_000);
   const parsed = parseSfJson(stdout);
   const objects = parsed?.result?.metadataObjects ?? parsed?.metadataObjects;
@@ -163,6 +171,47 @@ export async function listTypes(cwd: string): Promise<MetaType[]> {
       children: Array.isArray(o.childXmlNames)
         ? o.childXmlNames.filter((c: unknown) => typeof c === "string")
         : [],
+    }))
+    .sort((a: MetaType, b: MetaType) => a.name.localeCompare(b.name));
+}
+
+/** describeMetadata over a live connection.
+ *
+ * Returns null - never an empty list - when it cannot answer, because an empty
+ * list is a MEANINGFUL result here (rule 1 at the top of this file) and would
+ * be indistinguishable from "the connection failed". The caller needs to tell
+ * those apart to know whether to fall back. */
+async function listTypesViaApi(cwd: string): Promise<MetaType[] | null> {
+  const got = await getOrgConnection(cwd);
+  if (!got.ok) return null;
+  try {
+    const res = await got.org.conn.metadata.describe();
+    const objects = res?.metadataObjects;
+    if (!Array.isArray(objects)) return null;
+    return normalizeTypes(objects);
+  } catch {
+    return null;
+  }
+}
+
+/** The describe payload has the same field names from the CLI and from the API,
+ * so one normaliser serves both and the two paths cannot drift. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeTypes(objects: any[]): MetaType[] {
+  return objects
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((o: any) => typeof o?.xmlName === "string")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((o: any) => ({
+      name: o.xmlName as string,
+      directoryName: typeof o.directoryName === "string" ? o.directoryName : "",
+      inFolder: o.inFolder === true || o.inFolder === "true",
+      suffix: typeof o.suffix === "string" ? o.suffix : undefined,
+      children: Array.isArray(o.childXmlNames)
+        ? o.childXmlNames.filter((c: unknown) => typeof c === "string")
+        : typeof o.childXmlNames === "string"
+          ? [o.childXmlNames]
+          : [],
     }))
     .sort((a: MetaType, b: MetaType) => a.name.localeCompare(b.name));
 }
@@ -188,6 +237,9 @@ export async function listMembers(
 }
 
 async function listOne(cwd: string, type: string, folder?: string): Promise<MetaMember[]> {
+  const viaApi = await listOneViaApi(cwd, type, folder);
+  if (viaApi) return viaApi;
+
   const args = ["org", "list", "metadata", "--metadata-type", type];
   if (folder) args.push("--folder", folder);
   args.push("--json");
@@ -199,6 +251,51 @@ async function listOne(cwd: string, type: string, folder?: string): Promise<Meta
   // as one - rule 1. The type simply shows as empty.
   if (!Array.isArray(result)) return [];
   return result
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((m: any) => typeof m?.fullName === "string")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((m: any) => ({
+      fullName: m.fullName as string,
+      type: typeof m.type === "string" ? m.type : type,
+      fileName: typeof m.fileName === "string" ? m.fileName : undefined,
+      lastModifiedByName:
+        typeof m.lastModifiedByName === "string" ? m.lastModifiedByName : undefined,
+      lastModifiedDate: typeof m.lastModifiedDate === "string" ? m.lastModifiedDate : undefined,
+      manageableState: typeof m.manageableState === "string" ? m.manageableState : undefined,
+      namespacePrefix: typeof m.namespacePrefix === "string" ? m.namespacePrefix : undefined,
+    }))
+    .sort((a: MetaMember, b: MetaMember) => a.fullName.localeCompare(b.fullName));
+}
+
+/** listMetadata over a live connection. Null means "could not answer", so an
+ * empty type still reads as empty rather than as a failure. */
+async function listOneViaApi(
+  cwd: string,
+  type: string,
+  folder?: string,
+): Promise<MetaMember[] | null> {
+  if (!isApiName(type)) return null;
+  if (folder && !isFolderName(folder)) return null;
+  const got = await getOrgConnection(cwd);
+  if (!got.ok) return null;
+  try {
+    const res = await got.org.conn.metadata.list(
+      [folder ? { type, folder } : { type }],
+      got.org.conn.getApiVersion(),
+    );
+    // A type with no members comes back as undefined or a bare object rather
+    // than an array; both mean "empty", which is a real answer.
+    const rows = Array.isArray(res) ? res : res ? [res] : [];
+    return normalizeMembers(rows, type);
+  } catch {
+    return null;
+  }
+}
+
+/** Same field names from the CLI and the API, so one normaliser again. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeMembers(rows: any[], type: string): MetaMember[] {
+  return rows
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .filter((m: any) => typeof m?.fullName === "string")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "@/components/icons";
 
 interface Entry {
   name: string;
@@ -167,6 +168,7 @@ export default function FileTree({
   selected,
   defaultDir,
   onRefresh,
+  onNew,
 }: {
   root: string;
   onOpenFile: (rel: string) => void;
@@ -174,6 +176,12 @@ export default function FileTree({
   /** Re-read the folder from disk - for a file written outside the app. Sits
    * beside the search box, in the same place as the Org tab's refresh. */
   onRefresh?: () => void;
+  /** Open the "New component" dialog. Sits next to the refresh button because
+   * this is the surface where the result appears - and because it has to work
+   * when NO file is open, which rules out the editor's own tab strip: that
+   * strip does not exist until something is already open, so a + there could
+   * never create the first file. */
+  onNew?: () => void;
   /** The project's default package directory (e.g. "force-app") - expanded
    * on load along with its main/default chain. */
   defaultDir?: string;
@@ -246,6 +254,15 @@ export default function FileTree({
           spellCheck={false}
           className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-slate-400"
         />
+        {onNew && (
+          <button
+            onClick={onNew}
+            className="shrink-0 rounded-md border border-slate-200 bg-white px-1 py-1 text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+            title="New component - Apex class, trigger, LWC, Aura, Visualforce…"
+          >
+            <Icon.add size={13} strokeWidth={2.25} />
+          </button>
+        )}
         {onRefresh && (
           <button
             onClick={onRefresh}

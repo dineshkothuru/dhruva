@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { FileBadge } from "@/components/FileTree";
+import { Icon } from "@/components/icons";
+import { bindModelFile, registerLspCompletions } from "@/components/monacoLsp";
 
 const Monaco = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -60,10 +62,33 @@ export function defineDhruvaTheme(monaco: any) {
       "editorIndentGuide.activeBackground1": "#e2e8f0",
       "editor.selectionBackground": "#e0e7ff",
       "editorCursor.foreground": "#4f46e5",
-      "diffEditor.insertedTextBackground": "#dcfce744",
-      "diffEditor.removedTextBackground": "#fee2e244",
-      "diffEditor.insertedLineBackground": "#f0fdf466",
-      "diffEditor.removedLineBackground": "#fef2f266",
+      // Diff colours, and the reason they are not paler.
+      //
+      // These were #fef2f2 at 40% alpha for a removed line and #fee2e2 at 27%
+      // for removed words - which over white is very nearly white. On an Apex
+      // or LWC file that is unreadable, because the SYNTAX already paints
+      // attribute values and strings red: a 27%-alpha pink behind red text
+      // does not say "removed", it just says "code". The block colour has to
+      // win against the token colours, not blend into them.
+      //
+      // So: a flat line wash strong enough to read as a band, plus a much
+      // stronger WORD-level wash on top of it, which is what makes the exact
+      // characters that changed findable inside a changed line. The values are
+      // GitHub's light diff palette, which is heavily proven on red-and-green
+      // syntax.
+      "diffEditor.insertedLineBackground": "#e6ffecff",
+      "diffEditor.removedLineBackground": "#ffebe9ff",
+      "diffEditor.insertedTextBackground": "#abf2bc88",
+      "diffEditor.removedTextBackground": "#ffcecb99",
+      // The gutter strip carries the same signal at full strength, so the
+      // change is still locatable when the line wash is behind dense syntax.
+      "diffEditorGutter.insertedLineBackground": "#abf2bc66",
+      "diffEditorGutter.removedLineBackground": "#ffcecb66",
+      // The hatched filler Monaco draws where one side has no matching lines.
+      // Kept quiet: it is scaffolding, not content.
+      "diffEditor.diagonalFill": "#e2e8f0",
+      "diffEditorOverview.insertedForeground": "#22c55e",
+      "diffEditorOverview.removedForeground": "#ef4444",
     },
   });
 }
@@ -91,7 +116,16 @@ function langFor(file: string) {
   return LANG_BY_EXT[ext] ?? "plaintext";
 }
 
-export default function EditorPane({ root, file }: { root: string; file: string }) {
+export default function EditorPane({
+  root,
+  file,
+  onCompareOrg,
+}: {
+  root: string;
+  file: string;
+  /** Opens the org compare view for this file in its own tab. */
+  onCompareOrg?: (file: string) => void;
+}) {
   const [content, setContent] = useState<string | null>(null);
   const [original, setOriginal] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -217,6 +251,27 @@ export default function EditorPane({ root, file }: { root: string; file: string 
         {dirty && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" title="unsaved changes (Ctrl+S to save)" />}
         <div className="ml-auto flex items-center gap-2">
           {savedAt && !dirty && <span className="text-[11px] text-emerald-600">saved</span>}
+          {/* Compare comes BEFORE retrieve, in both position and intent:
+              retrieve overwrites this file with the org's copy, and comparing
+              is how you find out whether you want that. It is not gated on the
+              path the way retrieve is - a project whose package directory is
+              not "force-app" still needs it, and the compare API answers
+              "not metadata" clearly for anything that is not. */}
+          {onCompareOrg && (
+            <button
+              onClick={() => onCompareOrg(file)}
+              disabled={dirty || content === null}
+              className="flex items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-40"
+              title={
+                dirty
+                  ? "Save or discard your edits first - the compare reads what is on disk"
+                  : "Diff this file against the connected org, and pull changes back block by block"
+              }
+            >
+              <Icon.diff size={13} strokeWidth={1.75} />
+              Compare with org
+            </button>
+          )}
           {file.startsWith("force-app") && (
             <button
               onClick={retrieveFromOrg}
@@ -266,6 +321,11 @@ export default function EditorPane({ root, file }: { root: string; file: string 
               editorRef.current = editor;
               defineDhruvaTheme(monaco);
               monaco.editor.setTheme("dhruva");
+              // Registration is global and guarded; the binding is per model,
+              // and is what lets the provider know this buffer is (say) an LWC
+              // template rather than an unrelated .html.
+              registerLspCompletions(monaco);
+              bindModelFile(editor.getModel(), root, file);
               // Ctrl/Cmd+S saves - muscle memory must work
               editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void saveRef.current());
             }}

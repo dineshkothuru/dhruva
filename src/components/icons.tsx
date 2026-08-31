@@ -10,6 +10,10 @@
  * these sizes. */
 
 import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   Ban,
   Globe,
   Monitor,
@@ -119,6 +123,10 @@ export const Icon = {
   persona: Drama,
   skill: Lightbulb,
   diff: GitCompare,
+  arrowLeft: ArrowLeft,
+  arrowRight: ArrowRight,
+  arrowUp: ArrowUp,
+  arrowDown: ArrowDown,
   split: Columns2,
   inline: Rows2,
   close: X,
