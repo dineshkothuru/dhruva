@@ -70,7 +70,11 @@
         "repo": "dhruva"
       }
     ],
-    "artifactName": "Dhruva-Setup-${version}.${ext}"
+    "artifactName": "Dhruva-Setup-${version}.${ext}",
+    "electronLanguages": [
+      "en-US"
+    ],
+    "compression": "maximum"
   },
   "files": [
     "bin",
