@@ -164,7 +164,12 @@ export async function loadStepLibrary(): Promise<Record<string, StepDef>> {
     );
   }
   for (const f of files.sort()) {
-    const text = await fs.readFile(path.join(dir, f), "utf8");
+    // Normalise line endings on the way in. git's autocrlf rewrites these
+    // files on checkout, so the SAME commit yields LF prompts on one machine
+    // and CRLF on another - which made the golden fixture fail on a fresh
+    // Windows checkout for reasons that had nothing to do with the prompts.
+    // An agent prompt has no business carrying \r either.
+    const text = (await fs.readFile(path.join(dir, f), "utf8")).replace(/\r\n/g, "\n");
     const def = stepFromFile(text, f.slice(0, -3));
     out[f.slice(0, -3)] = def;
   }
