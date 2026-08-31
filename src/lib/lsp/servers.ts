@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { promises as fsp } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -64,6 +65,27 @@ function entryFor(pkg: string): string | null {
     return null;
   }
 }
+
+/** TRACER ANCHORS - do not delete, and do not "simplify" into a variable.
+ *
+ * The desktop build ships Next's standalone output, which contains only what
+ * Next's dependency tracer saw. The tracer follows STATIC import specifiers; it
+ * cannot see `createRequire(...).resolve(...)`, and that invisibility is the
+ * whole reason resolution uses createRequire (a bare require.resolve gets
+ * rewritten to a bundler module id and the spawn then has nothing to run).
+ *
+ * The consequence, measured on a real `npm run app:dist`: @salesforce/core and
+ * @salesforce/templates were copied into the bundle because they are imported
+ * with static specifiers, while BOTH language servers were absent entirely -
+ * so completions would have silently done nothing in the installed app, with
+ * no error, because a missing package is a normal state here.
+ *
+ * These references are never executed - the arrow functions are created and
+ * discarded. They exist so the tracer follows the specifier and copies each
+ * package AND its transitive closure. `serverExternalPackages` keeps them out
+ * of the bundle itself; this is what gets them into the output at all. */
+void (() => import("@salesforce/lwc-language-server/server"));
+void (() => import("@salesforce/aura-language-server/server"));
 
 const LWC_DIR = /(^|\/)lwc\//;
 const AURA_DIR = /(^|\/)aura\//;
@@ -131,6 +153,35 @@ export const LANG_SERVERS: LangServer[] = [
 ];
 
 /** The server responsible for a file, or null when none is. */
+/** Create the one directory lightning-lsp-common forgets to guard.
+ *
+ * base-context.js copies typing stubs into the workspace during indexing.
+ * Every copyFile there is wrapped in try/catch and ignored - except the
+ * readdir that lists them:
+ *
+ *   const dirs = await fs.promises.readdir(path.join(resourceTypingsDir, 'copied'));
+ *
+ * `resources/sfdx/typings/copied` does not exist in the published package at
+ * all, so when that branch runs the readdir throws ENOENT and takes the whole
+ * `initialize` request down with it - the server comes up and then refuses to
+ * initialise. It surfaced in the packaged build (where the resources directory
+ * was missing entirely) but the hole is in the library, not the packaging.
+ *
+ * Creating it empty is enough: the loop over an empty directory copies nothing,
+ * which is exactly what happens today when the branch is skipped. Idempotent,
+ * so it is safe to call before every spawn. */
+export async function ensureServerResources(): Promise<void> {
+  try {
+    const req = createRequire(path.join(process.cwd(), "package.json"));
+    const lib = path.dirname(req.resolve("@salesforce/lightning-lsp-common"));
+    await fsp.mkdir(path.join(lib, "resources", "sfdx", "typings", "copied"), {
+      recursive: true,
+    });
+  } catch {
+    /* best effort - a server that still cannot start reports why */
+  }
+}
+
 export function serverFor(rel: string): LangServer | null {
   return LANG_SERVERS.find((s) => s.handles(rel)) ?? null;
 }
