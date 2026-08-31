@@ -4,6 +4,20 @@ import path from "node:path";
 import { parseSfJson, runSf } from "@/lib/orgMetadata";
 import { getOrgConnection } from "@/lib/org/connection";
 import { rowsToFiles, soqlFor, toolingTargetFor } from "@/lib/org/toolingSource";
+import { cacheGet, cachePut, invalidateOrgCache } from "@/lib/org/compareCache";
+import {
+  MAX_COPY_BYTES,
+  MAX_COPY_FILES,
+  copyPlanFor,
+  packageDirs,
+  sameStemPrefix,
+  splitPackagePath,
+} from "@/lib/org/comparePaths";
+
+// Re-exported so /api/compare-org and the tests keep one entry point for the
+// compare, even though it is now three modules behind that door.
+export { invalidateOrgCache } from "@/lib/org/compareCache";
+export { copyPlanFor, packageDirs, sameStemPrefix, splitPackagePath } from "@/lib/org/comparePaths";
 
 /** Compare ONE local source file against the org's copy of it, without
  * touching the working tree.
@@ -54,172 +68,6 @@ import { rowsToFiles, soqlFor, toolingTargetFor } from "@/lib/org/toolingSource"
 
 /** Distinguishes two sandboxes created in the same millisecond. */
 let seq = 0;
-
-/** Cached org-side content, because a compare costs ~15s and about 9s of that
- * is the `sf` process starting up - measured: `sf --version` alone is 6s on a
- * loaded machine, `sf config get target-org` 8.9s, the full retrieve 12.9s. So
- * only about a third of the wait is the org; the rest is overhead that cannot
- * be optimised away while the CLI is the transport.
- *
- * Two things make the cache pay far more than a naive "remember the last
- * answer" would:
- *
- *  1. A retrieve fetches the WHOLE component, not the one file being compared.
- *     An LWC bundle comes back as .html + .js + .js-meta.xml. Harvesting all of
- *     them into the cache makes comparing the second and third file of a bundle
- *     free, which is exactly what someone does when a component looks wrong.
- *  2. The Re-fetch button bypasses it, so "is this still current?" always has a
- *     definite answer rather than a guess about staleness.
- *
- * Held on globalThis so a dev-mode module reload does not throw it away. */
-interface CacheEntry {
-  org: string | null;
-  type?: string;
-  at: number;
-}
-const CACHE_TTL_MS = 120_000;
-const CACHE_MAX = 300;
-const cacheStore = globalThis as unknown as { __dhruvaOrgCache?: Map<string, CacheEntry> };
-const orgCache: Map<string, CacheEntry> = (cacheStore.__dhruvaOrgCache ??= new Map());
-
-/** NUL, not a space or a colon: a Windows path contains colons and may contain
- * spaces, so either could let two different keys collide. Same reasoning as the
- * Org Browser's listing key. */
-const KEY_SEP = String.fromCharCode(0);
-
-function cacheKey(root: string, rel: string) {
-  return root + KEY_SEP + rel;
-}
-
-function cacheGet(root: string, rel: string): CacheEntry | null {
-  const hit = orgCache.get(cacheKey(root, rel));
-  if (!hit) return null;
-  if (Date.now() - hit.at > CACHE_TTL_MS) {
-    orgCache.delete(cacheKey(root, rel));
-    return null;
-  }
-  return hit;
-}
-
-function cachePut(root: string, rel: string, entry: CacheEntry) {
-  if (orgCache.size >= CACHE_MAX) {
-    // Oldest-first eviction; the map preserves insertion order.
-    const oldest = orgCache.keys().next();
-    if (!oldest.done) orgCache.delete(oldest.value);
-  }
-  orgCache.set(cacheKey(root, rel), entry);
-}
-
-/** Drop everything cached for a project - used when the user asks for a fresh
- * answer, so Re-fetch is never satisfied from memory. */
-export function invalidateOrgCache(root: string) {
-  for (const k of [...orgCache.keys()]) {
-    if (k.startsWith(root + KEY_SEP)) orgCache.delete(k);
-  }
-}
-
-/** Type folders whose members are DIRECTORIES, not files.
- *
- * For these the component is the folder, so copying just the one file into the
- * sandbox leaves sf nothing it can resolve - an LWC without its .js-meta.xml
- * is not a component. A table rather than a heuristic because the set is
- * finite and known, and because guessing wrong here fails as "not in the org"
- * instead of as an error. A type missing from the table still works, it just
- * falls back to the file-and-siblings rule below. */
-const BUNDLE_DIRS = new Set([
-  "aura",
-  "lwc",
-  "waveTemplates",
-  "experiences",
-  "digitalExperiences",
-  "staticresources",
-  "objects",
-  "objectTranslations",
-  "moderation",
-  // folder-based types: the member sits inside its Salesforce folder
-  "reports",
-  "dashboards",
-  "documents",
-  "email",
-]);
-
-/** Sandbox copies stay small on purpose: an object folder on a real org can
- * hold thousands of field files, and the compare is supposed to feel instant. */
-const MAX_COPY_FILES = 800;
-const MAX_COPY_BYTES = 25_000_000;
-
-/** The project's package directories, as forward-slash relative paths.
- *
- * Read from sfdx-project.json rather than assumed, because "force-app" is a
- * convention and brownfield projects routinely have several package dirs with
- * other names. */
-export async function packageDirs(root: string): Promise<string[]> {
-  try {
-    const raw = await fs.readFile(path.join(root, "sfdx-project.json"), "utf8");
-    const dirs = JSON.parse(raw)?.packageDirectories;
-    if (Array.isArray(dirs)) {
-      const out = dirs
-        .map((d: unknown) =>
-          d && typeof d === "object" && typeof (d as { path?: unknown }).path === "string"
-            ? String((d as { path: string }).path).replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "")
-            : "",
-        )
-        .filter((p: string) => p.length > 0);
-      if (out.length > 0) return out;
-    }
-  } catch {
-    /* unreadable or malformed - the convention is the best remaining answer */
-  }
-  return ["force-app"];
-}
-
-/** Split a project-relative path into its package directory and the rest.
- * Null means the file is not inside any package directory, so it is not
- * metadata and there is nothing in the org to compare it to. */
-export function splitPackagePath(
-  rel: string,
-  pkgDirs: string[],
-): { pkg: string; rest: string } | null {
-  const norm = rel.replace(/\\/g, "/").replace(/^\.\//, "");
-  // Longest match first: a project with "force-app" and "force-app/extra"
-  // must attribute a file to the more specific one.
-  for (const pkg of [...pkgDirs].sort((a, b) => b.length - a.length)) {
-    if (norm.startsWith(pkg + "/")) {
-      const rest = norm.slice(pkg.length + 1);
-      if (rest.length > 0) return { pkg, rest };
-    }
-  }
-  return null;
-}
-
-/** What has to be copied into the sandbox for sf to resolve the component.
- *
- * `dir` = copy this whole folder (a bundle, an object, a report folder).
- * `file` = copy this file plus its same-stem siblings, which is how a class
- * and its .cls-meta.xml, or a static resource and its .resource-meta.xml,
- * stay together. */
-export function copyPlanFor(rest: string): { kind: "dir" | "file"; target: string } {
-  const segs = rest.split("/").filter(Boolean);
-  for (let i = 0; i < segs.length; i++) {
-    if (!BUNDLE_DIRS.has(segs[i])) continue;
-    // The member has to be a DIRECTORY for this to be a bundle: there must be
-    // at least one segment after it. `staticresources/foo.resource-meta.xml`
-    // is a plain file even though staticresources can also hold folders.
-    if (i + 2 <= segs.length - 1) {
-      return { kind: "dir", target: segs.slice(0, i + 2).join("/") };
-    }
-    break;
-  }
-  return { kind: "file", target: rest };
-}
-
-/** The stem a file shares with its metadata companion: everything before the
- * first dot. "Foo.cls" and "Foo.cls-meta.xml" share "Foo"; "FooBar.cls" does
- * not, so it is not dragged along. */
-export function sameStemPrefix(fileName: string): string {
-  const dot = fileName.indexOf(".");
-  return (dot < 0 ? fileName : fileName.slice(0, dot)) + ".";
-}
 
 export interface OrgFileState {
   /** Every file sf reported, keyed by absolute path, with its state. */
