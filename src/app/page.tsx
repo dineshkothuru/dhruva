@@ -16,6 +16,7 @@ import ChatPane from "@/components/ChatPane";
 import DiffPane from "@/components/DiffPane";
 import OrgDiffPane from "@/components/OrgDiffPane";
 import NewMetadataDialog from "@/components/NewMetadataDialog";
+import PushToOrgDialog from "@/components/PushToOrgDialog";
 import WorkflowsPane from "@/components/workflows/WorkflowsPane";
 import { Icon } from "@/components/icons";
 
@@ -140,6 +141,8 @@ export default function Home() {
   // this is where openFile and the tree nonce already are - creating a file
   // has to do both: show it in the tree, and open it for editing.
   const [creating, setCreating] = useState(false);
+  // Which file the push-to-org confirmation is open for, or null.
+  const [pushing, setPushing] = useState<string | null>(null);
   const openNewDialog = useCallback(() => setCreating(true), []);
 
   const onLocalFileSaved = useCallback((rel: string) => {
@@ -743,6 +746,7 @@ export default function Home() {
                     root={result.path}
                     file={f}
                     onCompareOrg={openOrgDiff}
+                    onPushToOrg={setPushing}
                   />
                 )}
               </div>
@@ -830,6 +834,9 @@ export default function Home() {
 
       {/* Modal, so it renders over whichever tab is showing - the + is in the
           sidebar and the sidebar is visible from every tab. */}
+      {pushing && result?.path && (
+        <PushToOrgDialog root={result.path} file={pushing} onClose={() => setPushing(null)} />
+      )}
       {creating && result?.path && (
         <NewMetadataDialog
           root={result.path}

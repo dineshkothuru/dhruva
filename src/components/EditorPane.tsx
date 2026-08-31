@@ -120,11 +120,14 @@ export default function EditorPane({
   root,
   file,
   onCompareOrg,
+  onPushToOrg,
 }: {
   root: string;
   file: string;
   /** Opens the org compare view for this file in its own tab. */
   onCompareOrg?: (file: string) => void;
+  /** Opens the push-to-org confirmation for this file. */
+  onPushToOrg?: (file: string) => void;
 }) {
   const [content, setContent] = useState<string | null>(null);
   const [original, setOriginal] = useState<string>("");
@@ -270,6 +273,25 @@ export default function EditorPane({
             >
               <Icon.diff size={13} strokeWidth={1.75} />
               Compare with org
+            </button>
+          )}
+          {/* Push sits AFTER retrieve, and is the only button here that writes
+              to the org. Disabled while the buffer is dirty for a concrete
+              reason: sf deploys what is on DISK, so an unsaved edit would be
+              silently left behind and the user would believe it shipped. */}
+          {onPushToOrg && (
+            <button
+              onClick={() => onPushToOrg(file)}
+              disabled={dirty || content === null}
+              className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-40"
+              title={
+                dirty
+                  ? "Save first - a deploy sends what is on disk, so unsaved edits would be left behind"
+                  : "Deploy this component to the connected org (asks for confirmation, and can validate first)"
+              }
+            >
+              <Icon.deployUp size={13} strokeWidth={1.75} />
+              Push to org
             </button>
           )}
           {file.startsWith("force-app") && (
