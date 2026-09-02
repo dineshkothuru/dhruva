@@ -66,10 +66,12 @@ describe("prompt order: task before data", () => {
   });
 
   it("restates the task after the document", () => {
-    const engine = fs.readFileSync(
-      path.resolve(__dirname, "../src/lib/workflows/engine.ts"),
+    // the document block that carries the restatement was extracted from the
+    // engine into designGlue.ts
+    const glue = fs.readFileSync(
+      path.resolve(__dirname, "../src/lib/workflows/designGlue.ts"),
       "utf8",
     );
-    expect(engine).toContain("Now produce the DELTA exactly as instructed above");
+    expect(glue).toContain("Now produce the DELTA exactly as instructed above");
   });
 });

@@ -3,6 +3,9 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 const ENGINE = path.resolve(__dirname, "../src/lib/workflows/engine.ts");
+// the process layer (spawnToStep and its timeout/settle semantics) was
+// extracted from the engine into its own module
+const SPAWN = path.resolve(__dirname, "../src/lib/workflows/spawnStep.ts");
 
 /** Two safety behaviours that a unit test cannot exercise directly - one lives
  * inside a spawn callback, the other inside the executor loop - but whose
@@ -14,7 +17,7 @@ const ENGINE = path.resolve(__dirname, "../src/lib/workflows/engine.ts");
  * re-running the workflow. */
 describe("a timed-out step actually stops", () => {
   it("the timeout handler settles the step instead of waiting for the kill to work", async () => {
-    const src = await fs.readFile(ENGINE, "utf8");
+    const src = await fs.readFile(SPAWN, "utf8");
     const timer = src.slice(src.indexOf("const timer = setTimeout"));
     const body = timer.slice(0, timer.indexOf("}, timeoutMs);"));
     expect(body).toContain("taskkill");
@@ -23,7 +26,7 @@ describe("a timed-out step actually stops", () => {
   });
 
   it("has a single settle point that cannot fire twice", async () => {
-    const src = await fs.readFile(ENGINE, "utf8");
+    const src = await fs.readFile(SPAWN, "utf8");
     expect(src).toContain("let settled = false");
     expect(src).toMatch(/const settle = \(ok: boolean\) => \{\s*if \(settled\) return;/);
     // a late "close" must not append an exit line to an already-finished step
@@ -38,7 +41,11 @@ describe("auto-approve does not launder a failed review", () => {
   });
 
   it("fails CLOSED on a missing verdict - a review that ran cannot wave the gate through", async () => {
-    const src = await fs.readFile(ENGINE, "utf8");
+    // the review-verdict layer was extracted from the engine into reviewFold.ts
+    const src = await fs.readFile(
+      path.resolve(__dirname, "../src/lib/workflows/reviewFold.ts"),
+      "utf8",
+    );
     const fn = src.slice(src.indexOf("function blockedReviewBefore"));
     const body = fn.slice(0, fn.indexOf("\n}\n"));
     // A review that RAN but declared no parseable verdict blocks the auto-gate:

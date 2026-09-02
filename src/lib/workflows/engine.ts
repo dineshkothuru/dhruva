@@ -11,6 +11,38 @@ import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import { skillsPrompt } from "@/lib/projectSkills";
 import { projectInventory } from "@/lib/projectInventory";
+import { expandArgs, harvestAffectedFiles, quotedDocs, template, winQuote } from "./templating";
+import { gateWaiters, hasActiveRun, persist, runs } from "./runStore";
+import { makeClaudeTraceTransform, spawnToStep } from "./spawnStep";
+import {
+  blockedReviewBefore,
+  contractHeld,
+  READONLY_WROTE_MARK,
+  recordRound,
+} from "./reviewFold";
+import {
+  adoptArtifact,
+  applyCards,
+  designDocumentBlock,
+  designStateBlock,
+  designText,
+  isDesignArtifact,
+  nearestAgentIndex,
+  parkAtGate,
+  recordDecision,
+  writePlainArtifact,
+} from "./designGlue";
+
+// The run registry moved to runStore.ts; the public API stays importable from
+// the engine so no caller changes.
+export {
+  abortRun,
+  getRun,
+  hasActiveRun,
+  listRuns,
+  pendingGateCount,
+  resolveGate,
+} from "./runStore";
 import { workRemaining, WORK_INSTRUCTION } from "@/lib/workflows/workRemaining";
 import { resolveInside } from "@/lib/fsguard";
 import { OUTCOME_INSTRUCTION } from "@/lib/outcome";
@@ -22,34 +54,14 @@ import {
   FINDINGS_INSTRUCTION,
   parseFindings,
   reviewFeedback,
-  verdictOf,
 } from "@/lib/findings";
+import { designFromOutput, extractDelta, madeProgress, type ReviewRecord } from "./artifacts";
 import {
-  designFromOutput,
-  extractDelta,
-  madeProgress,
-  statedOutcomes,
-  type ReviewRecord,
-} from "./artifacts";
-import {
-  awaitingDecision,
   decisionsOpen,
-  openFor,
   fixableOpen,
-  foldDecision,
-  foldReview,
-  parkable,
-  recordCards,
-  renderOpenFindings,
-  parkBlocks,
-  recordDecision as recordDocDecision,
-  save as saveDesignDoc,
   load as loadDesignDoc,
-  render as renderDesign,
-  renderChanges,
   writeUpdate as writeDesignUpdate,
 } from "./designDoc";
-import type { BlockState } from "./artifacts";
 import { checkEvidence, evidenceNote } from "./evidenceCheck";
 import { costBucket, countBucket, durationBucket, tokensBucket, track } from "@/lib/telemetry";
 import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
@@ -59,128 +71,7 @@ import { ROLE_TIER } from "./schema";
  * single-user tool); every state change is persisted to
  * <project>/.dhruva/runs/<runId>.json - the audit trail. */
 
-const runs = new Map<string, RunState>();
-const gateWaiters = new Map<string, (decision: GateDecision) => void>(); // key: runId
-// the live child process of each run's current step - so an abort can kill it
-const activeChildren = new Map<string, ReturnType<typeof spawn>>();
-/** Runaway backstop, NOT a content budget. The CLI has already generated and
- * billed every token by the time this applies, so it cannot make a step terser
- * (that is a sentence in the prompt); all it decides is what the harness keeps
- * in memory and writes to the run json. Set far above anything real - the
- * largest step output measured across real runs is 40,728 characters - so it
- * only ever trips on a process printing without end. */
-const STEP_OUTPUT_CAP = 5_000_000;
-const STEP_TIMEOUT_MS = 15 * 60 * 1000;
 
-export function getRun(runId: string): RunState | undefined {
-  return runs.get(runId);
-}
-
-/** Is a run currently active (running or parked at a gate) for this project?
- * The chat route checks this before re-baselining the shared snapshot store. */
-/** Roots compare case-insensitively on win32: the same project attached as
- * D:\proj and d:\proj must count as ONE project, or the one-run guard has a
- * hole exactly the width of a lowercase drive letter. */
-function sameRoot(a: string, b: string): boolean {
-  const norm = (p: string) => {
-    const r = path.resolve(p);
-    return process.platform === "win32" ? r.toLowerCase() : r;
-  };
-  return norm(a) === norm(b);
-}
-
-export function hasActiveRun(root: string): boolean {
-  for (const r of runs.values()) {
-    if (sameRoot(r.root, root) && (r.status === "running" || r.status === "waiting_gate")) return true;
-  }
-  return false;
-}
-
-/** Live runs for this project waiting on a human gate (in-memory only -
- * cheap enough to poll for the tab-bar indicator). */
-export function pendingGateCount(root: string): number {
-  let n = 0;
-  for (const r of runs.values()) {
-    if (sameRoot(r.root, root) && r.status === "waiting_gate") n++;
-  }
-  return n;
-}
-
-/** Recent runs for a project: in-memory (live) runs merged with the audit
- * files on disk, so history survives server restarts. A disk run still
- * marked running belongs to a dead server process → shown as aborted. */
-export async function listRuns(root: string): Promise<RunState[]> {
-  const byId = new Map<string, RunState>();
-  const dir = path.join(root, ".dhruva", "runs");
-  try {
-    for (const f of await fs.readdir(dir)) {
-      if (!f.endsWith(".json")) continue;
-      try {
-        const r = JSON.parse(await fs.readFile(path.join(dir, f), "utf8")) as RunState;
-        if (!r.runId || !Array.isArray(r.steps)) continue;
-        if (r.status === "running" || r.status === "waiting_gate") {
-          r.status = "aborted";
-          // normalize the steps too - a step frozen at "running" in a dead
-          // run's audit must not render as working forever, and the reader
-          // deserves to know WHY the run ended
-          for (const s of r.steps) {
-            if (s.status === "running" || s.status === "waiting_gate") {
-              s.status = "failed";
-              s.endedAt ??= Date.now();
-              s.output +=
-                "\n[engine] run ended while this step was in progress - the server process " +
-                "restarted or was killed (dev-mode file edits recompile the app; the installed " +
-                "desktop app is immune). Output above is the last saved state; re-run the workflow.";
-            }
-          }
-        }
-        byId.set(r.runId, r);
-      } catch {
-        /* corrupt audit file - skip */
-      }
-    }
-  } catch {
-    /* no runs dir yet */
-  }
-  for (const r of runs.values()) {
-    if (r.root === root) byId.set(r.runId, r); // live state wins over disk
-  }
-  return [...byId.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
-}
-
-/** User-requested stop of a live run: resolves a waiting gate as an abort,
- * or kills the running step's process tree. The executor loop sees the
- * aborted status and skips every remaining step. */
-export function abortRun(runId: string): boolean {
-  const run = runs.get(runId);
-  if (!run || (run.status !== "running" && run.status !== "waiting_gate")) return false;
-  run.status = "aborted";
-  if (resolveGate(runId, { action: "abort" })) return true; // parked at a gate
-  const step = run.steps.find((s) => s.status === "running");
-  if (step) {
-    // mark immediately - the UI must never show "working" on an aborted run,
-    // even if the process tree takes time to die
-    step.status = "failed";
-    step.endedAt = Date.now();
-    step.output += "\n[engine] aborted by user (Stop run) - the step's process was killed";
-  }
-  const child = activeChildren.get(runId);
-  if (child?.pid) {
-    // shell:true means the child is cmd.exe - kill the whole tree
-    spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: false });
-    child.kill();
-  }
-  void persist(run);
-  return true;
-}
-
-export function resolveGate(runId: string, decision: GateDecision): boolean {
-  const waiter = gateWaiters.get(runId);
-  if (!waiter) return false;
-  gateWaiters.delete(runId);
-  waiter(decision);
-  return true;
-}
 
 export function startRun(
   root: string,
@@ -894,104 +785,7 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
   await persist(run);
 }
 
-/** Fold one review round into the artifact and return what it found, so the
- * caller can tell a round that moved from a round that went in circles.
- * Findings carry over by id: anything open before and not reported again is
- * recorded as closed. */
-async function recordRound(
-  run: RunState,
-  rel: string,
-  reviewOutput: string,
-  round: number,
-  step: StepState,
-): Promise<ReviewRecord | null> {
-  try {
-    const findings = parseFindings(reviewOutput).findings;
-    const nowIds = new Set(findings.map((f) => f.id));
-    // What the reviewer SAID beats what the engine can infer. A finding it
-    // called PARTIAL or STILL OPEN stays open even when it dropped out of the
-    // findings list; absence only closes a finding it said nothing about.
-    const said = statedOutcomes(reviewOutput);
-    const folded = await foldReview(run.root, rel, reviewOutput, round, findings, said);
-    if (!folded) return null;
-    const disputed = [...said.partial, ...said.stillOpen].filter((id) => !nowIds.has(id));
-    if (disputed.length > 0) {
-      step.output +=
-        `
-[engine] kept open on the reviewer's own word: ${disputed.join(", ")} - ` +
-        `reported PARTIAL or STILL OPEN but absent from the findings list.`;
-    }
-    if (folded.unassigned.length > 0 && findings.length > folded.unassigned.length) {
-      step.output +=
-        `\n[engine] ${folded.unassigned.length} finding(s) name no requirement and were filed ` +
-        `under "## Review": ${folded.unassigned.map((f) => f.id).join(", ")}`;
-    }
-    step.output +=
-      `\n[engine] ${folded.openCount} finding(s) open after round ${round}` +
-      (folded.rec.closed.length ? `, closed ${folded.rec.closed.length} this round` : "") +
-      ` - ${folded.fixableCount} the design can close, ${folded.decisions.length} needing a decision.`;
-    if (folded.decisions.length > 0) {
-      step.output +=
-        `\n[engine] awaiting a human decision (the design cannot close these): ` +
-        folded.decisions.map((f) => `${f.id} - ${f.question ?? f.title}`.slice(0, 120)).join(" | ");
-    }
-    // A round that leaves nothing the design can close has finished its job.
-    // Chasing zero spends rounds failing to design around information nobody
-    // has: on run d0e4f7bc-1d6 five findings sat open to the last round waiting
-    // on another team's schema answer.
-    if (folded.fixableCount === 0 && folded.decisions.length > 0) {
-      step.output +=
-        `\n[engine] nothing left that the design can close - the remaining ` +
-        `${folded.decisions.length} finding(s) need a human. Over to you at the gate.`;
-    }
-    return folded.rec;
-  } catch {
-    return null; // the artifact is best-effort; never break a run over it
-  }
-}
 
-/** Did the review immediately before this gate end unresolved?
- *
- * Looks back from the gate to the nearest review-role step and reads its
- * verdict. Returns a short reason when it did NOT pass, or "" when it passed,
- * when there is no review to consult, or when the step produced no verdict at
- * all - absence of evidence must not become an accusation, so an unparseable
- * review is treated as "nothing to hold back on" and the gate behaves as it
- * did before. */
-/** Appended to a read-only step's output when the working tree changed during
- * it. A review carrying this mark is treated as blocked by the auto-gate. */
-const READONLY_WROTE_MARK = "[engine] READ-ONLY VIOLATION:";
-
-function blockedReviewBefore(run: RunState, def: WorkflowDef, gateIndex: number): string {
-  for (let k = gateIndex - 1; k >= 0; k--) {
-    const d = def.steps[k];
-    if (d.type === "gate") break; // an earlier gate already had its own say
-    if (d.type !== "agent" || d.role !== "review") continue;
-    const state = run.steps.find((s) => s.id === d.id);
-    const out = state?.output ?? "";
-    // a "read-only" review that wrote files has forfeited its gating power -
-    // whatever verdict it printed, a human decides, not the auto-gate
-    if (out.includes(READONLY_WROTE_MARK)) {
-      return `${d.id}: the read-only review modified project files - blocked`;
-    }
-    const verdict = verdictOf(out);
-    if (!verdict) {
-      // Fail CLOSED: a review that RAN but declared no parseable verdict must
-      // not wave the auto-gate through - only a skipped review abstains. The
-      // old fail-open reading let quoted text (or an injected reviewer simply
-      // omitting the line) launder a blocked review into an auto-approval.
-      return state && state.status !== "skipped" && out.trim()
-        ? `${d.id}: produced no VERDICT line - treated as blocked`
-        : "";
-    }
-    if (verdict === "APPROVED" || verdict === "PASS") return "";
-    const open = parseFindings(out).findings.filter((f) => f.severity === "critical").length;
-    return open > 0
-      ? `${d.id}: ${verdict}, ${open} critical finding${open === 1 ? "" : "s"} open`
-      : `${d.id}: ${verdict}`;
-  }
-  return "";
-}
 
 /** Re-run steps [from, to) against the current run state (revision feedback
  * already recorded). Gates inside the range were already approved and are
@@ -1073,7 +867,6 @@ async function replayRange(
   return true;
 }
 
-/** The nearest agent step before index i - the step a gate's revision re-runs. */
 /** Reduce a failure to one of a fixed set of causes. The raw output is never
  * transmitted; only which bucket it fell into, so failures can be ranked
  * without exposing what the agent was working on. */
@@ -1091,13 +884,6 @@ function classifyFailure(output: string): string {
   return "other";
 }
 
-function nearestAgentIndex(def: WorkflowDef, i: number): number {
-  for (let j = i - 1; j >= 0; j--) {
-    if (def.steps[j].type === "agent") return j;
-  }
-  return -1;
-}
-
 /** Run a step and, when it declares one, write its artifact.
  *
  * This wrapper exists because there are TWO paths into a step: the executor's
@@ -1105,24 +891,6 @@ function nearestAgentIndex(def: WorkflowDef, i: number): number {
  * the main loop alone meant the revised design was never written back - the
  * reviewer would have re-read the FIRST design on every round, which is exactly
  * the bug this whole change is meant to remove. Every path goes through here. */
-/** A declared contract that produced nothing parseable is a FAILURE, not a
- * quiet fallback. This is the exact shape of the bug that started all of it: a
- * review yielding zero parseable findings degraded to a text slice, and the
- * rework was handed 4,000 characters of terminal trace instead. */
-function contractHeld(def: StepDef, output: string): string {
-  if (def.emits === "findings") {
-    if (parseFindings(output).findings.length > 0) return "";
-    const v = verdictOf(output);
-    if (v === "APPROVED" || v === "PASS") return ""; // a clean pass has none
-    return `declared emits: "findings" but produced no parseable finding and no passing verdict`;
-  }
-  if (def.emits === "coverage") {
-    return /COVERAGE:\s*(COMPLETE|INCOMPLETE)/i.test(output)
-      ? ""
-      : `declared emits: "coverage" but produced no COVERAGE: line`;
-  }
-  return "";
-}
 
 async function runStepTracked(run: RunState, def: StepDef, step: StepState): Promise<boolean> {
   const ok = await runStep(run, def, step);
@@ -1216,309 +984,6 @@ async function runStepTracked(run: RunState, def: StepDef, step: StepState): Pro
   return ok;
 }
 
-/** Backslashes to forward slashes. A char code rather than a regex literal:
- * the escape in /\\/g has been silently eaten by tooling more than once
- * in this file, and the result parses as an unterminated regex. */
-function toPosix(p: string): string {
-  return p.split(String.fromCharCode(92)).join("/");
-}
-
-/** Park every requirement that is blocked only on a human decision.
- *
- * The design keeps its work; the parked blocks move to `pending-design.md`
- * with the questions that stopped them, and the rest of the pipeline builds
- * documents from what proceeded. When the answers come back they are picked up
- * in a later run rather than redesigned. */
-/** Fold the human's per-card rulings into the design, and turn the cards they
- * sent back into one instruction the designer and the reviewer both read.
- *
- * The instruction names the requirement in front of each note. A note without
- * its id is advice about nothing: the designer gets the whole set at once and
- * has to know which block each line rules on. */
-async function applyCards(
-  run: RunState,
-  def: WorkflowDef,
-  gateIndex: number,
-  cards: { id: string; verdict: "approve" | "revise"; note?: string }[],
-): Promise<{ approved: string[]; revising: string[]; instruction: string }> {
-  const none = { approved: [], revising: [], instruction: "" };
-  if (cards.length === 0) return none;
-  const targetId =
-    def.steps[gateIndex].reviseTarget ?? def.steps[nearestAgentIndex(def, gateIndex)]?.id;
-  const rel = run.steps.find((s) => s.id === targetId)?.artifact;
-  if (!rel) return none;
-  const doc = await loadDesignDoc(run.root, toPosix(rel)).catch(() => null);
-  if (!doc) return none;
-  const gate = doc.decisions.length + 1;
-  const { approved, revising } = recordCards(doc, gate, cards);
-  await saveDesignDoc(run.root, toPosix(rel), doc).catch(() => {});
-  const lines: string[] = [];
-  for (const c of cards) {
-    const note = c.note?.trim();
-    if (c.verdict === "revise") lines.push(`${c.id}: ${note || "rework this requirement."}`);
-    else if (note) lines.push(`${c.id} (APPROVED - do not rework): ${note}`);
-  }
-  const instruction = lines.length
-    ? [`The human ruled on individual requirements at gate ${gate}:`, "", ...lines].join("\n") +
-      (approved.length
-        ? `\n\nApproved and frozen: ${approved.join(", ")}. Leave those blocks out of your delta.`
-        : "")
-    : "";
-  return { approved, revising, instruction };
-}
-
-async function parkAtGate(run: RunState, def: WorkflowDef, gateIndex: number): Promise<string[]> {
-  const targetId =
-    def.steps[gateIndex].reviseTarget ?? def.steps[nearestAgentIndex(def, gateIndex)]?.id;
-  const rel = run.steps.find((s) => s.id === targetId)?.artifact;
-  if (!rel) return [];
-  const doc = await loadDesignDoc(run.root, toPosix(rel)).catch(() => null);
-  if (!doc) return [];
-  const gate = doc.decisions.length + 1;
-  const ids = parkable(doc).map((b) => b.id);
-  if (ids.length === 0) return [];
-  const parked = parkBlocks(doc, ids, gate);
-  recordDocDecision(doc, {
-    action: "approved",
-    text:
-      `Proceeded with the requirements that were ready. Parked ${parked.length} blocked on a ` +
-      `decision: ${parked.join(", ")}. See pending-design.md.`,
-  });
-  await saveDesignDoc(run.root, toPosix(rel), doc).catch(() => {});
-  return parked;
-}
-
-/** Bring an existing document into a run whose producing step was skipped.
- *
- * Skipping the WORK must not skip the OUTPUT: every downstream step still
- * quotes `{steps.requirements.output}` and still expects the file where the
- * step would have written it. So the named file is copied to the step's own
- * artifact path, and from there the run cannot tell the difference. */
-async function adoptArtifact(
-  run: RunState,
-  def: StepDef,
-  source: string,
-): Promise<{ ok: boolean; note: string }> {
-  const no = (why: string) => ({ ok: false, note: `[engine] ${why} - running the step instead.` });
-  if (!def.artifact) return no("nothing to adopt into");
-  const rel = template(def.artifact, run).replace(/\\/g, "/");
-
-  // `true` means "use what was attached to this run". Anything else is a path.
-  const candidates: string[] = [];
-  if (source === "true") {
-    const dir = path.join(run.root, ".dhruva", "runs", run.runId, "attachments");
-    for (const name of await fs.readdir(dir).catch(() => [])) {
-      if (/\.(md|markdown|txt)$/i.test(name)) candidates.push(path.join(dir, name));
-    }
-    if (candidates.length === 0) return no("no attached text file to adopt");
-  } else {
-    const src = resolveInside(run.root, toPosix(source.trim()));
-    if (!src) return no(`"${source}" is outside this project`);
-    candidates.push(src);
-  }
-
-  // It must LOOK like what the step would have produced. On a real run the BRD
-  // extract was attached instead of a requirement list; adopting a 151 KB
-  // source document as "the frozen requirements" would have had every later
-  // step citing nonsense. The wrong file costs the four minutes it was meant to
-  // save, and nothing else.
-  const shape = /^###[ \t]+REQ-\d+/m;
-  for (const src of candidates) {
-    const body = await fs.readFile(src, "utf8").catch(() => "");
-    const name = path.basename(src);
-    if (!body.trim()) continue;
-    if (!shape.test(body)) {
-      return no(`"${name}" is not a requirement list (no "### REQ-nnn" blocks)`);
-    }
-    const abs = resolveInside(run.root, rel);
-    if (!abs) return no(`artifact path "${rel}" escapes the project`);
-    await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
-    await fs.writeFile(abs, body, "utf8").catch(() => {});
-    const n = (body.match(/^###[ \t]+REQ-\d+/gm) ?? []).length;
-    return {
-      ok: true,
-      note:
-        `[engine] step skipped - adopted ${name} as ${rel} ` +
-        `(${n} requirement(s), ${(body.length / 1024).toFixed(1)}k chars). Nothing was re-extracted.`,
-    };
-  }
-  return no("none of the attached files could be read");
-}
-
-/** Write a gate's decision into the document the gate was ruling on.
- *
- * The document is the one owned by the gate's revise target - the step whose
- * work is being judged. `freeze` stamps every block `approved` on a real human
- * approval, which is the only place that state is ever set: an auto-approved
- * run has not been ruled on by anyone, so it freezes nothing. */
-async function recordDecision(
-  run: RunState,
-  def: WorkflowDef,
-  gateIndex: number,
-  action: "approved" | "revise",
-  text: string,
-  freeze = false,
-): Promise<void> {
-  const targetId = def.steps[gateIndex].reviseTarget ?? def.steps[nearestAgentIndex(def, gateIndex)]?.id;
-  const rel = run.steps.find((s) => s.id === targetId)?.artifact;
-  if (!rel) return;
-  await foldDecision(run.root, rel, { action, text, freeze }).catch(() => false);
-}
-
-/** The design document, for the END of the prompt.
- *
- * It used to sit inside the state block, ahead of the step's own instructions.
- * On run d0e4f7bc-1d6 that put 88 KB of document between the agent and its
- * task: the instructions began at offset 93,720 of a 147 KB prompt, and the
- * revision that read it skimmed - it declared 32 of 34 blocks unchanged,
- * ignored all 22 the engine had listed as open, and edited one marked "do not
- * touch". The authoring pass, which inlines no document, had worked properly on
- * the same model minutes earlier.
- *
- * So: task first, data last, and a one-line restatement after the data. The
- * reviewer's prompt was already built this way and did not suffer. */
-/** Is this artifact THE design - the one document the engine owns as state?
- *
- * Named by its path rather than by a step flag on purpose: the design's path is
- * what every other part of the machinery keys on (write-doc reads it, the
- * reviewer quotes it, the gate cards are built from it), so one rule about the
- * path keeps them all agreeing. */
-function isDesignArtifact(rel: string): boolean {
-  return /(^|\/)design\.md$/i.test(rel);
-}
-
-/** Write a document artifact exactly as its author wrote it.
- *
- * `rel` comes out of template() and can carry run INPUTS - contained like
- * every other expanded path, so a custom workflow's artifact template can
- * never write outside the attached project. Thrown errors fail the step
- * (the executor's try around runStepTracked). */
-async function writePlainArtifact(root: string, rel: string, body: string): Promise<void> {
-  const abs = resolveInside(root, rel);
-  if (!abs) throw new Error(`artifact path "${rel}" escapes the project - refused`);
-  await fs.mkdir(path.dirname(abs), { recursive: true });
-  await fs.writeFile(abs, body.endsWith("\n") ? body : body + "\n", "utf8");
-}
-
-async function designDocumentBlock(run: RunState, def: StepDef): Promise<string> {
-  if (!def.artifact) return "";
-  const rel = toPosix(template(def.artifact, run));
-  const doc = await loadDesignDoc(run.root, rel).catch(() => null);
-  if (!doc || doc.blocks.length === 0) return "";
-  // The claims themselves, not just their numbers. design.md carries only the
-  // ids on each block, and the auto-revise loop skips injecting findings when
-  // the target has an artifact - correct while findings were filed inline,
-  // wrong once they moved into their own register. Round 2 of run
-  // 60975f36-bba got ten ids and no claims, said it would rather emit an empty
-  // delta than invent verdicts, and revised zero of thirty-four blocks.
-  const findings = renderOpenFindings(doc);
-  return (
-    (findings
-      ? `\n\n--- OPEN FINDINGS you must answer (${doc.findings.filter((f) => f.status === "open").length}) ---\n` +
-        `${findings}\n--- end open findings ---\n`
-      : "") +
-    `\n\n--- CURRENT DESIGN DOCUMENT (reference; the task is stated above) ---\n` +
-    `${renderDesign(doc)}\n` +
-    `--- end design document ---\n\n` +
-    `Now produce the DELTA exactly as instructed above: only the blocks you changed ` +
-    `or are answering a finding on, each field complete, and a response to EVERY id ` +
-    `on that block's OPEN FINDINGS line.\n`
-  );
-}
-
-/** Tell an authoring step, in its own prompt, whether it is writing a design
- * or revising one - and hand it the document rather than asking it to look.
- *
- * Run 1e3dc542-bbc round 4: the step's glob does not traverse dot-directories,
- * so `.dhruva/runs/<id>/docs/design.md` came back "No matches found", the agent
- * concluded no prior design existed, and re-authored from scratch - discarding
- * three rounds of accepted fixes. Rounds 2 and 3 hit the same empty glob and
- * only recovered because they happened to keep digging with a directory
- * listing. A step must not have to FIND its own previous work, so the engine
- * inlines it and says which blocks are in play. */
-async function designStateBlock(run: RunState, def: StepDef): Promise<string> {
-  // A review step gets the other half of the picture: what moved since it last
-  // looked. Without it a reviewer can read the current design and the fix the
-  // designer claims to have made, but cannot see whether the text actually
-  // changed - so it cannot tell a real fix from a restated one.
-  if (!def.artifact && def.reviewOf) {
-    const target = run.steps.find((s) => s.id === def.reviewOf);
-    if (!target?.artifact) return "";
-    const doc = await loadDesignDoc(run.root, toPosix(target.artifact)).catch(() => null);
-    if (!doc) return "";
-    const round = (target.attempts?.length ?? 0) + 1;
-    const diff = renderChanges(doc, round);
-    return diff
-      ? `\n\n=== CHANGED SINCE YOUR LAST REVIEW (round ${round}) ===\n${diff}` +
-          `=== END CHANGES ===\n\n`
-      : "";
-  }
-  if (!def.artifact) return "";
-  const rel = toPosix(template(def.artifact, run));
-  const doc = await loadDesignDoc(run.root, rel).catch(() => null);
-  const current = doc ? renderDesign(doc) : "";
-  if (!doc || doc.blocks.length === 0 || !current.trim()) {
-    return (
-      `\n\n=== DESIGN STATE ===\n` +
-      `No design exists for this run yet. You are AUTHORING: output the complete ` +
-      `design, one block per requirement, inside the DESIGN fence. Do NOT emit a DELTA.\n` +
-      `=== END DESIGN STATE ===\n\n`
-    );
-  }
-  const by = (want: BlockState) => doc.blocks.filter((b) => b.state === want).map((b) => b.id);
-  // Split "open" by WHY, because the two need opposite things from the
-  // designer: a block with findings gets fixed or defended; a block held only
-  // by its own OPEN-CONFIRMED has nothing to answer and must be left alone for
-  // the human, not quietly settled to clear the state.
-  const waiting = doc.blocks
-    .filter((b) => b.state === "open" && openFor(doc, b.id).length === 0 && awaitingDecision(b))
-    .map((b) => b.id);
-  const isWaiting = new Set(waiting);
-  const line = (label: string, list: string[]) =>
-    list.length ? `  ${label.padEnd(28)} ${list.join(", ")}\n` : "";
-  // A fact the engine established, handed over before the next pass rather than
-  // left for a review round to discover.
-  const ev = await checkEvidence(run.root, current).catch(() => null);
-  const evLine = ev && ev.missing.length ? `\nENGINE CHECK - ${evidenceNote(ev)}\nFix these blocks.\n` : "";
-  return (
-    `\n\n=== DESIGN STATE ===\n` +
-    `You are REVISING. The complete current design is at the END of this prompt - ` +
-    `it is the authoritative copy, so do NOT search the filesystem for it.\n\n` +
-    line("open", by("open").filter((id) => !isWaiting.has(id))) +
-    line("awaiting a decision", waiting) +
-    line("approved - reviewer objects", by("approved-objected")) +
-    line("clean (do not touch)", by("clean")) +
-    line("approved (do not touch)", by("approved")) +
-    evLine +
-    `=== END DESIGN STATE ===\n\n` +
-    // The document itself is returned separately - see designDocumentBlock.
-    ""
-  );
-}
-
-/** The design text a work-check should read.
- *
- * Named explicitly by the step rather than inferred: `artifact` for a workflow
- * whose design step writes a curated document, `reviewOf` for one whose design
- * lives in the step output. Both are existing conventions, and being explicit
- * matters here more than convenience - this is the input to a decision that can
- * end a run, so it must be obvious from the workflow file which text drives it.
- *
- * The artifact wins when both are present: it is the curated design, whereas
- * the output is a transcript that happens to contain one. */
-async function designText(run: RunState, def: StepDef): Promise<string> {
-  if (def.artifact) {
-    const abs = resolveInside(run.root, toPosix(template(def.artifact, run)));
-    if (abs) {
-      const text = await fs.readFile(abs, "utf8").catch(() => "");
-      if (text.trim()) return text;
-    }
-  }
-  if (def.reviewOf) {
-    return run.steps.find((s) => s.id === def.reviewOf)?.output ?? "";
-  }
-  return "";
-}
 
 async function runStep(run: RunState, def: StepDef, step: StepState): Promise<boolean> {
   switch (def.type) {
@@ -2004,332 +1469,4 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
   }
 }
 
-/** Fill "{inputs.x}" and "{steps.id.output}" placeholders.
- *
- * A referenced step output is passed WHOLE - no cap. There used to be one, and
- * it kept biting: at 8,000 chars a 15-requirement design produced
- * 4-requirement documents, and raising it to 48,000 only moved the cliff (the
- * largest real design measured 40,728, so 85% of the budget was already gone).
- * Every agent step is a fresh CLI process, so nothing accumulates across steps
- * and there is no context pressure to spend a cap on. */
-function template(text: string, run: RunState, docs?: Map<string, string>): string {
-  // ONE pass, one combined pattern. Sequential passes meant a placeholder
-  // arriving inside an INPUT VALUE (user text, attachment content) was
-  // expanded by a later pass - letting pasted text pull another step's whole
-  // transcript into a prompt. Substituted values are never re-scanned now.
-  return text.replace(
-    /\{runId\}|\{inputs\.([\w-]+)\}|\{steps\.([\w-]+)\.output\}/g,
-    (whole, inputKey?: string, stepId?: string) => {
-      // {runId} lets a workflow stamp its outputs, so running the same
-      // workflow twice produces two designs instead of overwriting the first
-      if (whole === "{runId}") return run.runId;
-      if (inputKey !== undefined) return String(run.inputs[inputKey] ?? "");
-      if (stepId !== undefined) {
-        // A step that wrote a document is quoted BY that document. Callers
-        // that cannot read files (artifact paths, titles) pass no map and get
-        // the previous behaviour exactly.
-        const doc = docs?.get(stepId);
-        if (doc) return doc;
-        const s = run.steps.find((x) => x.id === stepId);
-        return s ? s.output : "";
-      }
-      return whole;
-    },
-  );
-}
 
-/** Load the documents a prompt's `{steps.x.output}` placeholders should resolve
- * to: for every step it quotes that wrote an artifact, that artifact. */
-async function quotedDocs(run: RunState, text: string): Promise<Map<string, string>> {
-  const docs = new Map<string, string>();
-  for (const m of text.matchAll(/\{steps\.([\w-]+)\.output\}/g)) {
-    const rel = run.steps.find((x) => x.id === m[1])?.artifact;
-    if (!rel || docs.has(m[1])) continue;
-    const abs = resolveInside(run.root, toPosix(rel));
-    const body = abs ? await fs.readFile(abs, "utf8").catch(() => "") : "";
-    if (body.trim()) docs.set(m[1], body);
-  }
-  return docs;
-}
-
-/** Parse a "FILES: a, b, c" line from agent output into run.affected -
- * project-relative paths only; anything absolute or escaping is dropped. */
-function harvestAffectedFiles(run: RunState, output: string) {
-  // Line-anchored, LAST occurrence: agents are told to emit the line at the
-  // end, so a "FILES:" inside quoted documents or tool traces earlier in the
-  // output must not win over the real one.
-  const all = [...output.matchAll(/^\s*\**FILES:\s*([^\n]+)/gim)];
-  const m = all.length ? all[all.length - 1] : null;
-  if (!m) return;
-  const files = m[1]
-    .split(",")
-    .map((f) => f.trim().replace(/\\/g, "/").replace(/^["'`]|["'`]$/g, ""))
-    .filter((f) => f && !f.includes("..") && !path.isAbsolute(f) && f.length < 300)
-    .slice(0, 30);
-  if (files.length) run.affected = files;
-}
-
-/** Expand argv templates. "{changedSourceDirs}" becomes repeated
- * --source-dir <file> pairs for every non-deleted changed file; returns null
- * when the expansion is required but there are no changed files. */
-function expandArgs(argv: string[], run: RunState): string[] | null {
-  const out: string[] = [];
-  for (const a of argv) {
-    if (a === "{changedSourceDirs}") {
-      const files = (run.changes ?? []).filter((c) => c.status !== "deleted");
-      if (files.length === 0) return null;
-      // Refuse, never truncate: silently deploying/validating a SUBSET of a
-      // larger change set reports success for work that never shipped. The
-      // bound is the real one - command-line length (cmd.exe caps near 8k) -
-      // not an arbitrary file count.
-      let argChars = 0;
-      for (const f of files) argChars += f.file.length + 15;
-      if (argChars > 6000) {
-        throw new Error(
-          `${files.length} changed files exceed the command-line budget for --source-dir - ` +
-            `deploy this run manually with a manifest (sf project deploy start -x package.xml)`,
-        );
-      }
-      // file names can be agent-created - sanitize like any templated value
-      for (const f of files) out.push("--source-dir", cliSafe(f.file));
-    } else if (a === "{affectedSourceDirs}") {
-      // Only paths that EXIST locally. --source-dir refreshes a local copy, so
-      // a component the design is about to CREATE has nothing to refresh: on an
-      // empty project "create a Student object" named files that were not in the
-      // org or on disk, sf errored on the missing path, and the run died at the
-      // retrieve step before writing a line of metadata.
-      const files = (run.affected ?? []).filter((f) => existsSync(path.join(run.root, f)));
-      if (files.length === 0) return null;
-      for (const f of files.slice(0, 30)) out.push("--source-dir", cliSafe(f));
-    } else if (a.startsWith("{flag:")) {
-      // "{flag:--synchronous:inputs.key}" → the bare flag only when truthy
-      const m = a.match(/^\{flag:([\w-]+):inputs\.([\w-]+)\}$/);
-      if (m && run.inputs[m[2]]) out.push(m[1]);
-    } else if (a.startsWith("{opt:")) {
-      // "{opt:--flag:inputs.key}" → ["--flag", value] only when value non-empty
-      const m = a.match(/^\{opt:([\w-]+):inputs\.([\w-]+)\}$/);
-      if (m) {
-        const v = cliSafe(String(run.inputs[m[2]] ?? "").trim());
-        if (v) out.push(m[1], v);
-      }
-    } else {
-      out.push(cliSafe(template(a, run)));
-    }
-  }
-  return out;
-}
-
-/** User-provided values that end up in argv must never carry shell
- * metacharacters (args pass through cmd.exe to resolve .cmd shims). */
-function cliSafe(v: string): string {
-  return v.replace(/["'`^&|<>%$;\r\n\t]/g, " ").trim();
-}
-
-/** Args pass through cmd.exe (shell:true resolves .cmd shims) - quote paths
- * with spaces; templates never contain quotes (whitelisted argv, not shell). */
-function winQuote(a: string): string {
-  return /[\s&|^<>%()]/.test(a) && !a.startsWith('"') ? `"${a}"` : a;
-}
-
-/** Translate claude stream-json lines into a human-readable live trace and
- * capture the exact usage from the final "result" event onto the step. */
-function makeClaudeTraceTransform(step: StepState): (chunk: string) => string {
-  let buf = "";
-  return (chunk: string) => {
-    buf += chunk;
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? ""; // keep the trailing partial line
-    let out = "";
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t.startsWith("{")) continue;
-      try {
-        const ev = JSON.parse(t);
-        // the init event carries the model the CLI ACTUALLY runs - exact even
-        // when we requested nothing (CLI default); overwrite the requested id
-        if (ev.type === "system" && ev.subtype === "init" && typeof ev.model === "string") {
-          step.model = ev.model;
-          out += `[agent] model in use: ${ev.model}\n`;
-        } else if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
-          for (const block of ev.message.content) {
-            if (block.type === "text" && block.text) out += block.text + "\n";
-            else if (block.type === "tool_use") {
-              const arg = JSON.stringify(block.input ?? {}).slice(0, 160);
-              out += `  ⚙ ${block.name} ${arg}\n`;
-            }
-          }
-        } else if (ev.type === "result") {
-          if (ev.usage) {
-            step.usage = {
-              inTokens:
-                (ev.usage.input_tokens ?? 0) +
-                (ev.usage.cache_read_input_tokens ?? 0) +
-                (ev.usage.cache_creation_input_tokens ?? 0),
-              outTokens: ev.usage.output_tokens ?? 0,
-              costUsd: typeof ev.total_cost_usd === "number" ? ev.total_cost_usd : 0,
-              estimated: false,
-            };
-          }
-          if (ev.is_error && ev.result) out += `\n[agent error] ${String(ev.result).slice(0, 500)}\n`;
-        }
-      } catch {
-        /* partial or non-JSON line - ignore */
-      }
-    }
-    return out;
-  };
-}
-
-function spawnToStep(
-  run: RunState,
-  step: StepState,
-  bin: string,
-  args: string[],
-  stdin?: string,
-  transform?: (chunk: string) => string,
-  timeoutMs: number = STEP_TIMEOUT_MS,
-): Promise<boolean> {
-  // an abort can land between the awaits that precede a spawn (standards
-  // loading, prompt-file writes, task-loop iterations) - never launch a fresh
-  // process for an aborted run: nothing could kill it afterwards
-  if ((run.status as string) === "aborted") {
-    step.output += "\n[engine] aborted before the step's process started";
-    return Promise.resolve(false);
-  }
-  return new Promise((resolve) => {
-    // One settle point. A timed-out step must end at its budget even if the
-    // process ignores the kill and keeps streaming, and the child's later
-    // "close" must not then append an exit line to a step already finished.
-    let settled = false;
-    const settle = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      activeChildren.delete(run.runId);
-      void persist(run);
-      resolve(ok);
-    };
-    const child = spawn(bin, args, {
-      cwd: run.root,
-      shell: true,
-      windowsHide: true,
-      env: {
-        ...process.env,
-        NO_COLOR: "1",
-        FORCE_COLOR: "0",
-        CI: "true",
-        // cmd.exe (shell:true) searches the current directory before PATH on
-        // Windows, and cwd is the attached (untrusted) project - a planted
-        // sf.cmd/copilot.cmd would run. Remove cwd from that search.
-        NoDefaultCurrentDirectoryInExePath: "1",
-      },
-    });
-    activeChildren.set(run.runId, child);
-    const timer = setTimeout(() => {
-      step.output +=
-        `\n[engine] step timed out after ${Math.round(timeoutMs / 60_000)} minutes - ` +
-        `giving up on it. Anything the agent writes from here is NOT captured.`;
-      // shell:true means child is cmd.exe - kill the whole tree or the real
-      // CLI survives as an orphan still editing the project
-      if (child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: false });
-      child.kill();
-      // Settle NOW rather than waiting for the child's "close". The kill does
-      // not always take: on a real run a 30-minute task carried on for 72,
-      // because this handler only asked the process to die and then went on
-      // waiting for it. A budget that a failed kill can extend is not a budget.
-      settle(false);
-    }, timeoutMs);
-    // EPIPE when the CLI exits before draining (e.g. expired login) must not
-    // crash the server process
-    child.stdin.on("error", () => {});
-    if (stdin) child.stdin.write(stdin);
-    child.stdin.end();
-    // Past the backstop the step is left INCOMPLETE and says so, once. The old
-    // behaviour kept the head plus a 10k tail and spliced them together, which
-    // silently removed the middle - the same shape of bug as slicing a review
-    // to its first 4,000 characters, and invisible to everything downstream.
-    let overflowed = false;
-    const push = (chunk: Buffer | string) => {
-      const text = chunk.toString().replace(/\x1b\[[0-9;]*m/g, "");
-      const rendered = transform ? transform(text) : text;
-      if (!rendered) return persistSoon(run);
-      if (step.output.length < STEP_OUTPUT_CAP) {
-        step.output += rendered;
-      } else if (!overflowed) {
-        overflowed = true;
-        step.output +=
-          `\n[engine] RUNAWAY OUTPUT: this step passed ${STEP_OUTPUT_CAP / 1_000_000}M characters ` +
-          `and the rest was not captured. Treat this step's result as INCOMPLETE - it is a ` +
-          `backstop against a process printing without end, not a size budget.\n`;
-      }
-      persistSoon(run);
-    };
-    child.stdout.on("data", push);
-    child.stderr.on("data", push);
-    child.on("error", (e) => {
-      clearTimeout(timer);
-      activeChildren.delete(run.runId);
-      step.output += `\n[engine] could not start ${bin}: ${e.message}`;
-      settle(false);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      // a step already settled by the timeout must not gain a late exit line
-      if (settled) return;
-      // flush the transform's trailing partial line (a final stream-json
-      // result event without a newline carries the exact usage)
-      if (transform) push("\n");
-      step.output += `\n[exit ${code}]`;
-      settle(code === 0);
-    });
-  });
-}
-
-let persistChain = Promise.resolve();
-
-/** Debounce window for the streaming hot path. */
-const PERSIST_DEBOUNCE_MS = 250;
-const pendingPersist = new Map<string, ReturnType<typeof setTimeout>>();
-
-/** Audit write for the STREAMING path.
- *
- * persist() rewrites the entire run as pretty-printed json, and a step's stdout
- * arrives as hundreds of small chunks, so writing on every chunk costs O(n^2)
- * in the output size. That was survivable only because the output was capped at
- * 60k; with the cap raised to a runaway backstop it is not. Coalesce the chunk
- * writes and let the boundaries - step end, gate, status change - call persist()
- * directly, which also cancels anything pending here. */
-function persistSoon(run: RunState) {
-  if (pendingPersist.has(run.runId)) return;
-  pendingPersist.set(
-    run.runId,
-    setTimeout(() => {
-      pendingPersist.delete(run.runId);
-      void persist(run);
-    }, PERSIST_DEBOUNCE_MS),
-  );
-}
-
-async function persist(run: RunState) {
-  // a forced write supersedes any coalesced one still waiting
-  const queued = pendingPersist.get(run.runId);
-  if (queued) {
-    clearTimeout(queued);
-    pendingPersist.delete(run.runId);
-  }
-  // serialize writes; audit file lives with the project
-  persistChain = persistChain.then(async () => {
-    try {
-      const dir = path.join(run.root, ".dhruva", "runs");
-      await fs.mkdir(dir, { recursive: true });
-      // write-then-rename: this file is rewritten every 250ms while a step
-      // streams, so an in-place write killed mid-stream left truncated JSON -
-      // and the run live at crash time is exactly the one whose audit matters
-      const file = path.join(dir, `${run.runId}.json`);
-      await fs.writeFile(`${file}.tmp`, JSON.stringify(run, null, 2), "utf8");
-      await fs.rename(`${file}.tmp`, file);
-    } catch {
-      /* audit persistence is best-effort */
-    }
-  });
-  await persistChain;
-}
