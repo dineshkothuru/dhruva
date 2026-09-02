@@ -11,8 +11,63 @@ import { promises as fs } from "node:fs";
 
 interface Module {
   name: string;
-  applyTo: RegExp | null; // null = always applies
+  applyTo: RegExp | null; // path glob; null = no path scoping
+  /** Salesforce-type scoping, e.g. "ApexTrigger", "Flow[recordTriggered]",
+   * "ApexClass[test]". Resolved by path AND (for subtypes) file content -
+   * granularity a path glob cannot express: *.flow-meta.xml cannot tell a
+   * record-triggered flow from a screen flow, the XML inside can. */
+  appliesToType: { type: string; subtype?: string } | null;
   body: string;
+}
+
+const TYPE_PATHS: Record<string, RegExp> = {
+  apexclass: /\.cls$/i,
+  apextrigger: /\.trigger$/i,
+  flow: /\.flow-meta\.xml$/i,
+  lwc: /(^|\/)lwc\//i,
+  aura: /(^|\/)aura\//i,
+};
+
+const SUBTYPE_CONTENT: Record<string, RegExp> = {
+  "apexclass.test": /@isTest/i,
+  "apexclass.batch": /\bDatabase\.Batchable\b/i,
+  "flow.recordtriggered": /<recordTriggerType>|<triggerType>\s*Record/i,
+  "flow.screen": /<screens>/i,
+};
+
+function parseTypeSelector(v: string): Module["appliesToType"] {
+  const m = v.trim().match(/^([A-Za-z]+)(?:\[([A-Za-z-]+)\])?$/);
+  if (!m || !TYPE_PATHS[m[1].toLowerCase()]) return null;
+  return { type: m[1].toLowerCase(), subtype: m[2]?.toLowerCase() };
+}
+
+/** Does the selector match at least one of the files? Subtype checks read the
+ * file (root required); without a root - or an unreadable file - the subtype
+ * is assumed to match, because injecting a standard too often is cheap and
+ * missing one is not. */
+async function typeMatches(
+  sel: NonNullable<Module["appliesToType"]>,
+  files: string[],
+  root: string | undefined,
+  contentCache: Map<string, string | null>,
+): Promise<boolean> {
+  const pathRe = TYPE_PATHS[sel.type];
+  for (const f of files) {
+    if (!pathRe.test(f)) continue;
+    if (!sel.subtype) return true;
+    const contentRe = SUBTYPE_CONTENT[`${sel.type}.${sel.subtype}`];
+    if (!contentRe || !root) return true; // unknown subtype / no root: fail open
+    if (!contentCache.has(f)) {
+      const body = await fs
+        .readFile(path.join(root, f), "utf8")
+        .then((s) => s.slice(0, 64_000))
+        .catch(() => null);
+      contentCache.set(f, body);
+    }
+    const body = contentCache.get(f);
+    if (body === null || body === undefined || contentRe.test(body)) return true;
+  }
+  return false;
 }
 
 let cache: { baseline: string; modules: Module[]; personas: Map<string, string> } | null = null;
@@ -45,12 +100,21 @@ export function globToRegex(glob: string): RegExp {
   return new RegExp(`(^|/)${body}$`, "i");
 }
 
-function parseFrontmatter(raw: string): { applyTo: string | null; body: string } {
+function parseFrontmatter(raw: string): {
+  applyTo: string | null;
+  appliesToType: string | null;
+  body: string;
+} {
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!m) return { applyTo: null, body: raw };
+  if (!m) return { applyTo: null, appliesToType: null, body: raw };
   const fm = m[1];
   const apply = fm.match(/applyTo:\s*["']?([^"'\r\n]+)["']?/);
-  return { applyTo: apply ? apply[1].trim() : null, body: raw.slice(m[0].length) };
+  const type = fm.match(/appliesToType:\s*["']?([^"'\r\n]+)["']?/);
+  return {
+    applyTo: apply ? apply[1].trim() : null,
+    appliesToType: type ? type[1].trim() : null,
+    body: raw.slice(m[0].length),
+  };
 }
 
 async function load() {
@@ -62,10 +126,11 @@ async function load() {
   for (const f of await fs.readdir(instDir).catch(() => [] as string[])) {
     if (!f.endsWith(".md")) continue;
     const raw = await fs.readFile(path.join(instDir, f), "utf8");
-    const { applyTo, body } = parseFrontmatter(raw);
+    const { applyTo, appliesToType, body } = parseFrontmatter(raw);
     modules.push({
       name: f.replace(/\.instructions\.md$/, ""),
       applyTo: applyTo ? globToRegex(applyTo) : null,
+      appliesToType: appliesToType ? parseTypeSelector(appliesToType) : null,
       body: body.trim(),
     });
   }
@@ -81,18 +146,24 @@ async function load() {
 }
 
 /** The rules relevant to a set of files: baseline + every module whose
- * applyTo matches at least one file (unscoped modules always included).
- * With no files known yet (e.g. investigation steps), returns baseline +
- * unscoped modules only. */
-export async function standardsFor(files: string[]): Promise<string> {
+ * applyTo glob or appliesToType selector matches at least one file (modules
+ * with neither are always included). With no files known yet (e.g.
+ * investigation steps), returns baseline + unscoped modules only. `root`
+ * enables content-based subtype checks (Flow[recordTriggered], ApexClass[test]);
+ * without it, a matching type includes the module regardless of subtype. */
+export async function standardsFor(files: string[], root?: string): Promise<string> {
   const lib = await load();
   const norm = files.map((f) => f.replace(/\\/g, "/"));
   const parts: string[] = [];
+  const contentCache = new Map<string, string | null>();
   if (lib.baseline) parts.push(lib.baseline.trim());
   for (const m of lib.modules) {
-    if (m.applyTo === null || norm.some((f) => m.applyTo!.test(f))) {
-      parts.push(`## ${m.name}\n${m.body}`);
+    let applies = m.applyTo === null && m.appliesToType === null; // unscoped
+    if (!applies && m.applyTo) applies = norm.some((f) => m.applyTo!.test(f));
+    if (!applies && m.appliesToType) {
+      applies = await typeMatches(m.appliesToType, norm, root, contentCache);
     }
+    if (applies) parts.push(`## ${m.name}\n${m.body}`);
   }
   return parts.join("\n\n");
 }

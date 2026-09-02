@@ -54,6 +54,12 @@ function git(root: string, args: string[]): Promise<{ ok: boolean; stdout: strin
 async function project(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "dhruva-shadow-"));
   made.push(root);
+  // These tests reproduce LEGACY projects, whose shadow store lives inside
+  // the project (fresh projects keep it outside, in the user's config dir).
+  // Pre-creating the in-project git dir is what makes the harness pick the
+  // legacy location - exactly the state an older version left behind.
+  await fs.mkdir(path.join(root, ".dhruva", "shadow.git"), { recursive: true });
+  await git(root, ["init", "-q"]);
   await fs.writeFile(
     path.join(root, "sfdx-project.json"),
     JSON.stringify({ packageDirectories: [{ path: "force-app", default: true }] }),

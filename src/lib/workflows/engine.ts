@@ -10,6 +10,7 @@ import { persona, standardsFor } from "@/lib/standardsLibrary";
 import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import { skillsPrompt } from "@/lib/projectSkills";
+import { projectInventory } from "@/lib/projectInventory";
 import { workRemaining, WORK_INSTRUCTION } from "@/lib/workflows/workRemaining";
 import { resolveInside } from "@/lib/fsguard";
 import { OUTCOME_INSTRUCTION } from "@/lib/outcome";
@@ -809,7 +810,10 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
         let recordedOutput = "";
         for (
           let round = 1;
-          re && from >= 0 && from < i && round <= max && !stalled && re.test(step.output);
+          // trigger tested against the TAIL only: the verdict lives at the end
+          // of the output, and a workflow-authored regex against a 5MB string
+          // is a ReDoS waiting to happen
+          re && from >= 0 && from < i && round <= max && !stalled && re.test(step.output.slice(-100_000));
           round++
         ) {
           rounds = round;
@@ -1601,7 +1605,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         ...(run.affected ?? []),
         ...(run.changes ?? []).map((c) => c.file),
       ];
-      const rules = (await standardsFor(scopeFiles).catch(() => "")) || STANDARDS_PROMPT;
+      const rules = (await standardsFor(scopeFiles, run.root).catch(() => "")) || STANDARDS_PROMPT;
       const role = def.persona ? await persona(def.persona).catch(() => "") : "";
       // project knowledge (.dhruva/skills/*.md) - the org-specific layer,
       // injected for every vendor; audited per step below
@@ -1617,6 +1621,15 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const stateBlock = await designStateBlock(run, def);
       const documentBlock = await designDocumentBlock(run, def);
       const docs = await quotedDocs(run, def.prompt ?? "");
+      // Investigation and design steps get the project inventory: "does this
+      // object have a trigger" answered by engine-parsed ground truth instead
+      // of by how well the agent happens to search (a trigger's NAME says
+      // nothing about its object). Implement/review steps skip it - their
+      // scope arrives via the plan and the change list.
+      const inventory =
+        def.role === "read" || def.role === "design"
+          ? await projectInventory(run.root).catch(() => "")
+          : "";
       const prompt =
         `You are working inside the Salesforce DX project at ${run.root} ` +
         `(your current working directory). Only read and modify files in this project.\n` +
@@ -1628,6 +1641,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         (role ? `${role}\n\n` : "") +
         `MANDATORY TEAM STANDARDS:\n${rules}\n` +
         skills.block +
+        inventory +
         `\n` +
         stateBlock +
         template(def.prompt ?? "", run, docs) +
@@ -2064,11 +2078,15 @@ function expandArgs(argv: string[], run: RunState): string[] | null {
     if (a === "{changedSourceDirs}") {
       const files = (run.changes ?? []).filter((c) => c.status !== "deleted");
       if (files.length === 0) return null;
-      // Refuse, never truncate: silently deploying/validating the first 50 of
-      // a larger change set reports success for work that never shipped.
-      if (files.length > 50) {
+      // Refuse, never truncate: silently deploying/validating a SUBSET of a
+      // larger change set reports success for work that never shipped. The
+      // bound is the real one - command-line length (cmd.exe caps near 8k) -
+      // not an arbitrary file count.
+      let argChars = 0;
+      for (const f of files) argChars += f.file.length + 15;
+      if (argChars > 6000) {
         throw new Error(
-          `${files.length} changed files exceed the 50-file --source-dir limit - ` +
+          `${files.length} changed files exceed the command-line budget for --source-dir - ` +
             `deploy this run manually with a manifest (sf project deploy start -x package.xml)`,
         );
       }

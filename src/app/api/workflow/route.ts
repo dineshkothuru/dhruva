@@ -12,6 +12,7 @@ import {
   deleteCustomWorkflow,
   listCustomWorkflows,
   loadWorkflow,
+  projectWorkflowUntrusted,
   saveCustomWorkflow,
 } from "@/lib/workflows/custom";
 import {
@@ -246,6 +247,17 @@ export async function POST(req: Request) {
   if (b.action === "start") {
     const def = typeof b.workflow === "string" ? await loadWorkflow(root, b.workflow) : null;
     if (!def) {
+      if (typeof b.workflow === "string" && (await projectWorkflowUntrusted(root, b.workflow))) {
+        return NextResponse.json(
+          {
+            error:
+              "this workflow ships with the project repo and has not been approved on this " +
+              "machine (or changed since it was). Review it in the workflow builder and save " +
+              "it - saving records your approval and makes it runnable.",
+          },
+          { status: 403 },
+        );
+      }
       return NextResponse.json({ error: "unknown workflow" }, { status: 400 });
     }
     if (!isAgentId(b.agent)) {

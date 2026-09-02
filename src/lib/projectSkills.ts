@@ -139,6 +139,13 @@ export async function skillsPrompt(
     }
     const raw = await readSkill(root, m.name);
     if (!raw) continue;
+    // The save path scans for secrets, but a skill file can also be DROPPED
+    // into .dhruva/skills by an agent or arrive with a clone - scan at read
+    // time too, or the save-path scan is a fence with an open side door.
+    if (findSecret(raw)) {
+      body += `\n## ${m.name}\n[engine] skill withheld - it contains what looks like a credential; remove the secret and re-save it.\n`;
+      continue;
+    }
     names.push(m.name);
     body += `\n## ${m.name}\n${parseSkill(raw).body.trim()}\n`;
   }

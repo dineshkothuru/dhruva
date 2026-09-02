@@ -1,19 +1,72 @@
+import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { resolveInside } from "@/lib/fsguard";
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import { execFile } from "node:child_process";
 
 /** Deterministic before/after snapshots of the attached project, independent
  * of whether the customer uses git: the harness keeps a PRIVATE shadow git
- * repo under <project>/.dhruva/shadow.git (git as a snapshot engine -
- * no remote, never pushed, invisible to the customer's own git because the
- * work-tree's .git dir is untouched and .dhruva is excluded). */
+ * repo (git as a snapshot engine - no remote, never pushed, invisible to the
+ * customer's own git because the work-tree's .git dir is untouched and
+ * .dhruva is excluded).
+ *
+ * WHERE it lives is a trust decision. It used to sit inside the project
+ * (<project>/.dhruva/shadow.git) - but agents run with write access to the
+ * project, and a git dir an agent can write is a git dir whose config and
+ * hooks the agent controls, executed later by the ENGINE's own git calls.
+ * New projects therefore keep the store in the user's config dir, keyed by
+ * project path. Legacy in-project stores keep working (their baselines live
+ * there); for those, runGit pins the dangerous keys per invocation and
+ * ensureShadow rewrites the config file wholesale on every use. */
 
 const SHADOW_DIRNAME = ".dhruva";
 
+const shadowDirCache = new Map<string, string>();
 function shadowGitDir(root: string) {
-  return path.join(root, SHADOW_DIRNAME, "shadow.git");
+  const hit = shadowDirCache.get(root);
+  if (hit) return hit;
+  const legacy = path.join(root, SHADOW_DIRNAME, "shadow.git");
+  let dir = legacy;
+  if (!existsSync(path.join(legacy, "HEAD"))) {
+    const cfg = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
+    const key =
+      process.platform === "win32" ? path.resolve(root).toLowerCase() : path.resolve(root);
+    dir = path.join(
+      cfg,
+      "dhruva",
+      "shadow",
+      createHash("sha256").update(key).digest("hex").slice(0, 16),
+      "shadow.git",
+    );
+  }
+  shadowDirCache.set(root, dir);
+  return dir;
 }
+
+/** The shadow repo's ENTIRE config, rewritten on every ensureShadow. -c pins
+ * cover fsmonitor/hooks, but config can also define filter/diff drivers that
+ * execute on add/diff - the only reliable stance toward a file an agent may
+ * have written is to replace it, not to trust it. */
+const CANONICAL_CONFIG = [
+  "[core]",
+  "\trepositoryformatversion = 0",
+  "\tfilemode = false",
+  "\tbare = false",
+  "\tlogallrefupdates = true",
+  "\tsymlinks = false",
+  "\tignorecase = true",
+  "\tlongpaths = true", // org retrieves exceed Windows' 260-char path limit
+  "\tautocrlf = false", // snapshots must be byte-faithful
+  "\tsafecrlf = false",
+  "\tquotepath = false", // non-ASCII paths must not be octal-escaped in diffs
+  "\tfsmonitor = false",
+  "\thooksPath = /dev/null",
+  "[user]",
+  "\temail = harness@local",
+  "\tname = dhruva",
+  "",
+].join("\n");
 
 function runGit(root: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
   const fixed = [
@@ -139,19 +192,11 @@ async function ensureShadow(root: string): Promise<boolean> {
       [...EXCLUDES, ""].join("\n"),
       "utf8",
     );
-    await runGit(root, ["config", "user.email", "harness@local"]);
-    await runGit(root, ["config", "user.name", "dhruva"]);
-    // Salesforce org retrieves routinely exceed Windows' 260-char path limit
-    // (e.g. nested report folders) - long paths must be on or add fails.
-    await runGit(root, ["config", "core.longpaths", "true"]);
-    // Snapshots must be byte-faithful; no line-ending rewriting or warnings.
-    await runGit(root, ["config", "core.autocrlf", "false"]);
-    await runGit(root, ["config", "core.safecrlf", "false"]);
-    // Without this, `diff --name-status` octal-escapes non-ASCII paths
-    // (translations, report folder labels) and the quoted string propagates
-    // verbatim into the change list, where reads/restores/deploys then fail.
-    await runGit(root, ["config", "core.quotepath", "false"]);
   }
+  // EVERY use, not just creation: for a legacy in-project store this erases
+  // whatever an agent may have planted (filter/diff drivers included), and it
+  // retro-applies settings added since the repo was created (quotepath).
+  await fs.writeFile(path.join(gitDir, "config"), CANONICAL_CONFIG, "utf8").catch(() => {});
   // keep the customer's git (when present) blind to the shadow store
   const realGitInfo = path.join(root, ".git", "info");
   try {
