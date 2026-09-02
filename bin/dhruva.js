@@ -43,7 +43,12 @@ if (process.argv[2] === "app") {
   (async () => {
     console.log("[dhruva] fetching the latest desktop installer...");
     const base = "https://github.com/dineshkothuru/dhruva/releases/latest/download/";
-    const yml = await (await fetch(base + "latest.yml")).text();
+    const feed = await fetch(base + "latest.yml");
+    if (!feed.ok) {
+      console.error(`[dhruva] could not read the release feed (HTTP ${feed.status})`);
+      process.exit(1);
+    }
+    const yml = await feed.text();
     const name = (yml.match(/^path:\s*(.+)$/m) || [])[1]?.trim();
     if (!name || !/^[\w.-]+\.exe$/.test(name)) {
       console.error("[dhruva] could not resolve the installer from the release feed");

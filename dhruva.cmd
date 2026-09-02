@@ -17,6 +17,12 @@ where node >nul 2>nul || (
   echo [dhruva] MISSING: Node.js 20+ is required. Install the LTS from https://nodejs.org and re-run.
   exit /b 1
 )
+rem existence is not enough: an old Node fails the build with confusing errors
+for /f "tokens=1 delims=." %%v in ('node -p "process.versions.node" 2^>nul') do set NODE_MAJOR=%%v
+if defined NODE_MAJOR if %NODE_MAJOR% LSS 20 (
+  echo [dhruva] Node.js %NODE_MAJOR% found, but 20+ is required. Update from https://nodejs.org and re-run.
+  exit /b 1
+)
 where git >nul 2>nul || (
   echo [dhruva] MISSING: git is required. Install from https://git-scm.com and re-run.
   exit /b 1

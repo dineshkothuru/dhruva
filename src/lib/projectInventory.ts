@@ -38,11 +38,11 @@ function list(label: string, items: string[]): string {
 }
 
 export async function projectInventory(root: string): Promise<string> {
-  let triggers: string[] = [];
+  const triggers: string[] = [];
   let classes: string[] = [];
   let objects: string[] = [];
   let lwc: string[] = [];
-  let flows: string[] = [];
+  const flows: string[] = [];
 
   for (const pkg of await packageDirs(root)) {
     const base = path.join(root, pkg, "main", "default");

@@ -161,9 +161,17 @@ async function harvestSandbox(
       }
       if (!e.isFile()) continue;
       const relInPkg = path.relative(pkgRoot, abs).split(path.sep).join("/");
-      if (wasRetrieved && !wasRetrieved(relInPkg)) continue;
       const content = await fs.readFile(abs, "utf8").catch(() => null);
       if (content === null) continue;
+      if (wasRetrieved && !wasRetrieved(relInPkg)) {
+        // unreported: bytes differing from the project's own copy prove the
+        // retrieve wrote it anyway; byte-identical stays ambiguous (seed vs
+        // identical-in-org) and must not be cached as org content
+        const localSib = await fs
+          .readFile(path.join(root, pkgDir, relInPkg), "utf8")
+          .catch(() => null);
+        if (localSib === content) continue;
+      }
       cachePut(root, `${pkgDir}/${relInPkg}`, { org: content, type, at });
     }
   };
@@ -449,9 +457,15 @@ export async function compareFileWithOrg(
     // did not report are skipped - they are local content, not org content.
     await harvestSandbox(sandbox, root, split.pkg, now, type, wasRetrieved);
 
-    const orgContent = wasRetrieved(split.rest)
-      ? await fs.readFile(target, "utf8").catch(() => null)
-      : null;
+    // Tiebreak for sf versions that might report only CHANGED files: bytes
+    // that DIFFER from the seeded copy prove the retrieve wrote this file,
+    // whatever the report says. Only "unreported AND byte-identical to the
+    // seed" is read as deleted-in-org.
+    const afterRetrieve = await fs.readFile(target, "utf8").catch(() => null);
+    const orgContent =
+      afterRetrieve !== null && (wasRetrieved(split.rest) || afterRetrieve !== local)
+        ? afterRetrieve
+        : null;
     if (orgContent === null) {
       // The component came back but this particular file did not - a bundle
       // whose org version no longer has this piece. Deleted in the org, then.

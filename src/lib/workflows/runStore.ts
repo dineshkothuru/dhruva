@@ -137,14 +137,20 @@ const pendingPersist = new Map<string, ReturnType<typeof setTimeout>>();
  * 60k; with the cap raised to a runaway backstop it is not. Coalesce the chunk
  * writes and let the boundaries - step end, gate, status change - call persist()
  * directly, which also cancels anything pending here. */
+/** Rough size of each run's last serialized audit json - big runs (a 30k-file
+ * retrieve's change list rides in every write) debounce longer, because the
+ * cost of the streaming path is stringify-bytes × writes-per-second. */
+const lastSize = new Map<string, number>();
+
 export function persistSoon(run: RunState) {
   if (pendingPersist.has(run.runId)) return;
+  const delay = (lastSize.get(run.runId) ?? 0) > 2_000_000 ? 1_000 : PERSIST_DEBOUNCE_MS;
   pendingPersist.set(
     run.runId,
     setTimeout(() => {
       pendingPersist.delete(run.runId);
       void persist(run);
-    }, PERSIST_DEBOUNCE_MS),
+    }, delay),
   );
 }
 
@@ -164,7 +170,9 @@ export async function persist(run: RunState) {
       // streams, so an in-place write killed mid-stream left truncated JSON -
       // and the run live at crash time is exactly the one whose audit matters
       const file = path.join(dir, `${run.runId}.json`);
-      await fs.writeFile(`${file}.tmp`, JSON.stringify(run, null, 2), "utf8");
+      const json = JSON.stringify(run, null, 2);
+      lastSize.set(run.runId, json.length);
+      await fs.writeFile(`${file}.tmp`, json, "utf8");
       await fs.rename(`${file}.tmp`, file);
     } catch {
       /* audit persistence is best-effort */

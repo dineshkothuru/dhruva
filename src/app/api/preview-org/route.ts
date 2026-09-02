@@ -65,9 +65,12 @@ export async function POST(req: Request) {
   const key = root.toLowerCase();
 
   if (b.action === "open") {
+    // NOT detached: a detached shell child on Windows gets its own console
+    // window and windowsHide is ignored - the user saw a CLI box flash up.
+    // The command only triggers a browser open and exits in seconds, so it
+    // does not need to outlive the server process.
     const child = spawn("sf org open", {
       cwd: root,
-      detached: true,
       stdio: "ignore",
       windowsHide: true,
       shell: true,

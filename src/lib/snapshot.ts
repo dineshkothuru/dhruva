@@ -426,6 +426,20 @@ export async function restoreFiles(
   }
   await clearStaleLock(root);
 
+  // ONE tree listing instead of a cat-file per file, and BATCHED checkouts
+  // instead of a git process per file: the old shape was two sequential
+  // process spawns per path, and with the change list no longer capped a
+  // large restore meant thousands of spawns inside one HTTP request.
+  const tree = await runGit(root, ["ls-tree", "-r", "--name-only", commit]);
+  if (!tree.ok) {
+    return {
+      ...out,
+      failed: files.map((f) => ({ file: f, reason: "could not read the snapshot commit" })),
+    };
+  }
+  const inCommit = new Set(tree.stdout.split("\n").map((l) => l.trim()).filter(Boolean));
+
+  const toRestore: string[] = [];
   for (const raw of files) {
     const rel = raw.replace(/\\/g, "/");
     // Never step outside the project, whatever the recorded change list says.
@@ -434,15 +448,10 @@ export async function restoreFiles(
       out.failed.push({ file: rel, reason: "path escapes the project" });
       continue;
     }
-
-    const existed = await runGit(root, ["cat-file", "-e", `${commit}:${rel}`]);
-    if (existed.ok) {
-      const res = await runGit(root, ["checkout", commit, "--", rel]);
-      if (res.ok) out.restored.push(rel);
-      else out.failed.push({ file: rel, reason: "could not restore from the snapshot" });
+    if (inCommit.has(rel)) {
+      toRestore.push(rel);
       continue;
     }
-
     // Not in the baseline: the run created it, so removing it is the restore.
     try {
       await fs.rm(abs, { force: true });
@@ -451,6 +460,33 @@ export async function restoreFiles(
       out.failed.push({ file: rel, reason: String(e).slice(0, 200) });
     }
   }
+
+  // checkout in argv-sized chunks; a failed chunk retries per file so one bad
+  // path cannot take down the other ninety-nine
+  let batch: string[] = [];
+  let batchChars = 0;
+  const flush = async () => {
+    if (batch.length === 0) return;
+    const chunk = batch;
+    batch = [];
+    batchChars = 0;
+    const res = await runGit(root, ["checkout", commit, "--", ...chunk]);
+    if (res.ok) {
+      out.restored.push(...chunk);
+      return;
+    }
+    for (const rel of chunk) {
+      const r = await runGit(root, ["checkout", commit, "--", rel]);
+      if (r.ok) out.restored.push(rel);
+      else out.failed.push({ file: rel, reason: "could not restore from the snapshot" });
+    }
+  };
+  for (const rel of toRestore) {
+    if (batchChars + rel.length > 6000 || batch.length >= 100) await flush();
+    batch.push(rel);
+    batchChars += rel.length + 1;
+  }
+  await flush();
   return out;
 }
 
