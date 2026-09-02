@@ -37,12 +37,16 @@ describe("auto-approve does not launder a failed review", () => {
     expect(src).toMatch(/const auto = run\.autoGate === true && !blocked/);
   });
 
-  it("treats an unparseable or missing verdict as nothing to hold back on", async () => {
+  it("fails CLOSED on a missing verdict - a review that ran cannot wave the gate through", async () => {
     const src = await fs.readFile(ENGINE, "utf8");
     const fn = src.slice(src.indexOf("function blockedReviewBefore"));
     const body = fn.slice(0, fn.indexOf("\n}\n"));
-    // no verdict found -> "" -> the gate behaves exactly as it did before
-    expect(body).toContain("if (!verdict) return \"\";");
+    // A review that RAN but declared no parseable verdict blocks the auto-gate:
+    // the old fail-open reading ("no verdict -> nothing to hold back on") let
+    // quoted text or an omitted line launder a blocked review into an
+    // auto-approval. Only a review that never ran (skipped / empty) abstains.
+    expect(body).toContain("no VERDICT line - treated as blocked");
+    expect(body).toMatch(/status !== "skipped"/);
     expect(body).toMatch(/verdict === "APPROVED" \|\| verdict === "PASS"/);
     // only looks back as far as the previous gate
     expect(body).toContain('if (d.type === "gate") break;');

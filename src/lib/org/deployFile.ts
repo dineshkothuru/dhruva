@@ -84,6 +84,7 @@ export async function deployFile(
     return { ok: false, checkOnly, message: "file not found on disk", files: [] };
   }
 
+  const waitMinutes = Math.max(3, Math.ceil(timeoutMs / 60_000));
   const args = [
     "project",
     "deploy",
@@ -92,11 +93,26 @@ export async function deployFile(
     `"${rel}"`,
     "--json",
     "--wait",
-    String(Math.max(3, Math.ceil(timeoutMs / 60_000))),
+    String(waitMinutes),
   ];
   if (checkOnly) args.push("--dry-run");
 
-  const { stdout, stderr, ok } = await runSf(args, root, timeoutMs);
+  // The process timeout must OUTLIVE sf's own --wait (plus its ~6s boot):
+  // killing the wrapper first orphans the sf process, whose org-side deploy
+  // completes anyway - while this function reported "failed".
+  const { stdout, stderr, ok } = await runSf(args, root, waitMinutes * 60_000 + 60_000);
+  if (!ok && !stdout.trim()) {
+    // killed or died without output: the org-side outcome is UNKNOWN, and
+    // claiming failure here is how a "failed" deploy ends up live in the org
+    return {
+      ok: false,
+      checkOnly,
+      message:
+        "deploy outcome unknown - the CLI was interrupted before reporting. " +
+        "Check Setup → Deployment Status in the org before retrying.",
+      files: [],
+    };
+  }
   const parsed = parseSfJson(stdout);
   const result = parsed?.result ?? parsed;
 

@@ -146,6 +146,9 @@ async function harvestSandbox(
   pkgDir: string,
   at: number,
   type?: string,
+  /** when given, only files sf reported retrieving are cached as org content -
+   * the rest are the seed copies and caching them would poison the compare */
+  wasRetrieved?: (relInPkg: string) => boolean,
 ): Promise<void> {
   const pkgRoot = path.join(sandbox, "pkg");
   const walk = async (dir: string): Promise<void> => {
@@ -158,6 +161,7 @@ async function harvestSandbox(
       }
       if (!e.isFile()) continue;
       const relInPkg = path.relative(pkgRoot, abs).split(path.sep).join("/");
+      if (wasRetrieved && !wasRetrieved(relInPkg)) continue;
       const content = await fs.readFile(abs, "utf8").catch(() => null);
       if (content === null) continue;
       cachePut(root, `${pkgDir}/${relInPkg}`, { org: content, type, at });
@@ -303,7 +307,13 @@ export async function compareFileWithOrg(
   const fast = await tryToolingFetch(root, rel, split.pkg, split.rest);
   if (fast) return { ...fast, local };
 
-  const sandbox = path.join(os.tmpdir(), "dhruva-compare", `${process.pid}-${seq++}`);
+  // random tag: seq resets on a dev-mode reload in the same pid, and a reused
+  // sandbox path let one compare's cleanup delete another's live sandbox
+  const sandbox = path.join(
+    os.tmpdir(),
+    "dhruva-compare",
+    `${process.pid}-${Math.random().toString(36).slice(2, 8)}-${seq++}`,
+  );
   const pkgRoot = path.join(sandbox, "pkg");
   try {
     await fs.mkdir(path.join(sandbox, ".sf"), { recursive: true });
@@ -405,8 +415,26 @@ export async function compareFileWithOrg(
     }
     const now = Date.now();
     const parsed = parseSfJson(stdout);
-    const first = (parsed?.result?.files ?? [])[0];
+    const fileReports = (parsed?.result?.files ?? []) as Array<Record<string, unknown>>;
+    const first = fileReports[0];
     const type = typeof first?.type === "string" ? first.type : undefined;
+
+    // The sandbox was SEEDED with local copies so sf knows what to retrieve -
+    // which means "the file is still on disk after the retrieve" proves
+    // nothing: sf overwrites retrieved files but never deletes local-only
+    // ones. A file the org no longer has reads back as the seeded local copy,
+    // byte-identical, and the compare would say "no differences" when the
+    // truth is "deleted in the org". Only files sf REPORTED retrieving count
+    // as org content. (Older sf versions that report no per-file list fall
+    // back to trusting the disk - the pre-existing behavior.)
+    const reported = fileReports
+      .map((f) => (typeof f.filePath === "string" ? f.filePath.replace(/\\/g, "/") : ""))
+      .filter(Boolean);
+    const wasRetrieved = (relInPkg: string): boolean => {
+      if (reported.length === 0) return true; // no per-file report - trust disk
+      const suffix = "pkg/" + relInPkg.replace(/\\/g, "/");
+      return reported.some((p) => p.endsWith(suffix));
+    };
 
     if (outcome.missing) {
       // "Not in the org" is a real answer and worth caching too, so a locally
@@ -417,10 +445,13 @@ export async function compareFileWithOrg(
 
     // Harvest the WHOLE component, not just the file asked for. The retrieve
     // already paid for all of it, so caching the siblings makes comparing the
-    // second file of a bundle free instead of another 15s.
-    await harvestSandbox(sandbox, root, split.pkg, now, type);
+    // second file of a bundle free instead of another 15s. Seeded copies sf
+    // did not report are skipped - they are local content, not org content.
+    await harvestSandbox(sandbox, root, split.pkg, now, type, wasRetrieved);
 
-    const orgContent = await fs.readFile(target, "utf8").catch(() => null);
+    const orgContent = wasRetrieved(split.rest)
+      ? await fs.readFile(target, "utf8").catch(() => null)
+      : null;
     if (orgContent === null) {
       // The component came back but this particular file did not - a bundle
       // whose org version no longer has this piece. Deleted in the org, then.

@@ -91,9 +91,9 @@
     "AGENTS.md"
   ],
   "scripts": {
-    "dev": "next dev -p 3005",
+    "dev": "next dev -H 127.0.0.1 -p 3005",
     "build": "next build",
-    "start": "next start -p 3005",
+    "start": "next start -H 127.0.0.1 -p 3005",
     "lint": "eslint src",
     "app": "electron .",
     "app:dist": "set DHRUVA_STANDALONE=1&& next build && electron-builder --win",

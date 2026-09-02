@@ -93,7 +93,16 @@ export function runSf(
         shell: true,
         windowsHide: true,
         maxBuffer: 64 * 1024 * 1024,
-        env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
+        env: {
+          ...process.env,
+          NO_COLOR: "1",
+          FORCE_COLOR: "0",
+          // shell:true resolves the bare command via cmd.exe, which searches the
+          // CURRENT DIRECTORY first on Windows - and cwd is the attached (untrusted)
+          // project, so a planted sf.cmd would run. This flag removes cwd from that
+          // search; the real CLI on PATH still resolves.
+          NoDefaultCurrentDirectoryInExePath: "1",
+        },
       },
       (err, stdout, stderr) =>
         resolve({ stdout: stdout ?? "", stderr: stderr ?? "", ok: !err }),
@@ -393,7 +402,17 @@ export async function retrieveMetadata(
   // The manifest path is generated here, never supplied - it is the only part
   // of the command line that varies, and it stays inside .dhruva/tmp with a
   // name that cannot contain a shell character.
-  const rel = ".dhruva/tmp/org-retrieve-" + process.pid + "-" + (seq++) + ".xml";
+  // pid+seq alone collided across dev-mode reloads (seq resets in the same
+  // pid, and the second retrieve overwrote the first's live manifest) - a
+  // per-process random tag makes the name unique across reloads too
+  const rel =
+    ".dhruva/tmp/org-retrieve-" +
+    process.pid +
+    "-" +
+    Math.random().toString(36).slice(2, 8) +
+    "-" +
+    (seq++) +
+    ".xml";
   const abs = path.join(cwd, rel);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.writeFile(abs, manifest, "utf8");

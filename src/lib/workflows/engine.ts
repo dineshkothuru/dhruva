@@ -21,6 +21,7 @@ import {
   FINDINGS_INSTRUCTION,
   parseFindings,
   reviewFeedback,
+  verdictOf,
 } from "@/lib/findings";
 import {
   designFromOutput,
@@ -76,9 +77,20 @@ export function getRun(runId: string): RunState | undefined {
 
 /** Is a run currently active (running or parked at a gate) for this project?
  * The chat route checks this before re-baselining the shared snapshot store. */
+/** Roots compare case-insensitively on win32: the same project attached as
+ * D:\proj and d:\proj must count as ONE project, or the one-run guard has a
+ * hole exactly the width of a lowercase drive letter. */
+function sameRoot(a: string, b: string): boolean {
+  const norm = (p: string) => {
+    const r = path.resolve(p);
+    return process.platform === "win32" ? r.toLowerCase() : r;
+  };
+  return norm(a) === norm(b);
+}
+
 export function hasActiveRun(root: string): boolean {
   for (const r of runs.values()) {
-    if (r.root === root && (r.status === "running" || r.status === "waiting_gate")) return true;
+    if (sameRoot(r.root, root) && (r.status === "running" || r.status === "waiting_gate")) return true;
   }
   return false;
 }
@@ -88,7 +100,7 @@ export function hasActiveRun(root: string): boolean {
 export function pendingGateCount(root: string): number {
   let n = 0;
   for (const r of runs.values()) {
-    if (r.root === root && r.status === "waiting_gate") n++;
+    if (sameRoot(r.root, root) && r.status === "waiting_gate") n++;
   }
   return n;
 }
@@ -216,6 +228,28 @@ export function startRun(
     })),
   };
   if (autoGate) run.autoGate = true;
+  // Ambient-instruction check: agent CLIs run with cwd = this project, so any
+  // vendor instruction files IN the project (CLAUDE.md, AGENTS.md, Copilot
+  // instructions, skills) load into every agent step alongside the engine's
+  // injected standards. That is both a duplicate/contradictory-standards risk
+  // and a prompt-injection surface on a repo the user did not write. Surfaced
+  // on the first step so the human sees it before approving anything.
+  {
+    const ambient = [
+      "CLAUDE.md",
+      "AGENTS.md",
+      path.join(".github", "copilot-instructions.md"),
+      path.join(".github", "instructions"),
+      path.join(".claude", "skills"),
+      path.join(".cursor", "rules"),
+    ].filter((p) => existsSync(path.join(root, p)));
+    if (ambient.length && run.steps[0]) {
+      run.steps[0].output =
+        `[engine] this project carries its own agent instruction files (${ambient.join(", ")}). ` +
+        `Agent CLIs load them ambiently in addition to the engine's standards - review them ` +
+        `before trusting this run's agent steps: instructions in a repo are input to the agent.\n`;
+    }
+  }
   if (inherit?.baseCommit) run.baseCommit = inherit.baseCommit;
   // The chain's original "before" carries across every phase: a chain is one
   // piece of work, so undo on phase 3 must still reach the state before phase 1.
@@ -300,6 +334,10 @@ export async function resumeRun(
   if (run.status === "running" || run.status === "waiting_gate" || run.status === "done") {
     return null;
   }
+  // One project, one run - the same invariant startRun enforces. Resuming an
+  // old run while another is live would put two executors on one working tree
+  // and one shadow store, corrupting both runs' baselines.
+  if (hasActiveRun(root)) return null;
   const { loadWorkflow } = await import("./custom");
   const def = await loadWorkflow(root, run.workflowId);
   if (!def) return null;
@@ -331,6 +369,9 @@ export async function resumeRun(
     run.roleModels = roleModels;
     run.steps[start].output += "[engine] role-model settings refreshed from your current configuration\n";
   }
+  // Re-check after the awaits above: two concurrent resume calls both pass
+  // the guards before either registers, so the second must lose here.
+  if (hasActiveRun(root)) return null;
   run.status = "running";
   run.endCommit = undefined;
   runs.set(run.runId, run);
@@ -726,6 +767,19 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           stepDef.role === "review" ? countBucket(parseFindings(step.output).findings.length) : undefined,
       });
       if (stepDef.type === "agent") collectManual(run, stepDef, step);
+      // A reviewer paired to an artifact records its round on EVERY execution
+      // path. The fold used to live only inside the autoRevise branch, so a
+      // reviewOf step WITHOUT autoRevise never wrote its findings into the
+      // design register - despite schema.ts promising the engine records them.
+      // (autoRevise steps record inside their own loop below, final round
+      // included - this must not double-record them.)
+      if (stepDef.type === "agent" && stepDef.reviewOf && !stepDef.autoRevise) {
+        const rel = def.steps.find((s) => s.id === stepDef.reviewOf)?.artifact;
+        if (rel) {
+          const round = (step.attempts?.length ?? 0) + 1;
+          await recordRound(run, template(rel, run).replace(/\\/g, "/"), step.output, round, step);
+        }
+      }
       // Bounded self-healing (before the human gate): a review step whose
       // verdict matches its trigger auto-revises its target with the findings
       // as feedback, then re-runs everything up to and including itself. The
@@ -900,14 +954,32 @@ async function recordRound(
  * all - absence of evidence must not become an accusation, so an unparseable
  * review is treated as "nothing to hold back on" and the gate behaves as it
  * did before. */
+/** Appended to a read-only step's output when the working tree changed during
+ * it. A review carrying this mark is treated as blocked by the auto-gate. */
+const READONLY_WROTE_MARK = "[engine] READ-ONLY VIOLATION:";
+
 function blockedReviewBefore(run: RunState, def: WorkflowDef, gateIndex: number): string {
   for (let k = gateIndex - 1; k >= 0; k--) {
     const d = def.steps[k];
     if (d.type === "gate") break; // an earlier gate already had its own say
     if (d.type !== "agent" || d.role !== "review") continue;
-    const out = run.steps.find((s) => s.id === d.id)?.output ?? "";
-    const verdict = out.match(/VERDICT:\s*([A-Z_]+)/i)?.[1]?.toUpperCase();
-    if (!verdict) return "";
+    const state = run.steps.find((s) => s.id === d.id);
+    const out = state?.output ?? "";
+    // a "read-only" review that wrote files has forfeited its gating power -
+    // whatever verdict it printed, a human decides, not the auto-gate
+    if (out.includes(READONLY_WROTE_MARK)) {
+      return `${d.id}: the read-only review modified project files - blocked`;
+    }
+    const verdict = verdictOf(out);
+    if (!verdict) {
+      // Fail CLOSED: a review that RAN but declared no parseable verdict must
+      // not wave the auto-gate through - only a skipped review abstains. The
+      // old fail-open reading let quoted text (or an injected reviewer simply
+      // omitting the line) launder a blocked review into an auto-approval.
+      return state && state.status !== "skipped" && out.trim()
+        ? `${d.id}: produced no VERDICT line - treated as blocked`
+        : "";
+    }
     if (verdict === "APPROVED" || verdict === "PASS") return "";
     const open = parseFindings(out).findings.filter((f) => f.severity === "critical").length;
     return open > 0
@@ -931,6 +1003,10 @@ async function replayRange(
     const replayDef = def.steps[k];
     if (replayDef.type === "gate") continue;
     if (replayDef.onlyIf && !run.inputs[replayDef.onlyIf]) continue;
+    // skipIf mirrors the main loop: a step the user satisfied with their own
+    // document (adopted artifact) must not be re-run by a revision - the
+    // replay would re-extract and overwrite the file they asked to keep
+    if (replayDef.skipIf && String(run.inputs[replayDef.skipIf] ?? "").trim()) continue;
     const replayStep = run.steps.find((s) => s.id === replayDef.id)!;
     // Keep the attempt that is about to be overwritten. Without this the run
     // history shows a single row for a step that ran three times, and every
@@ -966,6 +1042,28 @@ async function replayRange(
     }
     if (replayStep.status === "running") replayStep.status = "done";
     if (replayDef.type === "agent") collectManual(run, replayDef, replayStep);
+    // A gate-revise replay re-runs the reviewer, and without this fold the
+    // fresh round's findings never reached the design register - the gate
+    // cards the human was about to sign still showed the PREVIOUS round's
+    // states. Auto-revise replays skip it: that loop records its own rounds.
+    if (
+      replayDef.type === "agent" &&
+      replayDef.reviewOf &&
+      !reason.startsWith("auto-revise") &&
+      replayStep.output
+    ) {
+      const rel = def.steps.find((s) => s.id === replayDef.reviewOf)?.artifact;
+      if (rel) {
+        const round = (replayStep.attempts?.length ?? 0) + 1;
+        await recordRound(
+          run,
+          template(rel, run).replace(/\\/g, "/"),
+          replayStep.output,
+          round,
+          replayStep,
+        );
+      }
+    }
     await persist(run);
   }
   return true;
@@ -1010,7 +1108,8 @@ function nearestAgentIndex(def: WorkflowDef, i: number): number {
 function contractHeld(def: StepDef, output: string): string {
   if (def.emits === "findings") {
     if (parseFindings(output).findings.length > 0) return "";
-    if (/VERDICT:\s*(APPROVED|PASS)/i.test(output)) return ""; // a clean pass has none
+    const v = verdictOf(output);
+    if (v === "APPROVED" || v === "PASS") return ""; // a clean pass has none
     return `declared emits: "findings" but produced no parseable finding and no passing verdict`;
   }
   if (def.emits === "coverage") {
@@ -1084,9 +1183,10 @@ async function runStepTracked(run: RunState, def: StepDef, step: StepState): Pro
       // Counted against the DOCUMENT, not this step's output: a delta carries
       // three blocks, and measuring coverage against those would report the
       // other thirty-one as uncovered every round.
-      const whole = await fs
-        .readFile(path.join(run.root, rel), "utf8")
-        .catch(() => design);
+      const wholeAbs = resolveInside(run.root, rel);
+      const whole = wholeAbs
+        ? await fs.readFile(wholeAbs, "utf8").catch(() => design)
+        : design;
       // Existence is arithmetic, not opinion. The biggest class of review
       // finding is the design citing something this org does not have; a grep
       // settles it before the next round instead of after a 15-minute review.
@@ -1226,7 +1326,8 @@ async function adoptArtifact(
     if (!shape.test(body)) {
       return no(`"${name}" is not a requirement list (no "### REQ-nnn" blocks)`);
     }
-    const abs = path.join(run.root, rel);
+    const abs = resolveInside(run.root, rel);
+    if (!abs) return no(`artifact path "${rel}" escapes the project`);
     await fs.mkdir(path.dirname(abs), { recursive: true }).catch(() => {});
     await fs.writeFile(abs, body, "utf8").catch(() => {});
     const n = (body.match(/^###[ \t]+REQ-\d+/gm) ?? []).length;
@@ -1282,9 +1383,15 @@ function isDesignArtifact(rel: string): boolean {
   return /(^|\/)design\.md$/i.test(rel);
 }
 
-/** Write a document artifact exactly as its author wrote it. */
+/** Write a document artifact exactly as its author wrote it.
+ *
+ * `rel` comes out of template() and can carry run INPUTS - contained like
+ * every other expanded path, so a custom workflow's artifact template can
+ * never write outside the attached project. Thrown errors fail the step
+ * (the executor's try around runStepTracked). */
 async function writePlainArtifact(root: string, rel: string, body: string): Promise<void> {
-  const abs = path.join(root, rel);
+  const abs = resolveInside(root, rel);
+  if (!abs) throw new Error(`artifact path "${rel}" escapes the project - refused`);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.writeFile(abs, body.endsWith("\n") ? body : body + "\n", "utf8");
 }
@@ -1458,7 +1565,13 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       // and deploy. Every step downstream of here needs changed files, so they
       // will all skip; saying so once, here, is what makes the trace honest.
       step.output = changes.length
-        ? changes.map((c) => `${c.status.padEnd(8)} ${c.file}`).join("\n")
+        ? changes
+            .slice(0, 200)
+            .map((c) => `${c.status.padEnd(8)} ${c.file}`)
+            .join("\n") +
+          (changes.length > 200
+            ? `\n[engine] ...and ${changes.length - 200} more file(s) - the full list is tracked; only the display is capped`
+            : "")
         : [
             "no files changed - nothing was produced by this run",
             "",
@@ -1646,7 +1759,26 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         step.output += `[engine] no valid tasks file or nothing pending (${rel}) - running as a single step\n`;
       }
 
+      // readOnly is STRUCTURAL for claude (plan mode) and codex (OS sandbox)
+      // but best-effort for copilot (deny flags) and cursor (omitted --force).
+      // Trust is cheap to verify: fingerprint the change list around the step
+      // and treat any delta as a violation. A review that wrote files loses
+      // its gating power (see blockedReviewBefore) instead of being trusted.
+      const preReadOnly = def.readOnly ? await changesSince(run.root, run.baseCommit) : null;
       const ok = await spawnAgent(prompt, def.id);
+      if (def.readOnly) {
+        const post = await changesSince(run.root, run.baseCommit);
+        const fp = (l: { file: string; status: string }[] | null) =>
+          new Set((l ?? []).map((c) => `${c.status}:${c.file}`));
+        const before = fp(preReadOnly);
+        const wrote = [...fp(post)].filter((k) => !before.has(k));
+        if (wrote.length > 0) {
+          step.output +=
+            `\n${READONLY_WROTE_MARK} this step ran read-only but the working tree changed ` +
+            `during it (${wrote.slice(0, 10).join(", ")}${wrote.length > 10 ? ", ..." : ""}). ` +
+            `Its conclusions cannot be trusted to gate anything - review the files before approving.`;
+        }
+      }
       harvestAffectedFiles(run, step.output);
       if (!step.usage) step.usage = estimateUsage(run.agent, stepModel, prompt, step.output);
       return ok;
@@ -1759,6 +1891,32 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         return false;
       }
       const args = expandArgs(def.args ?? [], run);
+      // Validation approved the UNexpanded args - re-check the rules that
+      // template expansion could launder past it (an input value turning a
+      // benign sf command into a real deploy, or smuggling option args into
+      // git, where -c amounts to arbitrary command execution). Thrown, not
+      // returned: the executor's catch fails the step, and a refusal must stay
+      // distinguishable from the no-work skip below, which has its own
+      // contract (see optionalCli.test.ts).
+      if (args) {
+        const realDeploy = (a: string[]) =>
+          a.join(" ").includes("deploy start") && !a.includes("--dry-run");
+        if (def.bin === "sf" && realDeploy(args) && !realDeploy(def.args ?? [])) {
+          throw new Error(
+            "expanded args formed a real deploy the workflow definition never declared - " +
+              "refused (the deploy-needs-a-gate rule was validated against the unexpanded args)",
+          );
+        }
+        if (def.bin === "git") {
+          const literal = new Set(def.args ?? []);
+          const smuggled = args.find((a) => a.startsWith("-") && !literal.has(a));
+          if (smuggled) {
+            throw new Error(
+              `expanded git option "${smuggled}" is not in the workflow definition - refused`,
+            );
+          }
+        }
+      }
       if (!args) {
         // expandArgs returns null ONLY when a file-list placeholder resolved to
         // zero files - never for a malformed command. So this is a no-work
@@ -1841,20 +1999,29 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
  * Every agent step is a fresh CLI process, so nothing accumulates across steps
  * and there is no context pressure to spend a cap on. */
 function template(text: string, run: RunState, docs?: Map<string, string>): string {
-  return text
-    // {runId} lets a workflow stamp its outputs, so running the same workflow
-    // twice produces two designs instead of silently overwriting the first
-    .replace(/\{runId\}/g, run.runId)
-    .replace(/\{inputs\.([\w-]+)\}/g, (_, k) => String(run.inputs[k] ?? ""))
-    .replace(/\{steps\.([\w-]+)\.output\}/g, (_, id) => {
-      // A step that wrote a document is quoted BY that document. Callers that
-      // cannot read files (artifact paths, titles) pass no map and get the
-      // previous behaviour exactly.
-      const doc = docs?.get(id);
-      if (doc) return doc;
-      const s = run.steps.find((x) => x.id === id);
-      return s ? s.output : "";
-    });
+  // ONE pass, one combined pattern. Sequential passes meant a placeholder
+  // arriving inside an INPUT VALUE (user text, attachment content) was
+  // expanded by a later pass - letting pasted text pull another step's whole
+  // transcript into a prompt. Substituted values are never re-scanned now.
+  return text.replace(
+    /\{runId\}|\{inputs\.([\w-]+)\}|\{steps\.([\w-]+)\.output\}/g,
+    (whole, inputKey?: string, stepId?: string) => {
+      // {runId} lets a workflow stamp its outputs, so running the same
+      // workflow twice produces two designs instead of overwriting the first
+      if (whole === "{runId}") return run.runId;
+      if (inputKey !== undefined) return String(run.inputs[inputKey] ?? "");
+      if (stepId !== undefined) {
+        // A step that wrote a document is quoted BY that document. Callers
+        // that cannot read files (artifact paths, titles) pass no map and get
+        // the previous behaviour exactly.
+        const doc = docs?.get(stepId);
+        if (doc) return doc;
+        const s = run.steps.find((x) => x.id === stepId);
+        return s ? s.output : "";
+      }
+      return whole;
+    },
+  );
 }
 
 /** Load the documents a prompt's `{steps.x.output}` placeholders should resolve
@@ -1874,7 +2041,11 @@ async function quotedDocs(run: RunState, text: string): Promise<Map<string, stri
 /** Parse a "FILES: a, b, c" line from agent output into run.affected -
  * project-relative paths only; anything absolute or escaping is dropped. */
 function harvestAffectedFiles(run: RunState, output: string) {
-  const m = output.match(/FILES:\s*([^\n]+)/);
+  // Line-anchored, LAST occurrence: agents are told to emit the line at the
+  // end, so a "FILES:" inside quoted documents or tool traces earlier in the
+  // output must not win over the real one.
+  const all = [...output.matchAll(/^\s*\**FILES:\s*([^\n]+)/gim)];
+  const m = all.length ? all[all.length - 1] : null;
   if (!m) return;
   const files = m[1]
     .split(",")
@@ -1893,8 +2064,16 @@ function expandArgs(argv: string[], run: RunState): string[] | null {
     if (a === "{changedSourceDirs}") {
       const files = (run.changes ?? []).filter((c) => c.status !== "deleted");
       if (files.length === 0) return null;
+      // Refuse, never truncate: silently deploying/validating the first 50 of
+      // a larger change set reports success for work that never shipped.
+      if (files.length > 50) {
+        throw new Error(
+          `${files.length} changed files exceed the 50-file --source-dir limit - ` +
+            `deploy this run manually with a manifest (sf project deploy start -x package.xml)`,
+        );
+      }
       // file names can be agent-created - sanitize like any templated value
-      for (const f of files.slice(0, 50)) out.push("--source-dir", cliSafe(f.file));
+      for (const f of files) out.push("--source-dir", cliSafe(f.file));
     } else if (a === "{affectedSourceDirs}") {
       // Only paths that EXIST locally. --source-dir refreshes a local copy, so
       // a component the design is about to CREATE has nothing to refresh: on an
@@ -2015,7 +2194,16 @@ function spawnToStep(
       cwd: run.root,
       shell: true,
       windowsHide: true,
-      env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", CI: "true" },
+      env: {
+        ...process.env,
+        NO_COLOR: "1",
+        FORCE_COLOR: "0",
+        CI: "true",
+        // cmd.exe (shell:true) searches the current directory before PATH on
+        // Windows, and cwd is the attached (untrusted) project - a planted
+        // sf.cmd/copilot.cmd would run. Remove cwd from that search.
+        NoDefaultCurrentDirectoryInExePath: "1",
+      },
     });
     activeChildren.set(run.runId, child);
     const timer = setTimeout(() => {
@@ -2115,7 +2303,12 @@ async function persist(run: RunState) {
     try {
       const dir = path.join(run.root, ".dhruva", "runs");
       await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(path.join(dir, `${run.runId}.json`), JSON.stringify(run, null, 2), "utf8");
+      // write-then-rename: this file is rewritten every 250ms while a step
+      // streams, so an in-place write killed mid-stream left truncated JSON -
+      // and the run live at crash time is exactly the one whose audit matters
+      const file = path.join(dir, `${run.runId}.json`);
+      await fs.writeFile(`${file}.tmp`, JSON.stringify(run, null, 2), "utf8");
+      await fs.rename(`${file}.tmp`, file);
     } catch {
       /* audit persistence is best-effort */
     }

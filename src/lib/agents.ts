@@ -43,11 +43,17 @@ export function isSafeModelId(v: unknown): v is string {
  * .cmd shims on Windows), so shell-significant characters are replaced.
  * Task prompts survive this fine; stdin-capable agents skip it entirely. */
 export function sanitizeInline(prompt: string): string {
-  return prompt
-    .replace(/[\r\n]+/g, " ")
-    .replace(/"/g, "'")
-    .replace(/[%^&|<>`$]/g, " ")
-    .slice(0, 4000);
+  return (
+    prompt
+      .replace(/[\r\n]+/g, " ")
+      .replace(/"/g, "'")
+      .replace(/[%^&|<>`$]/g, " ")
+      .slice(0, 4000)
+      // a trailing backslash (possible via the hard slice) would escape the
+      // closing quote in msvcrt argv parsing and swallow the flags that
+      // follow - including copilot's read-only deny flags
+      .replace(/\\+$/, "")
+  );
 }
 
 export const AGENTS: Record<AgentId, AgentDef> = {

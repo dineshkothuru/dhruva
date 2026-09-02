@@ -16,7 +16,19 @@ function shadowGitDir(root: string) {
 }
 
 function runGit(root: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
-  const fixed = [`--git-dir=${shadowGitDir(root)}`, `--work-tree=${root}`, ...args];
+  const fixed = [
+    // The shadow git dir lives INSIDE the project, where agent steps have
+    // write access - so its config and hooks are attacker-writable and must
+    // never execute. fsmonitor and hooksPath are the two config keys that run
+    // commands on ordinary operations; both are pinned per-invocation, which
+    // beats whatever a planted shadow.git/config says. (Aliases cannot shadow
+    // builtins, so the subcommands used here are not hijackable that way.)
+    "-c", "core.fsmonitor=false",
+    "-c", "core.hooksPath=/dev/null",
+    `--git-dir=${shadowGitDir(root)}`,
+    `--work-tree=${root}`,
+    ...args,
+  ];
   return new Promise((resolve) => {
     execFile(
       "git",
@@ -135,6 +147,10 @@ async function ensureShadow(root: string): Promise<boolean> {
     // Snapshots must be byte-faithful; no line-ending rewriting or warnings.
     await runGit(root, ["config", "core.autocrlf", "false"]);
     await runGit(root, ["config", "core.safecrlf", "false"]);
+    // Without this, `diff --name-status` octal-escapes non-ASCII paths
+    // (translations, report folder labels) and the quoted string propagates
+    // verbatim into the change list, where reads/restores/deploys then fail.
+    await runGit(root, ["config", "core.quotepath", "false"]);
   }
   // keep the customer's git (when present) blind to the shadow store
   const realGitInfo = path.join(root, ".git", "info");
@@ -258,14 +274,20 @@ export async function changesSince(
   if (!res.ok) return null;
   const out: ChangedFile[] = [];
   for (const line of res.stdout.split("\n")) {
-    const m = line.match(/^([AMD])\S*\t(.+)$/);
+    // T (typechange) counts as modified - dropping it made such files
+    // invisible to review/verify/deploy
+    const m = line.match(/^([AMDT])\S*\t(.+)$/);
     if (!m) continue;
     out.push({
       file: m[2].replace(/\\/g, "/"),
       status: m[1] === "A" ? "added" : m[1] === "D" ? "deleted" : "modified",
     });
   }
-  return out.slice(0, 200);
+  // The FULL list, never silently truncated: the reviewer, verify-standards
+  // and the deploy's file arguments all read this, and a capped list meant a
+  // >200-file run deployed and reviewed an arbitrary subset while reporting
+  // success. Callers that render it cap their own DISPLAY.
+  return out;
 }
 
 /** The snapshot ("before") content of one file; null when it didn't exist. */

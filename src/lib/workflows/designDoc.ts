@@ -1,8 +1,9 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { type Finding } from "@/lib/findings";
+import { type Finding, verdictOf } from "@/lib/findings";
 import {
   deferringFields,
+  insideOrThrow,
   LINEAGE_MARK,
   mergeFields,
   parseBlocks,
@@ -922,7 +923,7 @@ const jsonPath = (rel: string) => rel.replace(/\.md$/, "") + ".json";
 /** Load the state. Falls back to adopting a markdown design written before this
  * structure existed, so an in-flight run is never stranded. */
 export async function load(root: string, rel: string): Promise<DesignDoc | null> {
-  const abs = path.join(root, jsonPath(rel));
+  const abs = insideOrThrow(root, jsonPath(rel));
   const raw = await fs.readFile(abs, "utf8").catch(() => "");
   if (raw.trim()) {
     try {
@@ -944,13 +945,13 @@ export async function load(root: string, rel: string): Promise<DesignDoc | null>
       /* fall through and adopt the markdown */
     }
   }
-  const md = await fs.readFile(path.join(root, rel), "utf8").catch(() => "");
+  const md = await fs.readFile(insideOrThrow(root, rel), "utf8").catch(() => "");
   return md.trim() ? fromMarkdown(md) : null;
 }
 
 /** Write the state, then the document rendered from it. */
 export async function save(root: string, rel: string, doc: DesignDoc): Promise<void> {
-  const abs = path.join(root, rel);
+  const abs = insideOrThrow(root, rel);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   const dir = path.dirname(abs);
   await fs.writeFile(path.join(root, jsonPath(rel)), JSON.stringify(doc, null, 2) + "\n", "utf8");
@@ -966,7 +967,7 @@ export async function save(root: string, rel: string, doc: DesignDoc): Promise<v
 /** `…design.md` -> `…design-v1.md`, then -v2. The rollback copy; nothing reads
  * it, and it is what would have recovered a run that lost three rounds. */
 async function archive(root: string, rel: string): Promise<void> {
-  const abs = path.join(root, rel);
+  const abs = insideOrThrow(root, rel);
   const current = await fs.readFile(abs, "utf8").catch(() => "");
   if (!current.trim()) return;
   const dir = path.dirname(abs);
@@ -1081,7 +1082,7 @@ export async function foldReview(
   const nowIds = new Set(findings.map((f) => f.id));
   const rec: ReviewRecord = {
     round,
-    verdict: /VERDICT:\s*(APPROVED|PASS)/i.test(reviewOutput) ? "pass" : "needs_work",
+    verdict: ["APPROVED", "PASS"].includes(verdictOf(reviewOutput) ?? "") ? "pass" : "needs_work",
     findings,
     closed: doc.openFindings.filter(
       (id) =>

@@ -47,5 +47,6 @@ export async function POST(req: Request) {
   if (changes === null) {
     return NextResponse.json({ error: "snapshot store unavailable (is git installed?)" }, { status: 500 });
   }
-  return NextResponse.json({ changes });
+  // display cap only - `total` tells the UI when the list is larger
+  return NextResponse.json({ changes: changes.slice(0, 500), total: changes.length });
 }

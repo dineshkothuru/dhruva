@@ -113,6 +113,26 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
         if (typeof a !== "string" || a.length > 300) throw new Error("bad cli arg");
         return a;
       });
+      if (s.bin === "git") {
+        // git carries option-level escape hatches that are arbitrary command
+        // execution (-c core.fsmonitor=..., --exec-path, alias.x=!cmd), and a
+        // project-scope workflow ships with the attacked repo itself - so git
+        // steps are held to a plain-subcommand allowlist. No shipped step uses
+        // git at all; only custom workflows are affected, which is the point.
+        const GIT_SUBCOMMANDS = new Set([
+          "status", "diff", "log", "show", "ls-files", "rev-parse", "blame",
+          "shortlog", "describe", "add", "commit", "restore", "stash", "branch", "tag",
+        ]);
+        const GIT_FLAGS = new Set([
+          "-m", "--stat", "--name-status", "--name-only", "--oneline",
+          "--porcelain", "--cached", "--staged", "--no-color", "--all",
+        ]);
+        if (!GIT_SUBCOMMANDS.has(step.args[0])) {
+          throw new Error(`cli step "${s.id}": git subcommand "${step.args[0]}" is not allowed`);
+        }
+        const bad = step.args.find((a, i) => i > 0 && a.startsWith("-") && !GIT_FLAGS.has(a));
+        if (bad) throw new Error(`cli step "${s.id}": git option "${bad}" is not allowed`);
+      }
       if (s.optional === true) step.optional = true;
       if (s.detached === true) step.detached = true;
     }
@@ -267,10 +287,13 @@ export function checkWorkflowSemantics(def: WorkflowDef): string[] {
       s.args &&
       s.args.join(" ").includes("deploy start") &&
       !s.args.includes("--dry-run") &&
-      !seenBefore(idx, (p) => p.type === "gate")
+      // the guarding gate must be UNCONDITIONAL: a gate carrying onlyIf/skipIf
+      // is skipped at runtime when its input is falsy, which would void the
+      // very guarantee this rule exists to give
+      !seenBefore(idx, (p) => p.type === "gate" && !p.onlyIf && !p.skipIf)
     ) {
       problems.push(
-        `step "${s.id}": deploys to the org with no human gate before it - add a gate step`,
+        `step "${s.id}": deploys to the org with no unconditional human gate before it - add a gate step (without onlyIf/skipIf)`,
       );
     }
   });

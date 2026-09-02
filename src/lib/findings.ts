@@ -57,6 +57,19 @@ End with exactly one line, machine-parsed, labels verbatim:
 ` +
   `COVERAGE: COMPLETE - or - COVERAGE: INCOMPLETE - items <ids>`;
 
+/** The reviewer's verdict, or null if it never declared one.
+ *
+ * Only a line that IS a verdict declaration counts (line start, optional
+ * markdown emphasis) - prose that merely mentions "VERDICT:" mid-sentence, or
+ * design text the reviewer quoted, must not read as a pass. The LAST
+ * declaration wins: agents that narrate ("VERDICT: APPROVED would mean...")
+ * before concluding get read by their conclusion, and the instruction says
+ * the verdict is the final line anyway. */
+export function verdictOf(output: string): string | null {
+  const all = [...output.matchAll(/^[ \t>*_-]*VERDICT:\s*([A-Z_]+)/gim)];
+  return all.length ? all[all.length - 1][1].toUpperCase() : null;
+}
+
 /** Extract findings and the text before them. `trailing` carries verdict/exit
  * lines that follow the last finding (rendered separately by callers). */
 export function parseFindings(raw: string): {

@@ -18,6 +18,13 @@ const port = process.env.DHRUVA_PORT || "3005";
 if (process.argv[2] === "update") {
   const edge = process.argv[3] === "edge";
   const source = edge ? "github:dineshkothuru/dhruva" : "dhruva@latest";
+  if (edge) {
+    console.log(
+      "[dhruva] WARNING: edge installs whatever is on GitHub master right now - " +
+        "unpinned, unreviewed, and its install scripts execute on this machine. " +
+        "Use plain `dhruva update` (versioned npm release) unless you need master.",
+    );
+  }
   console.log(`[dhruva] updating from ${edge ? "GitHub master (edge)" : "the npm registry"}...`);
   const r = spawnSync("npm", ["install", "-g", source], {
     shell: true,
@@ -38,12 +45,25 @@ if (process.argv[2] === "app") {
       console.error("[dhruva] could not resolve the installer from the release feed");
       process.exit(1);
     }
+    // electron-builder publishes the installer's sha512 in latest.yml - an
+    // unsigned exe MUST at least match the hash its own release feed declares,
+    // or a tampered download runs with the user's privileges.
+    const sha512 = (yml.match(/^sha512:\s*(.+)$/m) || [])[1]?.trim();
+    if (!sha512) {
+      console.error("[dhruva] release feed carries no sha512 for the installer - refusing to run an unverifiable download");
+      process.exit(1);
+    }
     const res = await fetch(base + name);
     if (!res.ok) {
       console.error(`[dhruva] download failed: HTTP ${res.status}`);
       process.exit(1);
     }
     const buf = Buffer.from(await res.arrayBuffer());
+    const got = require("node:crypto").createHash("sha512").update(buf).digest("base64");
+    if (got !== sha512) {
+      console.error("[dhruva] installer failed its integrity check (sha512 mismatch) - NOT launching it");
+      process.exit(1);
+    }
     const dest = path.join(require("node:os").tmpdir(), name);
     await require("node:fs/promises").writeFile(dest, buf);
     console.log(
@@ -130,7 +150,9 @@ setTimeout(() => {
   }
 }, 2500);
 
-const server = spawn("npx", ["next", "start", "-p", port], {
+// -H 127.0.0.1: without it Next binds 0.0.0.0 and the unauthenticated API is
+// reachable from the LAN. The middleware's Host check is the second fence.
+const server = spawn("npx", ["next", "start", "-H", "127.0.0.1", "-p", port], {
   cwd: appRoot,
   shell: true,
   stdio: "inherit",

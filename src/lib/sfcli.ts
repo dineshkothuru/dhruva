@@ -135,7 +135,16 @@ function run(
         timeout: 30_000,
         shell: true,
         windowsHide: true,
-        env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
+        env: {
+          ...process.env,
+          NO_COLOR: "1",
+          FORCE_COLOR: "0",
+          // shell:true resolves the bare command via cmd.exe, which searches the
+          // CURRENT DIRECTORY first on Windows - and cwd is the attached (untrusted)
+          // project, so a planted sf.cmd would run. This flag removes cwd from that
+          // search; the real CLI on PATH still resolves.
+          NoDefaultCurrentDirectoryInExePath: "1",
+        },
       },
       (err, stdout) => {
         resolve({ stdout: stdout ?? "", error: err ? String(err.message) : undefined });

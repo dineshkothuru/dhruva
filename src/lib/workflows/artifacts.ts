@@ -1,6 +1,16 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import { parseFindings, type Finding } from "@/lib/findings";
+import { resolveInside } from "@/lib/fsguard";
+
+/** Every rel that reaches this module went through template expansion and can
+ * carry run inputs - contain it to the project before any read or write. A
+ * throw here fails the step (the executor wraps steps in try). */
+export function insideOrThrow(root: string, rel: string): string {
+  const abs = resolveInside(root, rel);
+  if (!abs) throw new Error(`artifact path "${rel}" escapes the project - refused`);
+  return abs;
+}
 
 /** The design artifact.
  *
@@ -172,7 +182,7 @@ function renderReview(rec: ReviewRecord): string {
 /** Write the design half. Called after the authoring step succeeds; keeps the
  * engine's own sections exactly as they were. */
 export async function writeDesign(root: string, rel: string, design: string): Promise<void> {
-  const abs = path.join(root, rel);
+  const abs = insideOrThrow(root, rel);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   let review = "";
   let decisions = "";
@@ -219,7 +229,7 @@ async function nextVersionPath(abs: string): Promise<string> {
 /** Write the review half and append one revision-log row. The agent's design
  * section is carried through untouched. */
 export async function writeReview(root: string, rel: string, rec: ReviewRecord): Promise<void> {
-  const abs = path.join(root, rel);
+  const abs = insideOrThrow(root, rel);
   let design = "";
   let decisions = "";
   let log = "";
@@ -853,7 +863,7 @@ export async function writeDesignUpdate(
   produced: string,
   round: number,
 ): Promise<DesignWrite> {
-  const abs = path.join(root, rel);
+  const abs = insideOrThrow(root, rel);
   const none: DesignWrite = {
     mode: "refused",
     applied: [],
@@ -941,7 +951,7 @@ export async function recordHumanDecision(
   rel: string,
   entry: { action: "approved" | "revise"; text: string; approvedIds?: string[] },
 ): Promise<boolean> {
-  const abs = path.join(root, rel);
+  const abs = insideOrThrow(root, rel);
   let raw = "";
   try {
     raw = await fs.readFile(abs, "utf8");
@@ -985,7 +995,7 @@ export async function recordReview(
   rel: string,
   rec: ReviewRecord,
 ): Promise<Finding[] | null> {
-  const abs = path.join(root, rel);
+  const abs = insideOrThrow(root, rel);
   let raw = "";
   try {
     raw = await fs.readFile(abs, "utf8");

@@ -47,6 +47,8 @@ interface Cached {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   conn: any;
   username: string;
+  /** the project's target-org alias this connection was built for */
+  target: string;
   at: number;
 }
 const store = globalThis as unknown as { __dhruvaOrgConn?: Map<string, Cached> };
@@ -85,13 +87,20 @@ async function projectTargetOrg(root: string): Promise<string | null> {
 export async function getOrgConnection(
   root: string,
 ): Promise<{ ok: true; org: OrgConnection } | { ok: false; reason: string }> {
-  const hit = conns.get(root);
-  if (hit && Date.now() - hit.at < CONN_TTL_MS) {
-    return { ok: true, org: { conn: hit.conn, username: hit.username } };
-  }
-
   const target = await projectTargetOrg(root);
   if (!target) return { ok: false, reason: "no org authorized for this project" };
+
+  const hit = conns.get(root);
+  if (hit && Date.now() - hit.at < CONN_TTL_MS) {
+    // A cache hit is only valid for the org the project points at NOW. The
+    // config re-read costs one small file read; serving a stale connection
+    // after `sf config set target-org` made the deploy confirmation name the
+    // OLD org while the CLI deployed to the new one.
+    if (hit.target === target) {
+      return { ok: true, org: { conn: hit.conn, username: hit.username } };
+    }
+    conns.delete(root);
+  }
 
   try {
     // Imported here rather than at module load: @salesforce/core is a heavy
@@ -102,7 +111,7 @@ export async function getOrgConnection(
     const username = agg.aliases.getUsername(target) ?? target;
     const authInfo = await core.AuthInfo.create({ username });
     const conn = await core.Connection.create({ authInfo });
-    conns.set(root, { conn, username, at: Date.now() });
+    conns.set(root, { conn, username, target, at: Date.now() });
     return { ok: true, org: { conn, username } };
   } catch (e) {
     return {
