@@ -81,7 +81,13 @@ export function validateTasks(raw: unknown): { data: TasksFile | null; errors: s
       .filter((f): f is string => typeof f === "string" && f.length > 0)
       .map((f) => f.replace(/\\/g, "/"));
     for (const f of files) {
-      if (f.includes("..") || path.isAbsolute(f)) errors.push(`${id}: file path must be project-relative ("${f}")`);
+      // ".." as a path SEGMENT (a..b.cls is a legal filename); plus the
+      // Windows drive-relative form ("C:foo") that isAbsolute misses
+      const traversal = f.split("/").includes("..");
+      const driveRelative = /^[A-Za-z]:/.test(f);
+      if (traversal || driveRelative || path.isAbsolute(f)) {
+        errors.push(`${id}: file path must be project-relative ("${f}")`);
+      }
     }
     tasks.push({
       id,

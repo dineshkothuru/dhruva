@@ -66,7 +66,14 @@ End with exactly one line, machine-parsed, labels verbatim:
  * before concluding get read by their conclusion, and the instruction says
  * the verdict is the final line anyway. */
 export function verdictOf(output: string): string | null {
-  const all = [...output.matchAll(/^[ \t>*_-]*VERDICT:\s*([A-Z_]+)/gim)];
+  // Tolerant of the formatting drift agents actually produce - the findings
+  // parser in this file already learned that lesson for headings ("#### F1")
+  // on a real run, and verdicts drift the same ways: "#### VERDICT: APPROVED",
+  // "**VERDICT:** approved", "> VERDICT: PASS". Line-anchored is the part
+  // that carries the security property (quoted prose can't declare a verdict
+  // mid-sentence); the decoration tolerance just keeps fail-closed from
+  // failing an honest pass.
+  const all = [...output.matchAll(/^[ \t>#*_-]*VERDICT[*_]*:[*_ \t]*([A-Za-z_]+)/gim)];
   return all.length ? all[all.length - 1][1].toUpperCase() : null;
 }
 

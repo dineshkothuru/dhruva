@@ -227,6 +227,11 @@ export interface RunState {
   roleModels?: Partial<Record<StepRole, string>>;
   inputs: Record<string, string | boolean>;
   steps: StepState[];
+  /** Set at start when the project carries its own agent instruction files
+   * (CLAUDE.md, .github/instructions, ...) - a prompt-injection surface the
+   * human must see. Rendered into every GATE's message, because a note written
+   * only into step[0].output was overwritten the moment that step ran. */
+  ambientWarning?: string;
   /** Changed files as of the last "changes" step. */
   changes?: { file: string; status: string }[];
   /** Set by a work-check step when the design leaves nothing to build. Every

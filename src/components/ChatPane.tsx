@@ -194,8 +194,15 @@ export default function ChatPane({
       .then((s: Record<string, AgentStatus>) => {
         if (cancelled) return;
         setStatus(s);
-        const firstInstalled = AGENT_ORDER.find((id) => s[id]?.installed);
-        if (firstInstalled) setAgent(firstInstalled);
+        // override the current selection ONLY when it is not installed - the
+        // unconditional version silently switched a user's saved default
+        // (e.g. claude) to the first installed entry on every mount, and chat
+        // plus chat-started runs then billed the wrong CLI
+        setAgent((current) => {
+          if (s[current]?.installed) return current;
+          const firstInstalled = AGENT_ORDER.find((id) => s[id]?.installed);
+          return firstInstalled ?? current;
+        });
       })
       .catch(() => {});
     return () => {
@@ -288,7 +295,11 @@ export default function ChatPane({
 
   async function send() {
     const prompt = input.trim();
-    if (!prompt || running) return;
+    // `routing` too: the Send button is disabled during intake but the
+    // textarea's Enter handler calls send() directly, and the input isn't
+    // cleared until intake resolves - two Enters meant two intake calls,
+    // duplicate bubbles, and two proposal cards each able to start a run
+    if (!prompt || running || routing) return;
     // Task-first intake: delivery-shaped text proposes the matching workflow
     // (deterministic classifier; the user confirms - nothing starts silently).
     // attachments ride along as project-relative paths the agents can read
@@ -566,9 +577,12 @@ export default function ChatPane({
       });
       const d = await res.json();
       if (res.ok && Array.isArray(d.changes) && d.changes.length > 0) {
+        // the route caps the LIST at 500 for display; `total` is the truth -
+        // showing the capped length under-reported big change sets
+        const total = typeof d.total === "number" ? d.total : d.changes.length;
         setMessages((m) => [
           ...m,
-          { role: "changes", text: `${d.changes.length} file(s) changed`, changes: d.changes },
+          { role: "changes", text: `${total} file(s) changed`, changes: d.changes },
         ]);
       }
     } catch {
@@ -636,6 +650,9 @@ export default function ChatPane({
       onRunStarted?.(String(data.runId));
     } catch (e) {
       setMessages((m) => [...m, { role: "system", text: String(e) }]);
+      // un-stick the card: leaving it at "starting…" hid the Run buttons
+      // forever after a network hiccup, forcing the request to be retyped
+      markProposal(msgIndex, "");
     }
   }
 
@@ -730,6 +747,8 @@ export default function ChatPane({
       onRunStarted?.(String(data.runId));
     } catch (e) {
       setMessages((m) => [...m, { role: "system", text: String(e) }]);
+      // un-stick the card (same as the single-proposal path)
+      markChain(msgIndex, "");
     }
   }
 

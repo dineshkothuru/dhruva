@@ -10,7 +10,11 @@ const { existsSync } = require("node:fs");
 const path = require("node:path");
 
 const appRoot = path.join(__dirname, "..");
-const port = process.env.DHRUVA_PORT || "3005";
+// digits only: this value lands in a shell:true command line, and
+// "3005 -H 0.0.0.0" (or worse) must not ride in through an env var
+const port = /^\d{2,5}$/.test(process.env.DHRUVA_PORT || "")
+  ? process.env.DHRUVA_PORT
+  : "3005";
 
 // `dhruva update` - install the latest published version from the npm
 // registry (immutable, versioned). `dhruva update edge` tracks the GitHub
@@ -64,7 +68,13 @@ if (process.argv[2] === "app") {
       console.error("[dhruva] installer failed its integrity check (sha512 mismatch) - NOT launching it");
       process.exit(1);
     }
-    const dest = path.join(require("node:os").tmpdir(), name);
+    // a fresh private directory, not a fixed %TEMP% name: the verified bytes
+    // must not sit at a predictable path another process could swap before
+    // the installer launches
+    const dir = await require("node:fs/promises").mkdtemp(
+      path.join(require("node:os").tmpdir(), "dhruva-installer-"),
+    );
+    const dest = path.join(dir, name);
     await require("node:fs/promises").writeFile(dest, buf);
     console.log(
       `[dhruva] downloaded ${(buf.length / 1048576).toFixed(0)} MB - launching the installer` +
@@ -123,10 +133,15 @@ if (agents.length === 0) {
   console.log(`[dhruva] agent CLIs found: ${agents.join(", ")}`);
 }
 
-// dependencies + build (first run after a source install)
+// dependencies + build (first run after a source install).
+// NOT --omit=dev: `next build` needs devDependencies (typescript, the
+// tailwind postcss plugin), so a prod-only install died at the build step -
+// breaking the advertised `npm install -g dhruva && dhruva` path outright.
+// dhruva.cmd always did the full `npm ci`, which is why the clone path
+// worked and masked this.
 if (!existsSync(path.join(appRoot, "node_modules"))) {
   console.log("[dhruva] installing dependencies (first run)...");
-  const r = spawnSync("npm", ["ci", "--omit=dev"], { cwd: appRoot, shell: true, stdio: "inherit" });
+  const r = spawnSync("npm", ["ci"], { cwd: appRoot, shell: true, stdio: "inherit" });
   if (r.status !== 0) {
     spawnSync("npm", ["install"], { cwd: appRoot, shell: true, stdio: "inherit" });
   }

@@ -88,19 +88,23 @@ export async function getOrgConnection(
   root: string,
 ): Promise<{ ok: true; org: OrgConnection } | { ok: false; reason: string }> {
   const target = await projectTargetOrg(root);
-  if (!target) return { ok: false, reason: "no org authorized for this project" };
-
   const hit = conns.get(root);
   if (hit && Date.now() - hit.at < CONN_TTL_MS) {
     // A cache hit is only valid for the org the project points at NOW. The
     // config re-read costs one small file read; serving a stale connection
     // after `sf config set target-org` made the deploy confirmation name the
     // OLD org while the CLI deployed to the new one.
-    if (hit.target === target) {
+    //
+    // A null target on a warm cache means the config was momentarily
+    // unreadable (e.g. a partial read while `sf config set` rewrites it) -
+    // that is not evidence the org CHANGED, so the cached connection stands
+    // rather than failing the request.
+    if (hit.target === target || target === null) {
       return { ok: true, org: { conn: hit.conn, username: hit.username } };
     }
     conns.delete(root);
   }
+  if (!target) return { ok: false, reason: "no org authorized for this project" };
 
   try {
     // Imported here rather than at module load: @salesforce/core is a heavy

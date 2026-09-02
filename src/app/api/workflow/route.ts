@@ -14,6 +14,7 @@ import {
   loadWorkflow,
   projectWorkflowUntrusted,
   saveCustomWorkflow,
+  workflowLoadError,
 } from "@/lib/workflows/custom";
 import {
   abortRun,
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
           steps: w.steps,
           custom: false,
         })),
-        ...customs.map(({ def: w, scope }) => ({
+        ...customs.map(({ def: w, scope, trusted, shadowsProject }) => ({
           id: w.id,
           title: w.title,
           description: w.description,
@@ -68,6 +69,9 @@ export async function POST(req: Request) {
           steps: w.steps,
           custom: true,
           scope,
+          // project scope only: false = ships with the repo, not yet approved
+          trusted,
+          shadowsProject,
         })),
       ],
     });
@@ -256,6 +260,14 @@ export async function POST(req: Request) {
               "it - saving records your approval and makes it runnable.",
           },
           { status: 403 },
+        );
+      }
+      // A saved workflow that no longer validates must say WHY, not vanish.
+      const why = typeof b.workflow === "string" ? await workflowLoadError(root, b.workflow) : null;
+      if (why) {
+        return NextResponse.json(
+          { error: `this saved workflow no longer passes validation: ${why}. Edit and re-save it.` },
+          { status: 400 },
         );
       }
       return NextResponse.json({ error: "unknown workflow" }, { status: 400 });

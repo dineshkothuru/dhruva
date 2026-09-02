@@ -71,6 +71,9 @@ export async function POST(req: Request) {
       stdio: "ignore",
       windowsHide: true,
       shell: true,
+      // a planted sf.cmd in the attached repo must not win the cmd.exe
+      // cwd-first search (same fix as sfcli.ts / spawnStep.ts)
+      env: { ...process.env, NoDefaultCurrentDirectoryInExePath: "1" },
     });
     child.unref();
     return NextResponse.json({ started: true, message: "Opening the default org in your browser…" });

@@ -39,15 +39,31 @@ export function middleware(req: NextRequest) {
   const origin = req.headers.get("origin");
   if (origin) {
     // "null" is a sandboxed/opaque origin - exactly the shape a CSRF iframe
-    // sends - so it is rejected like any foreign origin.
-    const originName = hostnameOf(origin);
-    if (!originName || !LOOPBACK.has(originName)) {
+    // sends - so it is rejected like any foreign origin. And loopback HOSTNAME
+    // alone is not enough: another local app on a different PORT (or a page
+    // with local XSS) is still a foreign origin, so the origin's port must
+    // match the port this request arrived on.
+    let sameAuthority = false;
+    try {
+      const o = new URL(origin);
+      const h = new URL(`http://${host}`);
+      const port = (u: URL) => u.port || (u.protocol === "https:" ? "443" : "80");
+      sameAuthority = LOOPBACK.has(o.hostname) && port(o) === port(h);
+    } catch {
+      sameAuthority = false;
+    }
+    if (!sameAuthority) {
       return new NextResponse("Forbidden: cross-origin requests are not accepted.", {
         status: 403,
       });
     }
   }
-  return NextResponse.next();
+  const res = NextResponse.next();
+  // identifies THIS app to the Electron shell's startup probe - port 3005
+  // could be held by any other local app, and loading a stranger's page into
+  // the trusted Dhruva window is worse than an error dialog
+  res.headers.set("x-dhruva", "1");
+  return res;
 }
 
 export const config = {

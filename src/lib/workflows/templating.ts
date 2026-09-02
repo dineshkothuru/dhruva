@@ -63,7 +63,7 @@ export async function quotedDocs(run: RunState, text: string): Promise<Map<strin
 
 /** Parse a "FILES: a, b, c" line from agent output into run.affected -
  * project-relative paths only; anything absolute or escaping is dropped. */
-export function harvestAffectedFiles(run: RunState, output: string) {
+export function harvestAffectedFiles(run: RunState, output: string, merge = false) {
   // Line-anchored, LAST occurrence: agents are told to emit the line at the
   // end, so a "FILES:" inside quoted documents or tool traces earlier in the
   // output must not win over the real one.
@@ -75,7 +75,13 @@ export function harvestAffectedFiles(run: RunState, output: string) {
     .map((f) => f.trim().replace(/\\/g, "/").replace(/^["'`]|["'`]$/g, ""))
     .filter((f) => f && !f.includes("..") && !path.isAbsolute(f) && f.length < 300)
     .slice(0, 30);
-  if (files.length) run.affected = files;
+  if (!files.length) return;
+  // merge: a task LOOP harvests per task over that task's own output segment -
+  // replacing would keep only the final task's files and downstream retrieves
+  // would refresh a fraction of what the step actually touched
+  run.affected = merge
+    ? [...new Set([...(run.affected ?? []), ...files])].slice(0, 60)
+    : files;
 }
 
 /** Expand argv templates. "{changedSourceDirs}" becomes repeated

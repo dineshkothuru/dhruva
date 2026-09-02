@@ -63,6 +63,7 @@ import {
   writeUpdate as writeDesignUpdate,
 } from "./designDoc";
 import { checkEvidence, evidenceNote } from "./evidenceCheck";
+import { GIT_FLAGS } from "./validate";
 import { costBucket, countBucket, durationBucket, tokensBucket, track } from "@/lib/telemetry";
 import type { ChainLink, GateDecision, RunState, StepDef, StepState, WorkflowDef } from "./schema";
 import { ROLE_TIER } from "./schema";
@@ -135,11 +136,15 @@ export function startRun(
       path.join(".claude", "skills"),
       path.join(".cursor", "rules"),
     ].filter((p) => existsSync(path.join(root, p)));
-    if (ambient.length && run.steps[0]) {
-      run.steps[0].output =
+    if (ambient.length) {
+      // Stored on the RUN and rendered into every gate message - a note
+      // written into step[0].output alone was overwritten the moment that
+      // step executed, so no human ever saw it.
+      run.ambientWarning =
         `[engine] this project carries its own agent instruction files (${ambient.join(", ")}). ` +
         `Agent CLIs load them ambiently in addition to the engine's standards - review them ` +
-        `before trusting this run's agent steps: instructions in a repo are input to the agent.\n`;
+        `before trusting this run's agent steps: instructions in a repo are input to the agent.`;
+      if (run.steps[0]) run.steps[0].output = run.ambientWarning + "\n";
     }
   }
   if (inherit?.baseCommit) run.baseCommit = inherit.baseCommit;
@@ -175,6 +180,11 @@ export function startRun(
     void execute(run, def); // fire and forget; UI polls state
   })();
   return run;
+}
+
+/** The ambient-instruction warning, rendered wherever a human decides. */
+function ambientNote(run: RunState): string {
+  return run.ambientWarning ? `\n\n${run.ambientWarning}` : "";
 }
 
 const MAX_REVISIONS_PER_GATE = 5;
@@ -487,13 +497,13 @@ async function executeSteps(run: RunState, def: WorkflowDef, startIndex = 0) {
           // guessing what the user would have said.
           step.status = "running";
           step.startedAt ??= Date.now();
-          step.output = template(stepDef.message ?? "Proceed?", run) + notice;
+          step.output = template(stepDef.message ?? "Proceed?", run) + notice + ambientNote(run);
           notice = "";
           decision = { action: "approve" };
         } else {
           step.status = "waiting_gate";
           step.startedAt ??= Date.now();
-          step.output = template(stepDef.message ?? "Proceed?", run) + notice;
+          step.output = template(stepDef.message ?? "Proceed?", run) + notice + ambientNote(run);
           run.status = "waiting_gate";
           // register the waiter BEFORE persisting: persist rides a serialized
           // write chain, and an abort landing in that window would otherwise
@@ -801,10 +811,16 @@ async function replayRange(
     const replayDef = def.steps[k];
     if (replayDef.type === "gate") continue;
     if (replayDef.onlyIf && !run.inputs[replayDef.onlyIf]) continue;
-    // skipIf mirrors the main loop: a step the user satisfied with their own
-    // document (adopted artifact) must not be re-run by a revision - the
-    // replay would re-extract and overwrite the file they asked to keep
-    if (replayDef.skipIf && String(run.inputs[replayDef.skipIf] ?? "").trim()) continue;
+    // skipIf mirrors the main loop EXACTLY: a step the user satisfied with
+    // their own document must not be re-run by a revision (the replay would
+    // re-extract and overwrite the file they asked to keep) - but only when
+    // the adoption is actually honourable. If the supplied document cannot be
+    // adopted (wrong shape, unreadable), the step originally RAN, and a
+    // revision must re-run it or the reviewer's feedback is silently dropped.
+    if (replayDef.skipIf && String(run.inputs[replayDef.skipIf] ?? "").trim()) {
+      const adopted = await adoptArtifact(run, replayDef, String(run.inputs[replayDef.skipIf]));
+      if (adopted.ok) continue;
+    }
     const replayStep = run.steps.find((s) => s.id === replayDef.id)!;
     // Keep the attempt that is about to be overwritten. Without this the run
     // history shows a single row for a step that ran three times, and every
@@ -1208,6 +1224,9 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
                 ? `REVIEWER COMMENT (mandatory - this reopened task's work order): ${latestReview}\n`
                 : "");
             const ok = await spawnAgent(taskPrompt, `${def.id}-${t.id}`);
+            // per-task harvest over THIS task's output segment, merged - one
+            // harvest over the cumulative output kept only one task's FILES:
+            harvestAffectedFiles(run, step.output.slice(outStart), true);
             const u =
               step.usage ??
               estimateUsage(run.agent, stepModel, taskPrompt, step.output.slice(outStart));
@@ -1232,30 +1251,43 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
             await persist(run);
           }
           step.usage = totals;
-          harvestAffectedFiles(run, step.output);
+          // (files were harvested per task above - a whole-output harvest here
+          // would REPLACE the union with the last task's line)
           return true;
         }
         step.output += `[engine] no valid tasks file or nothing pending (${rel}) - running as a single step\n`;
       }
 
-      // readOnly is STRUCTURAL for claude (plan mode) and codex (OS sandbox)
-      // but best-effort for copilot (deny flags) and cursor (omitted --force).
-      // Trust is cheap to verify: fingerprint the change list around the step
-      // and treat any delta as a violation. A review that wrote files loses
-      // its gating power (see blockedReviewBefore) instead of being trusted.
-      const preReadOnly = def.readOnly ? await changesSince(run.root, run.baseCommit) : null;
+      // readOnly is STRUCTURAL for claude (plan mode) and codex (OS sandbox) -
+      // those two cannot write no matter what, so fingerprinting them costs
+      // two full git diffs per review to catch only the USER's own edits, a
+      // false positive. Copilot (deny flags) and cursor (omitted --force) are
+      // best-effort, so their trust IS verified: fingerprint the change list
+      // around the step; a delta in EITHER direction (a write, or a revert of
+      // the implement step's work) forfeits the review's gating power (see
+      // blockedReviewBefore). An unknown fingerprint (git unavailable) proves
+      // nothing and must not brand an honest review a violator.
+      const verifyReadOnly =
+        def.readOnly === true && (run.agent === "copilot" || run.agent === "cursor");
+      const preReadOnly = verifyReadOnly ? await changesSince(run.root, run.baseCommit) : null;
       const ok = await spawnAgent(prompt, def.id);
-      if (def.readOnly) {
+      if (verifyReadOnly && preReadOnly !== null) {
         const post = await changesSince(run.root, run.baseCommit);
-        const fp = (l: { file: string; status: string }[] | null) =>
-          new Set((l ?? []).map((c) => `${c.status}:${c.file}`));
-        const before = fp(preReadOnly);
-        const wrote = [...fp(post)].filter((k) => !before.has(k));
-        if (wrote.length > 0) {
-          step.output +=
-            `\n${READONLY_WROTE_MARK} this step ran read-only but the working tree changed ` +
-            `during it (${wrote.slice(0, 10).join(", ")}${wrote.length > 10 ? ", ..." : ""}). ` +
-            `Its conclusions cannot be trusted to gate anything - review the files before approving.`;
+        if (post !== null) {
+          const fp = (l: { file: string; status: string }[]) =>
+            new Set(l.map((c) => `${c.status}:${c.file}`));
+          const before = fp(preReadOnly);
+          const after = fp(post);
+          const delta = [
+            ...[...after].filter((k) => !before.has(k)),
+            ...[...before].filter((k) => !after.has(k)).map((k) => `reverted ${k}`),
+          ];
+          if (delta.length > 0) {
+            step.output +=
+              `\n${READONLY_WROTE_MARK} this step ran read-only but the working tree changed ` +
+              `during it (${delta.slice(0, 10).join(", ")}${delta.length > 10 ? ", ..." : ""}). ` +
+              `Its conclusions cannot be trusted to gate anything - review the files before approving.`;
+          }
         }
       }
       harvestAffectedFiles(run, step.output);
@@ -1337,7 +1369,11 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         return true;
       }
       const contents: { file: string; content: string }[] = [];
-      for (const c of changed.slice(0, 100)) {
+      // bounded read: checking is cheap but reading 30k retrieved files into
+      // memory is not - the cap is raised well above real change-set sizes and
+      // said OUT LOUD below when it trips, never silently
+      const VERIFY_CAP = 500;
+      for (const c of changed.slice(0, VERIFY_CAP)) {
         const abs = path.join(run.root, c.file);
         try {
           const st = await fs.stat(abs);
@@ -1349,8 +1385,13 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         }
       }
       const violations = checkStandards(contents);
+      const unchecked =
+        changed.length > VERIFY_CAP
+          ? `\n[engine] NOTE: only the first ${VERIFY_CAP} of ${changed.length} changed files ` +
+            `were content-checked - the remainder is unverified by this step.`
+          : "";
       if (violations.length === 0) {
-        step.output = `standards check passed (${contents.length} file(s))`;
+        step.output = `standards check passed (${contents.length} file(s))${unchecked}`;
         return true;
       }
       step.output = violations
@@ -1361,7 +1402,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         step.output += `\n\n${errors.length} error-level violation(s) - run blocked. Fix and re-run.`;
         return false;
       }
-      step.output += "\n\nwarnings only - review them at the next gate.";
+      step.output += "\n\nwarnings only - review them at the next gate." + unchecked;
       return true;
     }
     case "cli": {
@@ -1387,8 +1428,13 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
           );
         }
         if (def.bin === "git") {
+          // an expanded option is fine if the validator would have allowed it
+          // written literally ({flag:--stat:...} must not fail at runtime);
+          // anything outside both the definition and the allowlist is smuggled
           const literal = new Set(def.args ?? []);
-          const smuggled = args.find((a) => a.startsWith("-") && !literal.has(a));
+          const smuggled = args.find(
+            (a) => a.startsWith("-") && !literal.has(a) && !GIT_FLAGS.has(a),
+          );
           if (smuggled) {
             throw new Error(
               `expanded git option "${smuggled}" is not in the workflow definition - refused`,

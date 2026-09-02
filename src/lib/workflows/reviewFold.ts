@@ -87,11 +87,15 @@ export function blockedReviewBefore(run: RunState, def: WorkflowDef, gateIndex: 
     }
     const verdict = verdictOf(out);
     if (!verdict) {
-      // Fail CLOSED: a review that RAN but declared no parseable verdict must
-      // not wave the auto-gate through - only a skipped review abstains. The
-      // old fail-open reading let quoted text (or an injected reviewer simply
-      // omitting the line) launder a blocked review into an auto-approval.
-      return state && state.status !== "skipped" && out.trim()
+      // Fail CLOSED - but only for a review that was INSTRUCTED to declare a
+      // verdict (emits: "findings" appends that contract to its prompt). Such
+      // a review that ran without a parseable verdict must not wave the
+      // auto-gate through: the old fail-open reading let quoted text (or an
+      // injected reviewer simply omitting the line) launder a blocked review
+      // into an auto-approval. A review-role step with no declared contract
+      // was never told to emit one, so its silence stays an abstention -
+      // fail-closed there would permanently block autoGate on custom steps.
+      return d.emits === "findings" && state && state.status !== "skipped" && out.trim()
         ? `${d.id}: produced no VERDICT line - treated as blocked`
         : "";
     }

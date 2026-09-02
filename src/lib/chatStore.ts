@@ -20,15 +20,21 @@ export interface ChatThread {
   messages: StoredMsg[];
 }
 
+/** A message may arrive from the client (or a hand-edited thread file) with a
+ * non-string text - never let that TypeError into a route. */
+function textOf(m: StoredMsg): string {
+  return typeof m.text === "string" ? m.text : "";
+}
+
 /** A thread is named by the question that started it. */
 export function threadTitle(messages: StoredMsg[]): string {
-  const first = messages.find((m) => m.role === "user" && m.text.trim());
+  const first = messages.find((m) => m.role === "user" && textOf(m).trim());
   if (!first) return "Untitled chat";
-  const line = first.text.trim().split("\n")[0];
+  const line = textOf(first).trim().split("\n")[0];
   return line.length > 60 ? `${line.slice(0, 60)}…` : line;
 }
 
 /** Nothing worth keeping: no real dialogue happened. */
 export function isEmptyThread(messages: StoredMsg[]): boolean {
-  return !messages.some((m) => (m.role === "user" || m.role === "agent") && m.text.trim());
+  return !messages.some((m) => (m.role === "user" || m.role === "agent") && textOf(m).trim());
 }

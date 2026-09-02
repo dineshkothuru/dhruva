@@ -23,6 +23,10 @@ interface CatalogItem {
   custom?: boolean;
   /** custom workflows: where they live - central (all projects) or project. */
   scope?: "central" | "project";
+  /** project scope: false = ships with the repo and is not yet approved to run. */
+  trusted?: boolean;
+  /** central scope: a same-id project copy exists in the repo and is shadowed. */
+  shadowsProject?: boolean;
   /** full step list - powers duplicate-to-customize. */
   steps?: Record<string, unknown>[];
   inputs: {
@@ -227,6 +231,20 @@ export default function WorkflowsPane({
   // The per-requirement rulings, held HERE rather than inside the cards, so the
   // gate's own buttons below them send the same marks the cards' button would.
   const [cards, setCards] = useState<{ id: string; verdict: "approve" | "revise"; note?: string }[]>([]);
+  // The rulings belong to ONE gate of ONE run. Without this reset, marks made
+  // at run A's design gate rode into run B (opened from history) or into a
+  // later cards-less gate of the same run - where "Approve & continue" would
+  // send the stale rulings, the engine would convert the approval into a
+  // revise (cards.revising wins), and the wrong REQ verdicts would be written
+  // into whichever design doc THAT gate targets.
+  const waitingGateId =
+    run?.status === "waiting_gate"
+      ? (run.steps.find((s) => s.status === "waiting_gate")?.id ?? null)
+      : null;
+  useEffect(() => {
+    setCards([]);
+    setGateNote("");
+  }, [run?.runId, waitingGateId]);
   // per-step failure diagnosis (streamed from the agent, read-only)
   const [explain, setExplain] = useState<Record<string, string>>({});
   const [explaining, setExplaining] = useState<string | null>(null);
@@ -247,7 +265,10 @@ export default function WorkflowsPane({
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ root, agent, prompt, model: "", readOnly: true }),
+        // the RUN's agent, not the start-form selection: a diagnosis labeled
+        // with (and executed by) an agent that never ran this workflow is
+        // wrong twice - and may not even be installed
+        body: JSON.stringify({ root, agent: run?.agent ?? agent, prompt, model: "", readOnly: true }),
       });
       if (!res.ok || !res.body) {
         const err = await res.text();
@@ -561,7 +582,17 @@ export default function WorkflowsPane({
     setGating(true);
     try {
       const { ok, data } = await api({ action: "gate", runId: run.runId, decision, feedback, cards });
-      if (ok && data.resolved === false) {
+      if (!ok) {
+        // an HTTP failure must not silently swallow the click - and it must
+        // NOT clear the textarea holding the user's typed revise instructions
+        setError(
+          `Gate decision was not applied: ${String((data as { error?: string })?.error ?? "request failed")}. ` +
+            "Your notes are kept - try again.",
+        );
+        await fetchRunState(run.runId);
+        return;
+      }
+      if (data.resolved === false) {
         setError(
           "The gate is not waiting right now (a revision is replaying or the run ended) - " +
             "your click was not applied. The view will refresh.",
@@ -581,6 +612,34 @@ export default function WorkflowsPane({
     const totalCost = run.steps.reduce((n, s) => n + (s.usage?.costUsd ?? 0), 0);
     return (
       <div className="flex-1 overflow-y-auto p-6">
+        {/* errors/notices raised FROM the run view (failed gate posts, stop/
+            resume/restore results) rendered nowhere before this - the banners
+            lived only in the catalog branch, so every message set here was
+            invisible and the buttons looked simply broken */}
+        {error && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <span className="min-w-0 flex-1 whitespace-pre-wrap">{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="shrink-0 rounded px-1 text-red-400 hover:text-red-700"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {notice && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            <span className="min-w-0 flex-1 whitespace-pre-wrap">{notice}</span>
+            <button
+              onClick={() => setNotice(null)}
+              className="shrink-0 rounded px-1 text-slate-400 hover:text-slate-700"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <div className="mb-4 flex items-center gap-3">
           <button
             onClick={async () => {
@@ -1275,7 +1334,7 @@ export default function WorkflowsPane({
                   ) : (
                     <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
                       <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-sky-600">
-                        Diagnosis ({agent})
+                        Diagnosis ({run?.agent ?? agent})
                       </p>
                       <pre className="whitespace-pre-wrap break-words text-xs text-slate-700">
                         {explain[`${run.runId}:${s.id}`] || "analysing…"}
@@ -1679,6 +1738,22 @@ export default function WorkflowsPane({
                               {w.scope === "project" ? "custom · this project" : "custom · all projects"}
                             </span>
                           )}
+                          {w.scope === "project" && w.trusted === false && (
+                            <span
+                              className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-amber-700"
+                              title="This workflow ships with the repo and has not been approved on this machine. Review it and save it to approve."
+                            >
+                              unapproved - review & save to run
+                            </span>
+                          )}
+                          {w.shadowsProject && (
+                            <span
+                              className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500"
+                              title="The repo carries its own workflow with this same id; your copy wins. Rename one of them to use both."
+                            >
+                              shadows a repo copy
+                            </span>
+                          )}
                         </div>
                         <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{w.description}</p>
                       </div>
@@ -1907,6 +1982,14 @@ export default function WorkflowsPane({
                 {starting ? "Starting…" : "Start run"}
               </button>
             </div>
+            {/* a start failure must surface INSIDE the modal: the page-level
+                banner paints underneath this dimmed backdrop, so the 403
+                "approve this project workflow first" guidance was never read */}
+            {error && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 whitespace-pre-wrap">
+                {error}
+              </div>
+            )}
           </div>
         </div>
         </div>

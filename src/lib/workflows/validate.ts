@@ -14,6 +14,20 @@ const ROLES = new Set(["read", "design", "implement", "review", "trace"]);
 const SLUG = /^[a-z0-9][a-z0-9-]{1,40}$/;
 const KEY = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/;
 
+/** Plain subcommands a workflow's git step may run - git's option-level escape
+ * hatches (-c core.fsmonitor=..., --exec-path, alias.x=!cmd) are arbitrary
+ * command execution, so options are allowlisted too. Exported: the engine
+ * re-checks EXPANDED args against the same sets at runtime. */
+export const GIT_SUBCOMMANDS = new Set([
+  "status", "diff", "log", "show", "ls-files", "rev-parse", "blame",
+  "shortlog", "describe", "add", "commit", "restore", "stash", "branch", "tag",
+]);
+export const GIT_FLAGS = new Set([
+  "-m", "--stat", "--numstat", "--name-status", "--name-only", "--oneline",
+  "--porcelain", "--porcelain=v2", "--cached", "--staged", "--no-color",
+  "--all", "--short", "-n", "-p", "--graph", "--follow", "--decorate",
+]);
+
 /** Validate an untrusted definition into a clean WorkflowDef (or throw).
  * ONE validator for every source - shipped JSON files and user customs go
  * through the same contract, so the two can never drift apart.
@@ -105,6 +119,8 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
     }
     if (s.type === "cli") {
       if (s.bin !== "sf" && s.bin !== "git") throw new Error(`cli step "${s.id}": bin must be sf or git`);
+      // (GIT_SUBCOMMANDS / GIT_FLAGS are module-level so the engine's runtime
+      // re-check can honour the same allowlist for expanded {flag:}/{opt:} args)
       if (!Array.isArray(s.args) || s.args.length === 0 || s.args.length > 40) {
         throw new Error(`cli step "${s.id}" needs 1-40 args`);
       }
@@ -119,14 +135,6 @@ export function validateWorkflowDef(raw: unknown, reservedIds?: Set<string>): Wo
         // project-scope workflow ships with the attacked repo itself - so git
         // steps are held to a plain-subcommand allowlist. No shipped step uses
         // git at all; only custom workflows are affected, which is the point.
-        const GIT_SUBCOMMANDS = new Set([
-          "status", "diff", "log", "show", "ls-files", "rev-parse", "blame",
-          "shortlog", "describe", "add", "commit", "restore", "stash", "branch", "tag",
-        ]);
-        const GIT_FLAGS = new Set([
-          "-m", "--stat", "--name-status", "--name-only", "--oneline",
-          "--porcelain", "--cached", "--staged", "--no-color", "--all",
-        ]);
         if (!GIT_SUBCOMMANDS.has(step.args[0])) {
           throw new Error(`cli step "${s.id}": git subcommand "${step.args[0]}" is not allowed`);
         }

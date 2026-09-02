@@ -16,6 +16,11 @@ const MAX_DEPTH = 3;
 export async function extractDocText(abs: string): Promise<string | null> {
   const ext = path.extname(abs).toLowerCase();
   try {
+    // The size guard lives HERE, not only in ensureExtractedFile: this
+    // function is exported and called directly (skills route), and every such
+    // caller would otherwise read/parse an unbounded file into memory.
+    const st = await fs.stat(abs);
+    if (st.size > MAX_FILE) return null;
     if (ext === ".docx") {
       const { value } = await mammoth.extractRawText({ path: abs });
       const text = (value ?? "").trim();

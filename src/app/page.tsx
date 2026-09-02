@@ -177,6 +177,11 @@ export default function Home() {
         const det = data as unknown as DetectionResult;
         setResult(det);
         setDetailsOpen(!det.org?.connected);
+        // the org-authorize poll bails when connectTarget doesn't match the
+        // project - connect() sets it, but a project created HERE never did,
+        // so "Authorize org" on a fresh project sat on "updates automatically"
+        // forever (the poll exited on its first tick)
+        connectTarget.current = norm(det.path ?? target);
         localStorage.setItem("sfdh.lastPath", target);
       }
     } catch (e) {

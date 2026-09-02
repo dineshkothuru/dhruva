@@ -39,17 +39,27 @@ const AC_TOKEN = /\bAC(\d+)\b/g;
  * which then read as a missing requirement. */
 export function brdUnits(doc: string): string[] {
   const out: string[] = [];
+  // Set membership, not out.includes(): the input is an attached document's
+  // extracted text, and includes() inside the per-token loop is
+  // O(occurrences × distinct units) - a degenerate BRD with a million tokens
+  // hung the (single-threaded) server for hours.
+  const seen = new Set<string>();
+  const push = (u: string) => {
+    if (!seen.has(u)) {
+      seen.add(u);
+      out.push(u);
+    }
+  };
   let story = "";
   for (const raw of doc.split(/\r?\n/)) {
     const line = raw.trim();
     const opener = line.match(STORY_OPENER);
     if (opener && !TOC_ROW.test(raw)) {
       story = opener[1];
-      if (!out.includes(story)) out.push(story);
+      push(story);
     }
     for (const m of line.matchAll(AC_TOKEN)) {
-      const unit = story ? `${story} AC${m[1]}` : `AC${m[1]}`;
-      if (!out.includes(unit)) out.push(unit);
+      push(story ? `${story} AC${m[1]}` : `AC${m[1]}`);
     }
   }
   return out;
@@ -70,7 +80,12 @@ export function citedUnits(design: string): Set<string> {
     for (const r of line.matchAll(/\bAC(\d+)\s*[-–—]\s*AC?(\d+)\b/g)) {
       const from = Number(r[1]);
       const to = Number(r[2]);
-      for (let n = Math.min(from, to); n <= Math.max(from, to); n++) {
+      // The design text is LLM output - "AC1-AC999999999" must not expand to a
+      // billion Set.adds. No real BRD has hundreds of ACs on one story; a range
+      // wider than that is a hallucination, clamped rather than obeyed.
+      const lo = Math.min(from, to);
+      const hi = Math.min(Math.max(from, to), lo + 500);
+      for (let n = lo; n <= hi; n++) {
         cited.add(`${story} AC${n}`);
       }
     }

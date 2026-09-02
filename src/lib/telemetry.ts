@@ -190,6 +190,17 @@ export function sanitizeProps(props: TelemetryProps): TelemetryProps {
       else out.workflow_custom = true;
       continue;
     }
+    if (k === "model") {
+      // Model ids are mostly vendor slugs - but Cursor's are USER-TYPED free
+      // text, and "not sensitive" stops being true the day someone names a
+      // model entry after a customer. Only recognizable vendor shapes leave
+      // the machine; anything else becomes the fact that a custom id was used.
+      const id = String(v);
+      out.model = /^(claude|gpt|gemini|o\d|sonnet|opus|haiku|auto$|mai|codex|grok|llama|mistral|deepseek)/i.test(id)
+        ? id.slice(0, 60)
+        : "custom";
+      continue;
+    }
     out[k] = typeof v === "string" ? v.slice(0, 60) : v;
   }
   return out;

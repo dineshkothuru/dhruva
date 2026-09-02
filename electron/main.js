@@ -43,10 +43,26 @@ function startServer() {
 
 function waitForServer(retries = 120) {
   return new Promise((resolve, reject) => {
+    // a dead child means EADDRINUSE or a crashed boot - without this listener
+    // the loop would happily accept WHATEVER else answers on the port and load
+    // a stranger's app into the trusted Dhruva window
+    let exited = false;
+    serverProc?.on("exit", (code) => {
+      exited = true;
+      reject(new Error(`Dhruva server exited during startup (code ${code}) - is port ${PORT} already in use?`));
+    });
     const tick = (left) => {
-      const req = http.get(`http://127.0.0.1:${PORT}`, (res) => {
+      if (exited) return;
+      // the probe hits /api so the middleware answers - and only OUR server
+      // stamps x-dhruva on it
+      const req = http.get(`http://127.0.0.1:${PORT}/api/runs`, (res) => {
         res.resume();
-        resolve();
+        if (res.headers["x-dhruva"] === "1") return resolve();
+        reject(
+          new Error(
+            `something else is already running on port ${PORT} - close it or set DHRUVA_PORT`,
+          ),
+        );
       });
       req.on("error", () => {
         if (left <= 0) reject(new Error("Dhruva server did not start"));
@@ -79,10 +95,25 @@ async function createWindow() {
     autoHideMenuBar: true,
     webPreferences: { contextIsolation: true },
   });
-  // external links (Salesforce logins, GitHub) open in the real browser
+  // external links (Salesforce logins, GitHub) open in the real browser -
+  // but ONLY web links: the page renders agent output and org data, and
+  // shell.openExternal on a file://, search-ms: or custom-protocol URL is an
+  // OS-level launch of whatever that protocol's handler is
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: "deny" };
+  });
+  // in-window navigation stays on this app: an external page rendered inside
+  // the trusted Dhruva chrome is a phishing surface even with no node bridge
+  win.webContents.on("will-navigate", (event, url) => {
+    const ours =
+      url.startsWith(`http://127.0.0.1:${PORT}`) ||
+      url.startsWith(`http://localhost:${PORT}`) ||
+      url.startsWith("data:");
+    if (!ours) {
+      event.preventDefault();
+      if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    }
   });
   await win.loadURL(SPLASH);
 }
@@ -95,6 +126,12 @@ function setupAutoUpdate() {
     const { autoUpdater } = require("electron-updater");
     const { dialog } = require("electron");
     autoUpdater.autoDownload = true;
+    // autoUpdater is an EventEmitter: a background download failure emits
+    // "error", and an unhandled 'error' event throws in the main process -
+    // the .catch below covers only the checkForUpdates promise
+    autoUpdater.on("error", () => {
+      /* offline / transient - try again next launch */
+    });
     autoUpdater.on("update-downloaded", (info) => {
       const choice = dialog.showMessageBoxSync(win, {
         type: "info",
@@ -134,7 +171,14 @@ app.on("window-all-closed", () => {
 app.on("quit", () => {
   if (serverProc && !serverProc.killed) {
     try {
-      process.kill(serverProc.pid);
+      if (process.platform === "win32") {
+        // kill the TREE: process.kill takes only server.js, whose own
+        // children (LSP servers, sf/agent CLIs mid-step) orphan on Windows
+        // and accumulate across open/close cycles, holding the port
+        spawn("taskkill", ["/pid", String(serverProc.pid), "/T", "/F"], { shell: false });
+      } else {
+        process.kill(serverProc.pid);
+      }
     } catch {
       /* already gone */
     }

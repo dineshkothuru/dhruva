@@ -196,7 +196,23 @@ async function ensureShadow(root: string): Promise<boolean> {
   // EVERY use, not just creation: for a legacy in-project store this erases
   // whatever an agent may have planted (filter/diff drivers included), and it
   // retro-applies settings added since the repo was created (quotepath).
-  await fs.writeFile(path.join(gitDir, "config"), CANONICAL_CONFIG, "utf8").catch(() => {});
+  //
+  // One section survives the rewrite: [extensions]. A user whose global git
+  // sets init.defaultObjectFormat=sha256 or refStorage=reftable gets a repo
+  // whose FORMAT is recorded there - erase it and every later git call
+  // refuses the repo outright. Extensions carry no executable values (unlike
+  // filter/diff/hooks config), so preserving them keeps the security property.
+  const existing = await fs.readFile(path.join(gitDir, "config"), "utf8").catch(() => "");
+  const ext = existing.match(/^\[extensions\][\s\S]*?(?=\n\[|\s*$)/m)?.[0] ?? "";
+  const versionLine = ext
+    ? existing.match(/^\s*repositoryformatversion\s*=\s*\d+/m)?.[0] ?? ""
+    : "";
+  let config = CANONICAL_CONFIG + (ext ? `${ext}\n` : "");
+  if (versionLine) {
+    // extensions require repositoryformatversion >= 1 - keep the repo's own
+    config = config.replace(/\trepositoryformatversion = 0/, versionLine.replace(/^\s*/, "\t"));
+  }
+  await fs.writeFile(path.join(gitDir, "config"), config, "utf8").catch(() => {});
   // keep the customer's git (when present) blind to the shadow store
   const realGitInfo = path.join(root, ".git", "info");
   try {

@@ -277,19 +277,22 @@ export default function OrgBrowser({
 
   /** Reads the jobs without touching state, so callers decide what to do with
    * them. A retrieve outlives its own request, hence the polling. */
-  const fetchJobs = useCallback(async (): Promise<Job[]> => {
+  const fetchJobs = useCallback(async (): Promise<Job[] | null> => {
     try {
       const res = await fetch("/api/org-metadata?root=" + encodeURIComponent(root));
       const data = await res.json();
       return Array.isArray(data?.jobs) ? (data.jobs as Job[]) : [];
     } catch {
-      // a failed poll is not worth surfacing - the next one may work
-      return [];
+      // a failed poll is UNKNOWN, not "no jobs": mapping it to [] made one
+      // transient hiccup (a dev rebuild) read as "everything finished" - the
+      // progress card vanished and polling stopped while the retrieve ran on
+      return null;
     }
   }, [root]);
 
   const applyJobs = useCallback(
-    (list: Job[]) => {
+    (list: Job[] | null) => {
+      if (list === null) return; // unknown - keep polling, keep the cards
       setJobs(list);
       // Polling stops only when nothing is queued or running. Files have landed
       // on disk by then, so the local tree is told to re-read.
@@ -316,7 +319,7 @@ export default function OrgBrowser({
     fetchJobs().then((list) => {
       if (!cancelled) {
         applyJobs(list);
-        if (list.some(isActive)) startPolling();
+        if (list?.some(isActive)) startPolling();
       }
     });
     return () => {

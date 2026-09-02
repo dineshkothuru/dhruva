@@ -102,8 +102,20 @@ export async function deployFile(
   // completes anyway - while this function reported "failed".
   const { stdout, stderr, ok } = await runSf(args, root, waitMinutes * 60_000 + 60_000);
   if (!ok && !stdout.trim()) {
-    // killed or died without output: the org-side outcome is UNKNOWN, and
-    // claiming failure here is how a "failed" deploy ends up live in the org
+    // Distinguish "never started" from "interrupted mid-flight". A CLI that
+    // failed to launch (missing sf, expired login) reports on stderr and the
+    // org was never touched - sending the user to Deployment Status for that
+    // is a wild goose chase. Only a silent death (kill/timeout) is UNKNOWN,
+    // because the org-side deploy may have completed after the wrapper died.
+    const err = (stderr ?? "").trim();
+    if (err) {
+      return {
+        ok: false,
+        checkOnly,
+        message: `deploy failed to start: ${err.slice(-600)}`,
+        files: [],
+      };
+    }
     return {
       ok: false,
       checkOnly,

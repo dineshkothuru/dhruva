@@ -82,7 +82,17 @@ export async function POST(req: Request) {
       cwd: root,
       shell: true,
       windowsHide: true,
-      env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", CI: "true" },
+      env: {
+        ...process.env,
+        NO_COLOR: "1",
+        FORCE_COLOR: "0",
+        CI: "true",
+        // cmd.exe searches the CURRENT DIRECTORY before PATH on Windows, and
+        // cwd is the attached (untrusted) project - a planted claude.cmd/
+        // copilot.cmd would run on the first chat message. Same fix as the
+        // engine's spawn (spawnStep.ts).
+        NoDefaultCurrentDirectoryInExePath: "1",
+      },
     });
     const timer = setTimeout(() => {
       if (child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: false });

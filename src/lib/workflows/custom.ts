@@ -98,8 +98,13 @@ async function readDir(dir: string): Promise<WorkflowDef[]> {
 
 export async function listCustomWorkflows(
   root: string,
-): Promise<{ def: WorkflowDef; scope: WorkflowScope; trusted?: boolean }[]> {
-  const byId = new Map<string, { def: WorkflowDef; scope: WorkflowScope; trusted?: boolean }>();
+): Promise<
+  { def: WorkflowDef; scope: WorkflowScope; trusted?: boolean; shadowsProject?: boolean }[]
+> {
+  const byId = new Map<
+    string,
+    { def: WorkflowDef; scope: WorkflowScope; trusted?: boolean; shadowsProject?: boolean }
+  >();
   // Project entries first, so the user's central copies WIN id collisions -
   // a repo must not shadow a workflow name the user already trusts.
   try {
@@ -120,8 +125,20 @@ export async function listCustomWorkflows(
   } catch {
     /* no project dir yet */
   }
-  for (const def of await readDir(legacyCentralDir())) byId.set(def.id, { def, scope: "central" });
-  for (const def of await readDir(centralDir())) byId.set(def.id, { def, scope: "central" });
+  // The central copy WINS a collision (a repo must not shadow the user's own
+  // id) - but the shadowed project copy must not become invisible: the entry
+  // is marked so the UI can say "this id also exists in the repo".
+  for (const def of await readDir(legacyCentralDir())) {
+    byId.set(def.id, { def, scope: "central", shadowsProject: byId.get(def.id)?.scope === "project" });
+  }
+  for (const def of await readDir(centralDir())) {
+    const prev = byId.get(def.id);
+    byId.set(def.id, {
+      def,
+      scope: "central",
+      shadowsProject: prev?.scope === "project" || prev?.shadowsProject === true,
+    });
+  }
   return [...byId.values()].sort((a, b) => a.def.title.localeCompare(b.def.title));
 }
 
@@ -191,4 +208,27 @@ export async function projectWorkflowUntrusted(root: string, id: string): Promis
   } catch {
     return false;
   }
+}
+
+/** Why a saved workflow fails to load AT ALL: the file exists somewhere but no
+ * longer validates (e.g. a git option the allowlist was tightened against).
+ * Without this, a stricter validator makes saved workflows silently vanish -
+ * "unknown workflow" with no error naming the offending flag. */
+export async function workflowLoadError(root: string, id: string): Promise<string | null> {
+  if (!SLUG.test(id)) return null;
+  for (const dir of [centralDir(), legacyCentralDir(), projectDir(root)]) {
+    let raw = "";
+    try {
+      raw = await fs.readFile(path.join(dir, `${id}.json`), "utf8");
+    } catch {
+      continue;
+    }
+    try {
+      validateWorkflowDef(JSON.parse(raw));
+      return null; // parses fine - the failure is elsewhere (e.g. trust)
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  }
+  return null;
 }

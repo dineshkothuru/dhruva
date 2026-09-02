@@ -37,8 +37,14 @@ export async function POST(req: Request) {
     if (typeof b.id !== "string" || !Array.isArray(b.messages)) {
       return NextResponse.json({ error: "id and messages required" }, { status: 400 });
     }
-    // cap what one thread can occupy on disk
-    const messages = (b.messages as StoredMsg[]).slice(-200);
+    // cap what one thread can occupy on disk - message COUNT and per-message
+    // size (an unbounded text field made one thread file unbounded), and drop
+    // anything that is not a {role, text:string} shape rather than crashing on
+    // m.text.trim() later
+    const messages = (b.messages as StoredMsg[])
+      .filter((m) => m && typeof m === "object" && typeof m.text === "string")
+      .map((m) => (m.text.length > 200_000 ? { ...m, text: m.text.slice(0, 200_000) } : m))
+      .slice(-200);
     return NextResponse.json({ saved: await saveChat(root, b.id, messages) });
   }
 

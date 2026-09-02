@@ -35,9 +35,16 @@ export function createDecoder(): (chunk: Buffer) => LspMessage[] {
   return (chunk: Buffer): LspMessage[] => {
     buf = buf.length === 0 ? chunk : (Buffer.concat([buf, chunk]) as Buffer);
     const out: LspMessage[] = [];
+    // A rogue or confused server must not grow this buffer without bound: no
+    // legitimate LSP message here (completions, configuration) approaches this.
+    const MAX_MESSAGE = 64_000_000;
     for (;;) {
       const sep = buf.indexOf("\r\n\r\n");
-      if (sep < 0) return out;
+      if (sep < 0) {
+        // headers never arriving must not accumulate forever either
+        if (buf.length > MAX_MESSAGE) buf = Buffer.alloc(0);
+        return out;
+      }
       const header = buf.subarray(0, sep).toString("ascii");
       const m = /content-length:\s*(\d+)/i.exec(header);
       if (!m) {
@@ -47,6 +54,12 @@ export function createDecoder(): (chunk: Buffer) => LspMessage[] {
         continue;
       }
       const len = Number(m[1]);
+      if (!Number.isFinite(len) || len > MAX_MESSAGE) {
+        // a claimed 10GB body would buffer until OOM; the stream cannot be
+        // resynced past a length we refuse to read, so drop what we hold
+        buf = Buffer.alloc(0);
+        return out;
+      }
       const start = sep + 4;
       if (buf.length < start + len) return out;
       const body = buf.subarray(start, start + len).toString("utf8");
