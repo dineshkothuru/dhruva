@@ -7,3 +7,6 @@ next-env.d.ts
 .env*
 
 .sf/
+
+# user-local editor/session tooling
+.claude/
