@@ -1227,6 +1227,21 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         const { data } = await loadTasks(run.root, rel);
         const pending = data ? pendingInOrder(data) : [];
         if (data && pending.length > 0) {
+          // The full plan checklist used to ride in EVERY task spawn. The task
+          // suffix already carries this task's approved details from the tasks
+          // file, so the checklist is swapped per spawn for a compact index of
+          // all tasks - cross-task context at a fraction of the size. The
+          // human-approved full text stays where it was approved: the plan
+          // step's trace and the tasks file.
+          const planOut = run.steps.find((s) => s.id === "plan")?.output ?? "";
+          const taskIndex =
+            `BUILD PLAN INDEX (the full checklist was approved at the plan gate; ` +
+            `authoritative task data lives in ${rel}):\n` +
+            data.tasks.map((x) => `${x.id} [${x.status ?? "pending"}] ${x.title}`).join("\n");
+          const loopPrompt =
+            planOut.length > 1500 && prompt.includes(planOut)
+              ? prompt.replace(planOut, taskIndex)
+              : prompt;
           const totals = { inTokens: 0, outTokens: 0, costUsd: 0, estimated: false };
           let n = 0;
           for (const t of pending) {
@@ -1246,7 +1261,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
             // up to 200 spawns. The task names its own files - swap both
             // blocks for ones matched against just them. Unscoped skills and
             // the baseline still reach every task.
-            let base = prompt;
+            let base = loopPrompt;
             if (t.files.length > 0) {
               if (rules) {
                 const taskRules = await standardsFor(t.files, run.root, def.role).catch(() => "");
