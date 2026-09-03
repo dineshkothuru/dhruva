@@ -1239,15 +1239,25 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
             const latestReview = t.reviews?.length
               ? t.reviews[t.reviews.length - 1].comment
               : "";
-            // Standards scoped to THIS task's files: the step-level rules were
-            // matched against every file the whole run touches, so an LWC-only
-            // task was carrying apex-tests/async/trigger rules (and vice
-            // versa) on every one of up to 200 spawns. The task names its own
-            // files - swap the rules block for one matched against just them.
+            // Standards AND skills scoped to THIS task's files: the step-level
+            // blocks were matched against every file the whole run touches, so
+            // an LWC-only task was carrying apex-tests/async/trigger rules and
+            // apex-scoped project knowledge (and vice versa) on every one of
+            // up to 200 spawns. The task names its own files - swap both
+            // blocks for ones matched against just them. Unscoped skills and
+            // the baseline still reach every task.
             let base = prompt;
-            if (t.files.length > 0 && rules) {
-              const taskRules = await standardsFor(t.files, run.root, def.role).catch(() => "");
-              if (taskRules && taskRules !== rules) base = prompt.replace(rules, taskRules);
+            if (t.files.length > 0) {
+              if (rules) {
+                const taskRules = await standardsFor(t.files, run.root, def.role).catch(() => "");
+                if (taskRules && taskRules !== rules) base = base.replace(rules, taskRules);
+              }
+              if (skills.block) {
+                const taskSkills = await skillsPrompt(run.root, t.files).catch(() => null);
+                if (taskSkills && taskSkills.block !== skills.block) {
+                  base = base.replace(skills.block, taskSkills.block);
+                }
+              }
             }
             const taskPrompt =
               base +
