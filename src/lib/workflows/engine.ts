@@ -11,7 +11,14 @@ import { estimateUsage } from "@/lib/pricing";
 import { loadTasks, saveTasks, pendingInOrder, reopenFromFindings } from "@/lib/workflows/tasks";
 import { skillsPrompt } from "@/lib/projectSkills";
 import { projectInventory } from "@/lib/projectInventory";
-import { expandArgs, harvestAffectedFiles, quotedDocs, template, winQuote } from "./templating";
+import {
+  expandArgs,
+  harvestAffectedFiles,
+  quotedDocs,
+  sliceRequirements,
+  template,
+  winQuote,
+} from "./templating";
 import { gateWaiters, hasActiveRun, persist, runs } from "./runStore";
 import { makeClaudeTraceTransform, spawnToStep } from "./spawnStep";
 import {
@@ -30,6 +37,7 @@ import {
   nearestAgentIndex,
   parkAtGate,
   recordDecision,
+  revisionClosure,
   writePlainArtifact,
 } from "./designGlue";
 
@@ -1103,6 +1111,14 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const stateBlock = await designStateBlock(run, def);
       const documentBlock = await designDocumentBlock(run, def);
       const docs = await quotedDocs(run, def.prompt ?? "");
+      // On REVISION rounds, quoted REQ-structured documents (the frozen
+      // requirements) are sliced to the design's dependency closure - the same
+      // scoping the document payload gets. Authoring rounds (no design yet)
+      // always receive them whole.
+      const closure = await revisionClosure(run, def).catch(() => null);
+      if (closure) {
+        for (const [k, v] of docs) docs.set(k, sliceRequirements(v, closure));
+      }
       // Investigation and design steps get the project inventory: "does this
       // object have a trigger" answered by engine-parsed ground truth instead
       // of by how well the agent happens to search (a trigger's NAME says
@@ -1112,6 +1128,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         def.role === "read" || def.role === "design"
           ? await projectInventory(run.root).catch(() => "")
           : "";
+      const stepText = template(def.prompt ?? "", run, docs);
       const prompt =
         `You are working inside the Salesforce DX project at ${run.root} ` +
         `(your current working directory). Only read and modify files in this project.\n` +
@@ -1126,7 +1143,7 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         inventory +
         `\n` +
         stateBlock +
-        template(def.prompt ?? "", run, docs) +
+        stepText +
         feedbackBlock +
         // One source of truth per machine-read contract: the engine appends
         // them, so every step gets the exact text its parser expects and a
@@ -1140,6 +1157,15 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         // Data last: the document the step works ON goes after the task and the
         // contracts, never before them.
         documentBlock;
+      // Where the input tokens went, one line per spawn, in the step trace -
+      // diet decisions should come from data, not from feel.
+      {
+        const kb = (s: string) => `${Math.round(s.length / 100) / 10}k`;
+        step.output +=
+          `[engine] prompt ${kb(prompt)}: standards ${kb(rules)} · skills ${kb(skills.block)} · ` +
+          `inventory ${kb(inventory)} · state ${kb(stateBlock)} · task ${kb(stepText)} · ` +
+          `document ${kb(documentBlock)}\n`;
+      }
       // Model resolution, most specific wins:
       // 1. the user's per-ROLE model for this run (the Models-by-role setting)
       // 2. the role's tier through the agent's shipped tiers map

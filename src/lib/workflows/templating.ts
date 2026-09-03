@@ -134,6 +134,26 @@ export function expandArgs(argv: string[], run: RunState): string[] | null {
   return out;
 }
 
+/** Slice a "### REQ-nnn"-structured document to the given ids: kept sections
+ * whole, the rest reduced to their heading plus a one-line stub. Used on
+ * REVISION rounds only - the frozen requirement list is immutable during a
+ * run, so a settled block's section serves no reader until that block reopens
+ * (when it does, its id re-enters the closure and the section returns).
+ * Anything not REQ-structured is returned untouched. */
+export function sliceRequirements(body: string, keep: Set<string>): string {
+  const sections = body.split(/(?=^###[ \t]+REQ-\d+)/m);
+  if (sections.length < 3) return body; // not REQ-structured - never slice
+  let dropped = 0;
+  const parts = sections.slice(1).map((sec) => {
+    const id = sec.match(/^###[ \t]+(REQ-\d+)/)?.[1];
+    if (!id || keep.has(id)) return sec;
+    dropped++;
+    const title = sec.split("\n")[0].trimEnd();
+    return `${title}\n(settled in the design and unrelated to this round - full text in the frozen requirements document)\n\n`;
+  });
+  return dropped === 0 ? body : sections[0] + parts.join("");
+}
+
 /** User-provided values that end up in argv must never carry shell
  * metacharacters (args pass through cmd.exe to resolve .cmd shims). */
 export function cliSafe(v: string): string {

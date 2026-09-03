@@ -5,6 +5,7 @@ import { checkEvidence, evidenceNote } from "./evidenceCheck";
 import type { BlockState } from "./artifacts";
 import {
   awaitingDecision,
+  dependencyClosure,
   foldDecision,
   load as loadDesignDoc,
   openFor,
@@ -15,6 +16,7 @@ import {
   render as renderDesign,
   renderChanges,
   renderOpenFindings,
+  renderScoped,
   save as saveDesignDoc,
 } from "./designDoc";
 import { template, toPosix } from "./templating";
@@ -222,18 +224,50 @@ export async function designDocumentBlock(run: RunState, def: StepDef): Promise<
   // 60975f36-bba got ten ids and no claims, said it would rather emit an empty
   // delta than invent verdicts, and revised zero of thirty-four blocks.
   const findings = renderOpenFindings(doc);
+  // Dependency-closure payload: full text for the blocks in play plus one
+  // DEPENDS-ON hop either direction; settled-and-unrelated blocks become
+  // contract stubs that keep every committed component/decision (BRD-REF,
+  // DESIGN, DEPENDS-ON) and drop only the audit prose. The designer can't
+  // edit those blocks anyway (the engine refuses such deltas), the stub keeps
+  // ripple detection possible, and the REVIEWER still reads the complete
+  // document from disk - the cross-consistency check is unchanged. On real
+  // runs the full re-send was 40-90KB per revision round.
+  const closure = dependencyClosure(doc);
+  const scoped = closure.size < doc.blocks.length;
+  const body = scoped ? renderScoped(doc, closure) : renderDesign(doc);
   return (
     (findings
       ? `\n\n--- OPEN FINDINGS you must answer (${doc.findings.filter((f) => f.status === "open").length}) ---\n` +
         `${findings}\n--- end open findings ---\n`
       : "") +
     `\n\n--- CURRENT DESIGN DOCUMENT (reference; the task is stated above) ---\n` +
-    `${renderDesign(doc)}\n` +
+    (scoped
+      ? `(Blocks marked "settled and unrelated" are CONTRACT STUBS: their committed ` +
+        `components and dependencies are shown, their evidence/history is not. Do not ` +
+        `edit them. If a change you make invalidates one, say so in your commentary and ` +
+        `name it - the reviewer reads the complete document. Full text: ${rel})\n\n`
+      : "") +
+    `${body}\n` +
     `--- end design document ---\n\n` +
     `Now produce the DELTA exactly as instructed above: only the blocks you changed ` +
     `or are answering a finding on, each field complete, and a response to EVERY id ` +
     `on that block's OPEN FINDINGS line.\n`
   );
+}
+
+/** The REQ ids a revision round works on (dependency closure), or null when
+ * there is no design yet (authoring round). The engine uses it to slice the
+ * frozen requirements quote the same way the document itself is sliced. */
+export async function revisionClosure(run: RunState, def: StepDef): Promise<Set<string> | null> {
+  if (!def.artifact) return null;
+  const rel = toPosix(template(def.artifact, run));
+  // ONLY the design's own revision rounds are sliced. The reviewer has no
+  // artifact (it must keep the full requirements - coverage auditing IS its
+  // job), and write-doc's artifact is an output document, not the design.
+  if (!isDesignArtifact(rel)) return null;
+  const doc = await loadDesignDoc(run.root, rel).catch(() => null);
+  if (!doc || doc.blocks.length === 0) return null;
+  return dependencyClosure(doc);
 }
 
 /** Tell an authoring step, in its own prompt, whether it is writing a design
@@ -292,8 +326,10 @@ export async function designStateBlock(run: RunState, def: StepDef): Promise<str
   const evLine = ev && ev.missing.length ? `\nENGINE CHECK - ${evidenceNote(ev)}\nFix these blocks.\n` : "";
   return (
     `\n\n=== DESIGN STATE ===\n` +
-    `You are REVISING. The complete current design is at the END of this prompt - ` +
-    `it is the authoritative copy, so do NOT search the filesystem for it.\n\n` +
+    `You are REVISING. The current design is at the END of this prompt: blocks in play ` +
+    `(and their dependency neighbours) in FULL, settled unrelated blocks as contract ` +
+    `stubs. The inline copy is authoritative for everything you may change - do NOT ` +
+    `search the filesystem for it, and never treat an empty search as "no design exists".\n\n` +
     line("open", by("open").filter((id) => !isWaiting.has(id))) +
     line("awaiting a decision", waiting) +
     line("approved - reviewer objects", by("approved-objected")) +

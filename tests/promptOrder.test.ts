@@ -60,8 +60,8 @@ describe("prompt order: task before data", () => {
       expect(i, `not in the prompt assembly: ${n}`).toBeGreaterThan(-1);
       return i;
     };
-    expect(pos("stateBlock")).toBeLessThan(pos("template(def.prompt"));
-    expect(pos("template(def.prompt")).toBeLessThan(pos("OUTCOME_INSTRUCTION"));
+    expect(pos("stateBlock")).toBeLessThan(pos("stepText"));
+    expect(pos("stepText")).toBeLessThan(pos("OUTCOME_INSTRUCTION"));
     expect(pos("OUTCOME_INSTRUCTION")).toBeLessThan(pos("documentBlock"));
   });
 

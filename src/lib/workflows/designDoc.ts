@@ -204,6 +204,65 @@ function fieldsToText(fields: DesignField[]): string {
     .trim();
 }
 
+/** Which blocks a revision round must see in FULL: the blocks in play, plus
+ * one DEPENDS-ON hop in both directions (what they depend on, and what depends
+ * on them) - the blocks a change could ripple into. Everything else is settled
+ * AND unrelated, and its full text is re-sent rationale nobody is acting on. */
+export function dependencyClosure(doc: DesignDoc): Set<string> {
+  const inPlay = new Set(
+    doc.blocks
+      .filter(
+        (b) =>
+          b.state === "open" ||
+          b.state === "approved-objected" ||
+          openFor(doc, b.id).length > 0,
+      )
+      .map((b) => b.id),
+  );
+  const deps = new Map<string, string[]>();
+  for (const b of doc.blocks) {
+    const field = b.fields.find((f) => f.label.toUpperCase() === "DEPENDS-ON");
+    deps.set(b.id, field ? (field.body.match(/\bREQ-\d+\b/g) ?? []) : []);
+  }
+  const closure = new Set(inPlay);
+  for (const b of doc.blocks) {
+    const mine = deps.get(b.id) ?? [];
+    // I depend on an in-play block, or an in-play block depends on me
+    if (mine.some((d) => inPlay.has(d))) closure.add(b.id);
+    if (inPlay.has(b.id)) for (const d of mine) closure.add(d);
+  }
+  return closure;
+}
+
+/** Fields a settled block's CONTRACT STUB keeps: everything another block can
+ * depend on (the committed components and decisions), none of the audit prose
+ * (evidence citations, rejected alternatives, response history) - that exists
+ * for reviewers and humans, and the reviewer still receives the full document. */
+const STUB_FIELDS = new Set(["BRD-REF", "DESIGN", "DEPENDS-ON", "EFFORT"]);
+
+/** The design rendered for a REVISION prompt: full text for the given ids,
+ * contract stubs for the rest. render() stays the on-disk/reviewer form. */
+export function renderScoped(doc: DesignDoc, fullIds: Set<string>): string {
+  const parts = doc.blocks
+    .filter((b) => b.state !== "parked")
+    .map((b) => {
+      if (fullIds.has(b.id)) return renderBlockFull(doc, b);
+      const kept = b.fields.filter((f) => STUB_FIELDS.has(f.label.toUpperCase()));
+      return [
+        headingOf(b),
+        "",
+        fieldsToText(kept),
+        `OPEN FINDINGS: -`,
+        `STATE: ${STATE_TEXT[b.state]} - settled and unrelated to this round; ` +
+          `evidence/history omitted here, full text in the on-disk document`,
+      ]
+        .filter((s) => s !== "")
+        .join("\n")
+        .trimEnd();
+    });
+  return [doc.preamble, ...parts].filter((s) => s && s.trim() !== "").join("\n\n") + "\n";
+}
+
 /** Everything before the first requirement is supposed to be the OVERVIEW. In
  * practice a step investigates out loud first: on run a9f88c51-fa2 the design
  * pass explored five areas in parallel and wrote 472 lines of notes - objects,
@@ -274,39 +333,44 @@ function headingOf(b: DesignBlockDoc): string {
 }
 
 /** The markdown a human and an agent read. An OUTPUT: nothing parses it back. */
+/** One block, complete: fields, human note, findings line, state, history,
+ * lineage. Shared by render() (the on-disk/reviewer document) and
+ * renderScoped() (the revision prompt's in-play blocks). */
+function renderBlockFull(doc: DesignDoc, b: DesignBlockDoc): string {
+  const open = openFor(doc, b.id).map((f) => f.id);
+  const body = [
+    headingOf(b),
+    "",
+    fieldsToText(b.fields),
+    // The numbers, on the row, so a reader sees at a glance what is still
+    // outstanding against this requirement - and the state below it can only
+    // be `clean` when this line is empty.
+    // The human's own words about this requirement, on the block, in front of
+    // both agents on every later round. The gate instruction reaches the
+    // designer once; this keeps it attached to the thing it is about.
+    b.humanNote?.trim() ? `HUMAN-NOTE: ${b.humanNote.trim()}` : "",
+    `OPEN FINDINGS: ${open.length ? open.join(", ") : "-"}`,
+    `STATE: ${STATE_TEXT[b.state]}${
+      b.state === "open" && open.length === 0 && awaitingDecision(b)
+        ? " - held by its own OPEN-CONFIRMED, not by a finding"
+        : ""
+    }`,
+  ];
+  if (b.history.length > 0) {
+    body.push(`HISTORY: ${b.history.map((h) => h.note).join(" · ")}`);
+  }
+  if (b.lineage?.length) {
+    body.push("", LINEAGE_MARK, "");
+    body.push(b.lineage.map((l) => quoteStructure(l.body)).join("\n\n"));
+  }
+  return body.filter((s) => s !== "").join("\n").trimEnd();
+}
+
 export function render(doc: DesignDoc): string {
   // Parked requirements are NOT in the design the downstream steps build from -
   // that is the point of parking. They keep their place in state and appear in
   // pending-design.md instead.
-  const parts = doc.blocks.filter((b) => b.state !== "parked").map((b) => {
-    const open = openFor(doc, b.id).map((f) => f.id);
-    const body = [
-      headingOf(b),
-      "",
-      fieldsToText(b.fields),
-      // The numbers, on the row, so a reader sees at a glance what is still
-      // outstanding against this requirement - and the state below it can only
-      // be `clean` when this line is empty.
-      // The human's own words about this requirement, on the block, in front of
-      // both agents on every later round. The gate instruction reaches the
-      // designer once; this keeps it attached to the thing it is about.
-      b.humanNote?.trim() ? `HUMAN-NOTE: ${b.humanNote.trim()}` : "",
-      `OPEN FINDINGS: ${open.length ? open.join(", ") : "-"}`,
-      `STATE: ${STATE_TEXT[b.state]}${
-        b.state === "open" && open.length === 0 && awaitingDecision(b)
-          ? " - held by its own OPEN-CONFIRMED, not by a finding"
-          : ""
-      }`,
-    ];
-    if (b.history.length > 0) {
-      body.push(`HISTORY: ${b.history.map((h) => h.note).join(" · ")}`);
-    }
-    if (b.lineage?.length) {
-      body.push("", LINEAGE_MARK, "");
-      body.push(b.lineage.map((l) => quoteStructure(l.body)).join("\n\n"));
-    }
-    return body.filter((s) => s !== "").join("\n").trimEnd();
-  });
+  const parts = doc.blocks.filter((b) => b.state !== "parked").map((b) => renderBlockFull(doc, b));
 
   const tail: string[] = [];
   if (doc.unassigned.length > 0) {
