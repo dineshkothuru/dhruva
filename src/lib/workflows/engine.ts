@@ -1239,8 +1239,18 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
             const latestReview = t.reviews?.length
               ? t.reviews[t.reviews.length - 1].comment
               : "";
+            // Standards scoped to THIS task's files: the step-level rules were
+            // matched against every file the whole run touches, so an LWC-only
+            // task was carrying apex-tests/async/trigger rules (and vice
+            // versa) on every one of up to 200 spawns. The task names its own
+            // files - swap the rules block for one matched against just them.
+            let base = prompt;
+            if (t.files.length > 0 && rules) {
+              const taskRules = await standardsFor(t.files, run.root, def.role).catch(() => "");
+              if (taskRules && taskRules !== rules) base = prompt.replace(rules, taskRules);
+            }
             const taskPrompt =
-              prompt +
+              base +
               `\n\nCURRENT TASK - complete ONLY this one task now (the other tasks run as separate steps; do not start them):\n` +
               `${t.id}: ${t.title}\n` +
               (t.change ? `Mechanism: ${t.change}\n` : "") +
@@ -1249,7 +1259,10 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
               (t.traces?.length ? `Traces: ${t.traces.join(", ")}\n` : "") +
               (latestReview
                 ? `REVIEWER COMMENT (mandatory - this reopened task's work order): ${latestReview}\n`
-                : "");
+                : "") +
+              `Read the TDD's sections for this task's components plus the cross-cutting sections ` +
+              `(error handling, deployment order, test strategy); the other tasks' component ` +
+              `sections are not needed for this spawn.\n`;
             const ok = await spawnAgent(taskPrompt, `${def.id}-${t.id}`);
             // per-task harvest over THIS task's output segment, merged - one
             // harvest over the cumulative output kept only one task's FILES:
