@@ -1192,6 +1192,22 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
       const streamJson = run.agent === "claude";
       const spawnAgent = async (fullPrompt: string, promptTag: string): Promise<boolean> => {
         let p = fullPrompt;
+        // Opt-in prompt archive (DHRUVA_LOG_PROMPTS=1): the exact text every
+        // spawn received, one file per spawn, beside the run's audit JSON.
+        // For debugging a surprising step and for prompt-change evals. Off by
+        // default - prompts embed requirement/design content, and the audit
+        // JSON already records the OUTPUT side.
+        if (process.env.DHRUVA_LOG_PROMPTS === "1") {
+          try {
+            const dir = path.join(run.root, ".dhruva", "runs", run.runId, "prompts");
+            await fs.mkdir(dir, { recursive: true });
+            const tag = promptTag.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+            const attempt = (step.attempts?.length ?? 0) + 1;
+            await fs.writeFile(path.join(dir, `${tag}-a${attempt}.txt`), fullPrompt, "utf8");
+          } catch {
+            /* archival is best-effort - never fail a step over it */
+          }
+        }
         // Inline-prompt agents (copilot) hit cmd.exe's ~8k command-line limit -
         // the standards alone exceed it and the task would be truncated away.
         // Write the full prompt to a harness file and pass a short pointer.

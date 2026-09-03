@@ -96,6 +96,86 @@ if (process.argv[2] === "app") {
   });
   return;
 }
+// `dhruva stats [projectPath]` - read-only report over a project's run audit
+// files: what each run cost, how many revision rounds it took, where tokens
+// went. The eval that needs no new spend: compare runs before and after a
+// prompt or engine change from the records every run already writes.
+if (process.argv[2] === "stats") {
+  const fsx = require("node:fs");
+  const root = path.resolve(process.argv[3] || process.cwd());
+  const dir = path.join(root, ".dhruva", "runs");
+  let files = [];
+  try {
+    files = fsx.readdirSync(dir).filter((f) => f.endsWith(".json"));
+  } catch {
+    console.error(`[dhruva] no run records at ${dir}`);
+    process.exit(1);
+  }
+  const rows = [];
+  for (const f of files) {
+    try {
+      const r = JSON.parse(fsx.readFileSync(path.join(dir, f), "utf8"));
+      if (!r.runId || !Array.isArray(r.steps)) continue;
+      const usage = r.steps.reduce(
+        (a, s) => {
+          const all = [s.usage, ...(s.attempts ?? []).map((x) => x.usage)].filter(Boolean);
+          for (const u of all) {
+            a.inTok += u.inTokens ?? 0;
+            a.outTok += u.outTokens ?? 0;
+            a.cost += u.costUsd ?? 0;
+          }
+          return a;
+        },
+        { inTok: 0, outTok: 0, cost: 0 },
+      );
+      // every attempt beyond a step's first execution is a revision round
+      // (auto-revise or a gate sending work back)
+      const rounds = r.steps.reduce((n, s) => n + (s.attempts?.length ?? 0), 0);
+      rows.push({
+        date: new Date(r.createdAt).toISOString().slice(0, 16).replace("T", " "),
+        workflow: String(r.workflowTitle ?? r.workflowId ?? "?").slice(0, 28),
+        status: r.status,
+        agent: r.agent ?? "?",
+        rounds,
+        inTok: usage.inTok,
+        outTok: usage.outTok,
+        cost: usage.cost,
+      });
+    } catch {
+      /* corrupt audit file - skip */
+    }
+  }
+  rows.sort((a, b) => a.date.localeCompare(b.date));
+  const num = (n) => n.toLocaleString("en-US");
+  const pad = (s, w) => String(s).padEnd(w).slice(0, w);
+  const rpad = (s, w) => String(s).padStart(w);
+  console.log(
+    pad("date", 17) + pad("workflow", 30) + pad("status", 9) + pad("agent", 9) +
+    rpad("rounds", 7) + rpad("tokens in", 13) + rpad("out", 10) + rpad("cost", 9),
+  );
+  for (const r of rows) {
+    console.log(
+      pad(r.date, 17) + pad(r.workflow, 30) + pad(r.status, 9) + pad(r.agent, 9) +
+      rpad(r.rounds, 7) + rpad(num(r.inTok), 13) + rpad(num(r.outTok), 10) +
+      rpad("$" + r.cost.toFixed(2), 9),
+    );
+  }
+  const t = rows.reduce(
+    (a, r) => ({ inTok: a.inTok + r.inTok, outTok: a.outTok + r.outTok, cost: a.cost + r.cost, rounds: a.rounds + r.rounds }),
+    { inTok: 0, outTok: 0, cost: 0, rounds: 0 },
+  );
+  console.log("-".repeat(104));
+  console.log(
+    pad(`${rows.length} runs`, 47) + pad("", 9) +
+    rpad(t.rounds, 7) + rpad(num(t.inTok), 13) + rpad(num(t.outTok), 10) + rpad("$" + t.cost.toFixed(2), 9),
+  );
+  console.log(
+    "\n[dhruva] costs are API-rate equivalents (subscription CLIs do not bill per token).\n" +
+    "[dhruva] compare the same workflow's rows before/after a prompt change - rounds and tokens-in are the numbers to watch.",
+  );
+  process.exit(0);
+}
+
 if (process.argv[2] === "version" || process.argv[2] === "--version") {
   console.log(`dhruva ${require(path.join(appRoot, "package.json")).version}`);
   process.exit(0);
