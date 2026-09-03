@@ -17,6 +17,12 @@ interface Module {
    * granularity a path glob cannot express: *.flow-meta.xml cannot tell a
    * record-triggered flow from a screen flow, the XML inside can. */
   appliesToType: { type: string; subtype?: string } | null;
+  /** Step roles this module serves (read/design/implement/review/trace);
+   * null = every role. Code-mechanics rules (logging calls, test assertions,
+   * PR readiness) are noise in a DESIGN prompt - the glob can't express that,
+   * because a design step's scope files are the same code paths an implement
+   * step touches. Both gates must pass: role AND path/type. */
+  roles: Set<string> | null;
   body: string;
 }
 
@@ -103,18 +109,33 @@ export function globToRegex(glob: string): RegExp {
 function parseFrontmatter(raw: string): {
   applyTo: string | null;
   appliesToType: string | null;
+  roles: string | null;
   body: string;
 } {
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!m) return { applyTo: null, appliesToType: null, body: raw };
+  if (!m) return { applyTo: null, appliesToType: null, roles: null, body: raw };
   const fm = m[1];
   const apply = fm.match(/applyTo:\s*["']?([^"'\r\n]+)["']?/);
   const type = fm.match(/appliesToType:\s*["']?([^"'\r\n]+)["']?/);
+  const roles = fm.match(/roles:\s*["']?([^"'\r\n]+)["']?/);
   return {
     applyTo: apply ? apply[1].trim() : null,
     appliesToType: type ? type[1].trim() : null,
+    roles: roles ? roles[1].trim() : null,
     body: raw.slice(m[0].length),
   };
+}
+
+const KNOWN_ROLES = new Set(["read", "design", "implement", "review", "trace"]);
+
+function parseRoles(v: string): Set<string> | null {
+  const roles = v
+    .split(",")
+    .map((r) => r.trim().toLowerCase())
+    .filter((r) => KNOWN_ROLES.has(r));
+  // an all-invalid roles line must not silently hide the module everywhere -
+  // fail open to "all roles", same stance as an unknown appliesToType subtype
+  return roles.length > 0 ? new Set(roles) : null;
 }
 
 async function load() {
@@ -126,11 +147,12 @@ async function load() {
   for (const f of await fs.readdir(instDir).catch(() => [] as string[])) {
     if (!f.endsWith(".md")) continue;
     const raw = await fs.readFile(path.join(instDir, f), "utf8");
-    const { applyTo, appliesToType, body } = parseFrontmatter(raw);
+    const { applyTo, appliesToType, roles, body } = parseFrontmatter(raw);
     modules.push({
       name: f.replace(/\.instructions\.md$/, ""),
       applyTo: applyTo ? globToRegex(applyTo) : null,
       appliesToType: appliesToType ? parseTypeSelector(appliesToType) : null,
+      roles: roles ? parseRoles(roles) : null,
       body: body.trim(),
     });
   }
@@ -145,19 +167,26 @@ async function load() {
   return cache;
 }
 
-/** The rules relevant to a set of files: baseline + every module whose
- * applyTo glob or appliesToType selector matches at least one file (modules
- * with neither are always included). With no files known yet (e.g.
+/** The rules relevant to a set of files AND a step role: baseline + every
+ * module whose applyTo glob or appliesToType selector matches at least one
+ * file (modules with neither are always path-eligible), gated by the module's
+ * `roles:` list when it declares one. With no files known yet (e.g.
  * investigation steps), returns baseline + unscoped modules only. `root`
  * enables content-based subtype checks (Flow[recordTriggered], ApexClass[test]);
- * without it, a matching type includes the module regardless of subtype. */
-export async function standardsFor(files: string[], root?: string): Promise<string> {
+ * without it, a matching type includes the module regardless of subtype. No
+ * `role` given = no role filtering (fail open, never hide rules by accident). */
+export async function standardsFor(
+  files: string[],
+  root?: string,
+  role?: string,
+): Promise<string> {
   const lib = await load();
   const norm = files.map((f) => f.replace(/\\/g, "/"));
   const parts: string[] = [];
   const contentCache = new Map<string, string | null>();
   if (lib.baseline) parts.push(lib.baseline.trim());
   for (const m of lib.modules) {
+    if (m.roles && role && !m.roles.has(role)) continue;
     let applies = m.applyTo === null && m.appliesToType === null; // unscoped
     if (!applies && m.applyTo) applies = norm.some((f) => m.applyTo!.test(f));
     if (!applies && m.appliesToType) {

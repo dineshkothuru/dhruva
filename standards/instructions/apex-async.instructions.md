@@ -1,5 +1,6 @@
 ---
 applyTo: "force-app/main/default/classes/**/*.cls"
+roles: "implement, review"
 ---
 
 When writing asynchronous Apex (Queueable, Batch, Schedulable, Future, Platform Events):

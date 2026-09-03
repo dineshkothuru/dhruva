@@ -1,5 +1,6 @@
 ---
 applyTo: "force-app/main/default/classes/**/*Test.cls"
+roles: "implement, review, trace"
 ---
 
 When editing Apex test classes:

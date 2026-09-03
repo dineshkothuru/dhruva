@@ -1,5 +1,6 @@
 ---
 applyTo: "force-app/main/default/**/*-meta.xml"
+roles: "implement, review"
 ---
 
 When editing Salesforce metadata XML:

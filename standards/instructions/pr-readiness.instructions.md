@@ -1,5 +1,6 @@
 ---
 applyTo: "force-app/main/default/**/*"
+roles: "implement, review, trace"
 ---
 
 PR readiness checklist (must be satisfied before considering work complete):

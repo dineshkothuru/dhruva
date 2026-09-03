@@ -1,5 +1,6 @@
 ---
 applyTo: "force-app/main/default/classes/**/*.cls"
+roles: "implement, review"
 ---
 
 When editing Salesforce Apex classes:

@@ -1086,7 +1086,8 @@ async function runStep(run: RunState, def: StepDef, step: StepState): Promise<bo
         ...(run.affected ?? []),
         ...(run.changes ?? []).map((c) => c.file),
       ];
-      const rules = (await standardsFor(scopeFiles, run.root).catch(() => "")) || STANDARDS_PROMPT;
+      const rules =
+        (await standardsFor(scopeFiles, run.root, def.role).catch(() => "")) || STANDARDS_PROMPT;
       const role = def.persona ? await persona(def.persona).catch(() => "") : "";
       // project knowledge (.dhruva/skills/*.md) - the org-specific layer,
       // injected for every vendor; audited per step below

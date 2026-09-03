@@ -1,5 +1,6 @@
 ---
 applyTo: "force-app/main/default/lwc/**/*.{js,html,css,xml}"
+roles: "implement, review"
 ---
 
 When editing Lightning Web Components:
